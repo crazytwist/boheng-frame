@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设备域总体架构 v5 · 伯珩实验自动化平台</title>
+<style>
+  :root{
+    --ink:#2C2C2A; --ink2:#5F5E5A; --ink3:#888780;
+    --card:#FFFFFF; --page:#F7F6F3; --line:#D3D1C7;
+    --amber:#854F0B; --amber-bg:#FAEEDA; --amber-2:#633806;
+    --blue:#185FA5; --blue-bg:#E6F1FB; --blue-2:#042C53;
+    --teal:#0F6E56; --teal-bg:#E1F5EE; --teal-2:#04342C;
+    --purple:#534AB7; --purple-bg:#EEEDFE; --purple-2:#26215C;
+    --red:#A32D2D; --red-bg:#FCEBEB;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 64px;background:var(--page);color:var(--ink);
+       font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto}
+  h1{font-size:23px;font-weight:500;margin:0 0 8px}
+  .sub{font-size:13px;color:var(--ink2);line-height:1.8;margin:0 0 8px}
+  .meta{font-size:12px;color:var(--ink3);line-height:1.7;margin:0 0 26px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+       background:#F1EFE8;padding:1px 5px;border-radius:4px;color:#3F3E3A}
+  h2{font-size:16px;font-weight:500;margin:38px 0 6px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;font-weight:500;margin:26px 0 10px}
+  .lead{font-size:13px;color:var(--ink2);margin:0 0 16px;line-height:1.8}
+  .fig{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 20px 12px;margin:0 0 24px}
+  .fig h4{font-size:14px;font-weight:500;margin:0 0 6px}
+  .fig p{font-size:12.5px;color:var(--ink2);line-height:1.75;margin:0 0 14px}
+  .fig svg{display:block;width:100%;height:auto}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:0 0 22px;background:var(--card);
+        border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #ECEAE4;vertical-align:top;line-height:1.65}
+  th{background:#F1EFE8;font-weight:500;font-size:12px;color:var(--ink2)}
+  tr:last-child td{border-bottom:none}
+  ul{font-size:12.5px;color:var(--ink2);line-height:1.9;padding-left:20px;margin:0 0 22px}
+  ul b,td b,p b{color:var(--ink);font-weight:500}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;margin-right:6px;white-space:nowrap}
+  .t-new{background:var(--amber-bg);color:var(--amber-2)}
+  .t-keep{background:var(--blue-bg);color:var(--blue-2)}
+  .t-adopt{background:var(--teal-bg);color:var(--teal-2)}
+  .t-no{background:var(--red-bg);color:var(--red)}
+  .note{background:var(--amber-bg);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;
+        padding:12px 16px;margin:0 0 22px;font-size:12.5px;color:var(--amber-2);line-height:1.8}
+  .note b{color:var(--amber-2);font-weight:500}
+  .foot{font-size:12px;color:var(--ink3);line-height:1.8;border-top:1px solid var(--line);padding-top:16px;margin-top:34px}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:0 0 26px;
+       font-size:12.5px;color:var(--ink2);line-height:2}
+  .toc b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>设备域总体架构 v5</h1>
+<p class="sub">
+  <b>一句话</b>：设备域回答「这台仪器<b>怎么启动、参数怎么下发、跑完怎么收数、数据怎么归</b>」；
+  调度域回答「何时、用哪台、先后依赖」；WMS 回答「板子在哪、谁占了槽位」。三者边界一刀切，不互相渗透。
+</p>
+<p class="meta">
+  伯珩基础平台 · <code>boheng-module-device-api</code> + <code>boheng-module-device</code> ·
+  状态：架构已定稿、v4 改动已落库（一期 10 张表）、配置侧全栈已实现 ·
+  日期：2026-09-27 起 · v5 修订 2026-09-30
+</p>
+
+<div class="toc">
+  <b>本页导航</b> — 一、分层总览（架构图）· 二、命令流（数据流图①）· 三、数据三层（数据流图②）·
+  四、接入路径（数据流图③）· 五、核心抽象链 · 六、表设计 · 七、执行模型 · 八、域边界 ·
+  九、传输层归属 · 十、决策点与风险
+</div>
+
+<div class="note">
+  <b>术语撞车提醒（必须写死术语表）</b>：既往同类系统 <code>librax</code> 里 <code>command</code> 指<b>配置</b>、<code>execution</code> 指<b>记录</b>；
+  本项目恰好相反 —— <b><code>device_action</code> 是配置</b>（可增删改，像菜单/字典项）、<b><code>device_command</code> 是记录</b>（只增不改，像流水/订单）。
+  同一个词在两套系统里语义相反，二期对接或迁移时必踩，故在此写死。
+</div>
+
+<h2>一、分层总览</h2>
+<p class="lead">
+  四个域纵向分层，<b>只有一条接缝</b>——<code>device-api</code>。调度域只给「条件」，从不给设备编码；
+  设备域内部五步全走同一条路径；传输层被收缩为两种协议加一个仿真。
+</p>
+
+<div class="fig">
+  <h4>图 1 · 分层总览：四个域 + 一条接缝</h4>
+  <p>跨模块方向由 Maven 强制：调度域依赖 <code>device-api</code>（纯契约），物理上拿不到实现类。</p>
+  <svg viewBox="0 0 680 556" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>设备域 v5 分层架构总览</title>
+  <defs>
+    <marker id="ar1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ar1b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="40" y="40" width="600" height="56" rx="12" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="58" y="62" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">调度域 · boheng-module-flow（未来）</text>
+  <text x="58" y="80" font-size="11" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">答「何时、用哪台、先后依赖」· 只给条件不给设备编码 · librax module-flow 145 文件 = 移植候选</text>
+  <path d="M340 96 L340 108" stroke="#854F0B" stroke-width="1.5" fill="none" marker-end="url(#ar1)"/>
+
+  <rect x="40" y="108" width="600" height="66" rx="12" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="58" y="128" font-size="12" font-weight="500" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">★ 接缝契约 device-api —— 跨模块唯一入口（纯契约：接口 + DTO + 枚举）</text>
+  <text x="58" y="146" font-size="11" fill="#854F0B" dominant-baseline="central" font-family="ui-monospace, monospace">sendCommand(sourceType, businessExecId, nodeId, attempt,</text>
+  <text x="58" y="162" font-size="11" fill="#854F0B" dominant-baseline="central" font-family="ui-monospace, monospace">  deviceType, actionCode, params, dispatchMode?, resultMode?) → commandNo</text>
+  <path d="M340 174 L340 186" stroke="#854F0B" stroke-width="1.5" fill="none" marker-end="url(#ar1)"/>
+
+  <rect x="40" y="186" width="600" height="240" rx="20" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="58" y="208" font-size="13" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">设备域 · boheng-module-device（五步，三种调用方式共用一条路径）</text>
+  <rect x="56" y="226" width="568" height="30" rx="8" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <circle cx="74" cy="241" r="10" fill="#185FA5"/>
+  <text x="74" y="241" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">1</text>
+  <text x="94" y="241" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">选设备 · 抢占</text>
+  <text x="196" y="241" font-size="11" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">按条件匹配（类型 / 能力 / 属性 / 在线 / 非维护）+ 台账 CAS 原子抢占</text>
+  <rect x="56" y="262" width="568" height="30" rx="8" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <circle cx="74" cy="277" r="10" fill="#185FA5"/>
+  <text x="74" y="277" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">2</text>
+  <text x="94" y="277" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">调用决策</text>
+  <text x="196" y="277" font-size="11" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">四层：连接方式 → 预估耗时 → 能否回调 → 调用方显式指定</text>
+  <rect x="56" y="298" width="568" height="30" rx="8" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <circle cx="74" cy="313" r="10" fill="#185FA5"/>
+  <text x="74" y="313" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">3</text>
+  <text x="94" y="313" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">报文下发</text>
+  <text x="196" y="313" font-size="11" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">DeviceDriver SPI（TECAN_READER_NETWORK / SIMULATED / …）+ 模板渲染</text>
+  <rect x="56" y="334" width="568" height="30" rx="8" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <circle cx="74" cy="349" r="10" fill="#185FA5"/>
+  <text x="74" y="349" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">4</text>
+  <text x="94" y="349" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">结果回收</text>
+  <text x="196" y="349" font-size="11" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">三态统一：同步返回 / 回调（超时先降级轮询）/ 轮询</text>
+  <rect x="56" y="370" width="568" height="30" rx="8" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <circle cx="74" cy="385" r="10" fill="#185FA5"/>
+  <text x="74" y="385" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">5</text>
+  <text x="94" y="385" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">数据落库</text>
+  <text x="196" y="385" font-size="11" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">L0 原始 → L1 挂上下文 → L2 带规则版本 → 事件 + SPI 回调</text>
+  <text x="58" y="412" font-size="10.5" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">配置侧四表（台账 / 动作 / 属性 / 参数集）为上述五步提供参数与能力；记录侧只增不改。</text>
+
+  <rect x="40" y="434" width="600" height="52" rx="12" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="58" y="452" font-size="12" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">Transport · 受控收缩（只两种协议 + 一个仿真）</text>
+  <text x="58" y="470" font-size="11" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">HTTP 直连 ｜ MQTT 直连（QoS 1/2 必然重投 → 幂等键非可选）｜ Node-RED（外置、非必需）｜ SIMULATED</text>
+
+  <rect x="40" y="494" width="600" height="46" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="58" y="512" font-size="12" font-weight="500" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">可借（只借三样，不整体启用，避免被物模型语义绑架）</text>
+  <text x="58" y="529" font-size="11" fill="#0F6E56" dominant-baseline="central" font-family="system-ui, sans-serif">芋道 iot-gateway → MQTT broker 接入 ｜ 设备级鉴权 token ｜ TCP codec</text>
+  </svg>
+</div>
+
+<h2>二、数据流图①：命令的端到端旅程</h2>
+<p class="lead">
+  这是设备域的主干数据流 —— <b>一次命令从生到死</b>。三处加粗是相对既往系统的改强：
+  <b>先落事实再抢设备</b>、<b>状态与等待原因正交</b>、<b>判失败前先对账</b>。
+</p>
+
+<div class="fig">
+  <h4>图 2 · 命令流：下发 → 抢占 → 下发 → 回收 → 落库 → 上报</h4>
+  <p>HTTP 在「落库 + 返回 commandNo」处即结束，后续全程异步；错误在参数校验处当场短路，不消耗设备往返。</p>
+  <svg viewBox="0 0 680 560" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>设备命令端到端数据流</title>
+  <defs>
+    <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="ar2r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="34" font-size="12" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">调用方（调度域 / 前端 / AI）</text>
+  <path d="M184 34 L560 34" stroke="#888780" stroke-width="1.5" fill="none" marker-end="url(#ar2)"/>
+  <text x="576" y="34" font-size="11" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">设备域</text>
+
+  <rect x="40" y="52" width="600" height="30" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <circle cx="60" cy="67" r="9" fill="#185FA5"/>
+  <text x="60" y="67" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">1</text>
+  <text x="78" y="67" font-size="11" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">落 device_command(status=CREATED) · 写 source_type / business_exec_id / node_id / attempt / callback_token_hash</text>
+  <text x="474" y="67" font-size="10.5" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">★ 先落事实，device_id 可空</text>
+
+  <rect x="40" y="88" width="600" height="30" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <circle cx="60" cy="103" r="9" fill="#185FA5"/>
+  <text x="60" y="103" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">2</text>
+  <text x="78" y="103" font-size="11" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">按 param_schema 校验参数（默认值 / 约束 / 单位）→ 非法参数当场拒绝，不消耗设备往返</text>
+  <path d="M646 103 L666 103 L666 78 L646 78" stroke="#A32D2D" stroke-width="1" fill="none" marker-end="url(#ar2r)" stroke-dasharray="3 2"/>
+  <rect x="472" y="66" width="150" height="24" rx="6" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+  <text x="483" y="78" font-size="10.5" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">校验失败 → 返回用户</text>
+
+  <rect x="40" y="124" width="600" height="30" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <circle cx="60" cy="139" r="9" fill="#185FA5"/>
+  <text x="60" y="139" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">3</text>
+  <text x="78" y="139" font-size="11" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">选设备 + 原子抢占（台账 CAS：仅 EXCLUSIVE 模式；busy_check_policy=NEVER 则跳过预检）</text>
+  <rect x="40" y="160" width="600" height="24" rx="8" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="4 3"/>
+  <text x="60" y="172" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">抢不到 → waiting_for=SLOT_AVAILABLE，status 仍是排队态（不是失败）；资源缺口可统计</text>
+
+  <rect x="40" y="192" width="600" height="30" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <circle cx="60" cy="207" r="9" fill="#185FA5"/>
+  <text x="60" y="207" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">4</text>
+  <text x="78" y="207" font-size="11" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">四层决策 → dispatch_mode(SYNC / ASYNC) × result_mode(SYNC_RETURN / CALLBACK / POLL)</text>
+
+  <rect x="40" y="228" width="600" height="30" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <circle cx="60" cy="243" r="9" fill="#854F0B"/>
+  <text x="60" y="243" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">5</text>
+  <text x="78" y="243" font-size="11" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">DeviceDriver 渲染 request_template → 经 DeviceTransport 下发 · status=SENT · sent_at 打点</text>
+
+  <rect x="40" y="264" width="600" height="30" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <circle cx="60" cy="279" r="9" fill="#0F6E56"/>
+  <text x="60" y="279" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">6</text>
+  <text x="78" y="279" font-size="11" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">结果回收（三选一）· waiting_for 标明在等什么 · 同步推进 progress_percent / current_step / eta_sec</text>
+
+  <rect x="40" y="300" width="600" height="30" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <circle cx="60" cy="315" r="9" fill="#0F6E56"/>
+  <text x="60" y="315" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">7</text>
+  <text x="78" y="315" font-size="11" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">终态判定 · 超时先降级轮询对账确认，再判 TIMED_OUT（防「已跑完却判失败」）</text>
+
+  <rect x="40" y="336" width="600" height="30" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <circle cx="60" cy="351" r="9" fill="#0F6E56"/>
+  <text x="60" y="351" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">8</text>
+  <text x="78" y="351" font-size="11" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">写 L0 原始 → 解析出 L1（挂上下文）→ 标 L2 · status=SUCCESS · version 递增</text>
+
+  <rect x="40" y="372" width="600" height="30" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <circle cx="60" cy="387" r="9" fill="#0F6E56"/>
+  <text x="60" y="387" font-size="11" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">9</text>
+  <text x="78" y="387" font-size="11" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">发 MQ 事件（广播） + 调 SPI 回调（同步返回给调度域做分支）· 释放锁 · finished_at</text>
+
+  <rect x="40" y="414" width="290" height="48" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+  <text x="58" y="430" font-size="11" font-weight="500" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">失败路径（与成功同源，不另开代码）</text>
+  <text x="58" y="448" font-size="10.5" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">error_code + 仪器原文 + recovery_action</text>
+
+  <rect x="350" y="414" width="290" height="48" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="368" y="430" font-size="11" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">三类超时分开（各挂对应 waiting_for）</text>
+  <text x="368" y="448" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">queue_timeout / exec_timeout / callback_timeout</text>
+
+  <rect x="40" y="474" width="600" height="56" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="58" y="492" font-size="11" font-weight="500" fill="#26215C" dominant-baseline="central" font-family="system-ui, sans-serif">四个时间戳构成可诊断的证据链（缺一个就分不清病因）</text>
+  <text x="58" y="510" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="ui-monospace, monospace">create_time → acquired_at（排队多久）→ sent_at（下发时刻）→ finished_at（设备跑多久）</text>
+  <text x="58" y="524" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">acquired_at 缺失 ⇒ 根本没抢到设备（资源不足）；sent_at→finished_at 过长 ⇒ 设备本身慢</text>
+  </svg>
+</div>
+
+<h2>三、数据流图②：数据三层（L0 → L1 → L2）</h2>
+<p class="lead">
+  设备返回的数据<b>不是直接落一张表就完</b>。它按「不可变 → 可重算 → 可重判」三层落地，
+  且<b>上下文在摄入那一刻就挂上</b>，不靠事后猜文件名。
+</p>
+
+<div class="fig">
+  <h4>图 3 · 数据三层：不可变 / 可重算 / 可重判</h4>
+  <p>L0 是唯一事实源 —— 只要有 L0，L1 和 L2 都能重算；反过来不行。所以 L0 不裁剪、不解释。</p>
+  <svg viewBox="0 0 680 596" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>设备数据三层流转</title>
+  <defs>
+    <marker id="ar3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="40" y="40" width="600" height="42" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="58" y="61" font-size="12" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">① 设备产出</text>
+  <text x="150" y="61" font-size="11" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">仪器返回原始报文 / 结果文件（OD 值、荧光强度、状态码）——尚未结构化，格式取决于厂商</text>
+
+  <rect x="40" y="104" width="170" height="152" rx="12" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="125" y="128" font-size="12" font-weight="500" fill="#633806" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">L0 raw 原始层</text>
+  <text x="125" y="148" font-size="10.5" fill="#854F0B" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace, monospace">device_data_raw</text>
+  <text x="125" y="176" font-size="11" fill="#633806" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">报文 / 文件字节，原样保存</text>
+  <text x="125" y="198" font-size="11" fill="#633806" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">不可变 · 不裁剪 · 不解释</text>
+  <text x="125" y="226" font-size="10.5" fill="#854F0B" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">唯一事实源</text>
+  <text x="125" y="244" font-size="10.5" fill="#854F0B" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">有它才能重算 L1 / L2</text>
+
+  <rect x="255" y="104" width="170" height="152" rx="12" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="340" y="128" font-size="12" font-weight="500" fill="#042C53" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">L1 standardized</text>
+  <text x="340" y="148" font-size="10.5" fill="#185FA5" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace, monospace">measurement(+_data)</text>
+  <text x="340" y="176" font-size="11" fill="#042C53" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">96 孔 × 波长 → 行级读数</text>
+  <text x="340" y="198" font-size="11" fill="#042C53" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">可重算（换 codec 重解析）</text>
+  <text x="340" y="226" font-size="10.5" fill="#185FA5" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">★ 单位在此统一</text>
+  <text x="340" y="244" font-size="10.5" fill="#185FA5" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">★ 上下文在此挂上</text>
+
+  <rect x="470" y="104" width="170" height="152" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="555" y="128" font-size="12" font-weight="500" fill="#04342C" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">L2 analytic 分析层</text>
+  <text x="555" y="148" font-size="10.5" fill="#0F6E56" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace, monospace">analysis_result</text>
+  <text x="555" y="176" font-size="11" fill="#04342C" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">结论 / 标签 / 质控判定</text>
+  <text x="555" y="198" font-size="11" fill="#04342C" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">带 rule_code + rule_version</text>
+  <text x="555" y="226" font-size="10.5" fill="#0F6E56" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">规则升级后可重判历史</text>
+  <text x="555" y="244" font-size="10.5" fill="#0F6E56" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">并对比新旧结论</text>
+
+  <path d="M210 180 L255 180" stroke="#185FA5" stroke-width="1.5" fill="none" marker-end="url(#ar3)"/>
+  <path d="M425 180 L470 180" stroke="#0F6E56" stroke-width="1.5" fill="none" marker-end="url(#ar3)"/>
+  <text x="232" y="170" font-size="10.5" fill="#185FA5" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">解析</text>
+  <text x="447" y="170" font-size="10.5" fill="#0F6E56" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">分析</text>
+  <text x="232" y="196" font-size="10" fill="#888780" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace, monospace">codec</text>
+  <text x="447" y="196" font-size="10" fill="#888780" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace, monospace">rule</text>
+
+  <rect x="360" y="272" width="280" height="200" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="378" y="292" font-size="11" font-weight="500" fill="#26215C" dominant-baseline="central" font-family="system-ui, sans-serif">★ L1 落库时的上下文硬约束</text>
+  <text x="378" y="311" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">摄入时挂上，不事后重建（TetraScience 铁律）</text>
+
+  <rect x="378" y="324" width="244" height="22" rx="6" fill="#FFFFFF" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text x="390" y="335" font-size="10.5" fill="#26215C" dominant-baseline="central" font-family="ui-monospace, monospace">plate_instance_code / plate_type_code</text>
+  <rect x="378" y="350" width="244" height="22" rx="6" fill="#FFFFFF" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text x="390" y="361" font-size="10.5" fill="#26215C" dominant-baseline="central" font-family="ui-monospace, monospace">device_labware_name（下发时快照）</text>
+  <rect x="378" y="376" width="244" height="22" rx="6" fill="#FFFFFF" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text x="390" y="387" font-size="10.5" fill="#26215C" dominant-baseline="central" font-family="ui-monospace, monospace">experiment_ref / task_ref（来自调度）</text>
+  <rect x="378" y="402" width="244" height="22" rx="6" fill="#FFFFFF" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text x="390" y="413" font-size="10.5" fill="#26215C" dominant-baseline="central" font-family="ui-monospace, monospace">operator / device_code / driver_version</text>
+  <rect x="378" y="428" width="244" height="22" rx="6" fill="#FFFFFF" stroke="#AFA9EC" stroke-width="0.5"/>
+  <text x="390" y="439" font-size="10.5" fill="#26215C" dominant-baseline="central" font-family="ui-monospace, monospace">script_name + 关键参数快照</text>
+  <text x="378" y="462" font-size="10" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">缺任一项 → 半年后无人能信这份数据</text>
+
+  <text x="440" y="272" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">↓ 指向 L1</text>
+
+  <rect x="40" y="496" width="290" height="84" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="58" y="514" font-size="11" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">上报双通道</text>
+  <text x="58" y="534" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">① SPI 回调（同步）→ 调度域做分支判断</text>
+  <text x="58" y="552" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">② MQ 事件（异步）→ 看板 / LIMS / AI / 审计</text>
+  <text x="58" y="570" font-size="10" fill="#888780" dominant-baseline="central" font-family="system-ui, sans-serif">事件只带 id + 摘要，不带孔级数据</text>
+
+  <rect x="350" y="496" width="290" height="84" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="368" y="514" font-size="11" font-weight="500" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">外部分析来源</text>
+  <text x="368" y="534" font-size="10.5" fill="#854F0B" dominant-baseline="central" font-family="system-ui, sans-serif">Tecan Magellan 本身就是酶标仪分析软件</text>
+  <text x="368" y="552" font-size="10.5" fill="#854F0B" dominant-baseline="central" font-family="system-ui, sans-serif">→ L2 预留 source_system，不自造重复轮子</text>
+  <text x="368" y="570" font-size="10" fill="#888780" dominant-baseline="central" font-family="system-ui, sans-serif">一期只做基础标记：OVER_RANGE / BLANK_FAIL</text>
+  </svg>
+</div>
+
+<h2>四、数据流图③：接入路径与传输层</h2>
+<p class="lead">
+  仪器形态千差万别，但对后端<b>只有一种样子</b> —— 因为四条路径全部收敛到 <code>DeviceTransport</code> 接口之后。
+  走哪条由 <code>device_info.connection_type</code> 决定，上层代码一行不改。
+</p>
+
+<div class="fig">
+  <h4>图 4 · 接入形态：四条路径，一个接口</h4>
+  <p>平台对外只认 HTTP 与 MQTT 两种协议；串口 / 私有协议 / DLL 一律由 Node-RED 翻译，不进平台代码。</p>
+  <svg viewBox="0 0 680 472" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>设备接入路径与传输层收敛</title>
+  <defs>
+    <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="40" y="40" width="256" height="58" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="58" y="60" font-size="11.5" font-weight="500" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">① HTTP 直连 · connection_type=HTTP</text>
+  <text x="58" y="79" font-size="10.5" fill="#0F6E56" dominant-baseline="central" font-family="system-ui, sans-serif">仪器自带 REST 服务，直接请求 · 同步短命令</text>
+
+  <rect x="40" y="110" width="256" height="58" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="58" y="130" font-size="11.5" font-weight="500" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">② MQTT 直连 · connection_type=MQTT</text>
+  <text x="58" y="149" font-size="10.5" fill="#0F6E56" dominant-baseline="central" font-family="system-ui, sans-serif">仪器侧零 Java 依赖 · 主动连出，穿透网段隔离</text>
+
+  <rect x="40" y="180" width="256" height="58" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="58" y="200" font-size="11.5" font-weight="500" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">③ Node-RED 网关 · NODE_RED_HTTP</text>
+  <text x="58" y="219" font-size="10.5" fill="#854F0B" dominant-baseline="central" font-family="system-ui, sans-serif">串口 / 私有 TCP / DLL / 文件 → 翻译成 HTTP 或 MQTT</text>
+
+  <rect x="40" y="250" width="256" height="58" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="58" y="270" font-size="11.5" font-weight="500" fill="#26215C" dominant-baseline="central" font-family="system-ui, sans-serif">④ 仿真 · connection_type=SIMULATED</text>
+  <text x="58" y="289" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">无硬件也能跑通全链路 · 一期先做，解掉文档阻塞</text>
+
+  <path d="M296 69 C340 69 350 200 396 200" stroke="#0F6E56" stroke-width="1.2" fill="none" marker-end="url(#ar4)"/>
+  <path d="M296 139 C340 139 350 200 396 200" stroke="#0F6E56" stroke-width="1.2" fill="none" marker-end="url(#ar4)"/>
+  <path d="M296 209 C340 209 350 200 396 200" stroke="#854F0B" stroke-width="1.2" fill="none" marker-end="url(#ar4)"/>
+  <path d="M296 279 C340 279 350 200 396 200" stroke="#534AB7" stroke-width="1.2" fill="none" marker-end="url(#ar4)"/>
+
+  <rect x="396" y="52" width="244" height="268" rx="12" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="414" y="76" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">★ DeviceTransport SPI</text>
+  <text x="414" y="95" font-size="10.5" fill="#185FA5" dominant-baseline="central" font-family="system-ui, sans-serif">device 主模块内自定义，外部网关只是实现</text>
+  <rect x="412" y="108" width="212" height="46" rx="8" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <text x="424" y="124" font-size="10" fill="#185FA5" dominant-baseline="central" font-family="ui-monospace, monospace">interface DeviceTransport {</text>
+  <text x="424" y="140" font-size="10" fill="#185FA5" dominant-baseline="central" font-family="ui-monospace, monospace">  String type(); send(TransportRequest);</text>
+  <text x="412" y="170" font-size="10.5" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">入参是 deviceCode（不是 deviceId）</text>
+  <text x="412" y="189" font-size="10.5" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">只搬运原文，解析交给 device_codec</text>
+  <rect x="412" y="204" width="212" height="46" rx="8" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5"/>
+  <text x="424" y="220" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">三实现（一期自带，零外部依赖）</text>
+  <text x="424" y="239" font-size="10" fill="#5F5E5A" dominant-baseline="central" font-family="ui-monospace, monospace">Http / Mqtt / Simulated</text>
+  <rect x="412" y="258" width="212" height="46" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="424" y="274" font-size="10.5" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">可选适配器（独立模块，按需启用）</text>
+  <text x="424" y="293" font-size="10" fill="#0F6E56" dominant-baseline="central" font-family="ui-monospace, monospace">device-transport-iot → 依赖 iot-core</text>
+
+  <rect x="40" y="322" width="600" height="64" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="58" y="342" font-size="11.5" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">为什么这样才叫「模块化」—— 撤回成本可度量</text>
+  <text x="58" y="362" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">主模块不知道 iot 存在；删掉适配器模块，主模块零改动；新增一种协议 = 新增一个 implements DeviceTransport</text>
+  <text x="58" y="378" font-size="10" fill="#888780" dominant-baseline="central" font-family="system-ui, sans-serif">验收标准：「明天不用它了，改几个文件？」答案应是：删一个模块，其余不动。</text>
+
+  <rect x="40" y="398" width="600" height="58" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+  <text x="58" y="418" font-size="11.5" font-weight="500" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">两条 MQTT 硬约束（一期不定，二期数据量上来必炸）</text>
+  <text x="58" y="438" font-size="10.5" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">① QoS 1/2 = at-least-once，消息必然可能重复 → idempotent_key 非可选（复用 uk_idempotent）</text>
+  <text x="58" y="452" font-size="10.5" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">② &gt; 64KB 载荷禁走 MQTT → 转文件引用（infra 已有 S3 / SFTP），MQTT 只传 fileUrl + sha256</text>
+  </svg>
+</div>
+
+<h2>五、核心抽象链</h2>
+<p class="lead">
+  从「这类设备能干什么」一路抽象到「怎么变成厂商协议」。<b>能力用独立表，不塞 JSON</b> —— 因为二期要按能力 JOIN 查设备。
+</p>
+
+<div class="fig">
+  <h4>图 5 · 从设备类型到厂商协议的五级链条</h4>
+  <p>每一级都是可独立维护的配置；驱动声明能力（自描述），能力可被人工覆盖且留痕。</p>
+  <svg viewBox="0 0 680 536" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>设备抽象链五级</title>
+  <defs>
+    <marker id="ar5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="40" y="40" width="600" height="52" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="58" y="60" font-size="12" font-weight="500" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">1 设备类型 DeviceType</text>
+  <text x="58" y="79" font-size="11" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">「这类设备能干什么」—— 按<b>行为</b>建模，不按型号；如 PLATE_READER</text>
+
+  <rect x="40" y="104" width="600" height="92" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="58" y="124" font-size="12" font-weight="500" fill="#042C53" dominant-baseline="central" font-family="system-ui, sans-serif">2 设备动作 DeviceAction ——「能被怎么启动」（设备域的核心）</text>
+  <rect x="58" y="138" width="272" height="22" rx="6" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <text x="68" y="149" font-size="10" fill="#042C53" dominant-baseline="central" font-family="ui-monospace, monospace">param_schema（默认值 + 约束 + 单位）</text>
+  <rect x="344" y="138" width="278" height="22" rx="6" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <text x="354" y="149" font-size="10" fill="#042C53" dominant-baseline="central" font-family="ui-monospace, monospace">standard_feature（映射 SiLA 标准特性名）</text>
+  <rect x="58" y="164" width="272" height="22" rx="6" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <text x="68" y="175" font-size="10" fill="#042C53" dominant-baseline="central" font-family="ui-monospace, monospace">need_busy_check / status_command_code</text>
+  <rect x="344" y="164" width="278" height="22" rx="6" fill="#FFFFFF" stroke="#85B7EB" stroke-width="0.5"/>
+  <text x="354" y="175" font-size="10" fill="#042C53" dominant-baseline="central" font-family="ui-monospace, monospace">request_template / poll_done_expr / estimate_duration_ms</text>
+
+  <rect x="40" y="210" width="600" height="70" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="58" y="230" font-size="12" font-weight="500" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">3 设备属性 DeviceProperty ——「能被观测到什么」（遥测）</text>
+  <text x="58" y="250" font-size="11" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">温度 / 仓门状态 / 耗材余量 / 当前程序进度 —— 可读、可订阅</text>
+  <text x="58" y="268" font-size="10.5" fill="#0F6E56" dominant-baseline="central" font-family="system-ui, sans-serif">定义在 device_property；当前值快照在 device_info.telemetry_json；历史轨迹二期</text>
+
+  <rect x="40" y="294" width="600" height="64" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="58" y="314" font-size="12" font-weight="500" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">4 参数集 DeviceParamSet ——「这一次下什么参数」</text>
+  <text x="58" y="334" font-size="11" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">params_json 是取值；validated 标记「已人工验证」—— 只有已验证的才能被用于发起命令</text>
+  <text x="58" y="350" font-size="10.5" fill="#854F0B" dominant-baseline="central" font-family="system-ui, sans-serif">专用接口 update-validated：只改 validated / validatedBy / validatedTime，避免覆盖并发编辑</text>
+
+  <rect x="40" y="372" width="600" height="70" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+  <text x="58" y="392" font-size="12" font-weight="500" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">5 命令 DeviceCommand ——「实际下发了什么」+「跑到哪了」（只增不改）</text>
+  <text x="58" y="412" font-size="11" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">参数快照 + 渲染后 payload + 进度（progress_percent / current_step / eta_sec）</text>
+  <text x="58" y="430" font-size="10.5" fill="#A32D2D" dominant-baseline="central" font-family="system-ui, sans-serif">失败时带 recovery_action（给人工可操作的恢复动作），不是只给一个错误码</text>
+
+  <rect x="40" y="456" width="600" height="64" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="58" y="476" font-size="12" font-weight="500" fill="#26215C" dominant-baseline="central" font-family="system-ui, sans-serif">6 驱动 DeviceDriver（对内 SPI）——「怎么变成厂商协议」</text>
+  <text x="58" y="496" font-size="11" fill="#26215C" dominant-baseline="central" font-family="system-ui, sans-serif">describeCapabilities() 自描述 → execute() / queryStatus() / fetchResult()</text>
+  <text x="58" y="513" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">实现：TecanReaderNetworkDriver ｜ SimulatedDriver（一期先做）｜ …</text>
+  </svg>
+</div>
+
+<h3>能力自描述机制（最大的架构升级）</h3>
+<p class="lead">
+  v1 把能力当成<b>我们手工填的台账</b>，接一台新设备要人工录一遍动作和参数。
+  对标 SiLA 的 introspection 后改为：<b>驱动声明能力，人工可覆盖且留痕</b>。
+</p>
+<table>
+  <tr><th style="width:40px">步</th><th>动作</th><th>落点</th></tr>
+  <tr><td>①</td><td>装驱动，驱动自带能力描述（代码声明，或随驱动包一份描述文件）</td><td>驱动制品内</td></tr>
+  <tr><td>②</td><td>注册设备 / 首次探活 → 设备域读 <code>describeCapabilities()</code></td><td>设备域</td></tr>
+  <tr><td>③</td><td>自动导入动作与属性，打上 <code>source=DEVICE_DECLARED</code></td><td><code>device_action</code> / <code>device_property</code></td></tr>
+  <tr><td>④</td><td>人工可覆盖，改过的打 <code>source=MANUAL</code>，<b>留痕</b>（谁改的、原值）</td><td>同上</td></tr>
+  <tr><td>⑤</td><td>冲突策略：MANUAL 优先；驱动升级导致声明变化时<b>提示人工复核，不静默覆盖</b></td><td>同上</td></tr>
+</table>
+<p class="lead">
+  收益：<b>接新设备 = 装驱动 + 注册 + 能力自动带出，不写前端页面</b>。
+  Cellario 的能力模型是机器可读的，AI 直接查询「实验室有哪些仪器、方法、约束」——
+  这也是我们二期让 AI 规划实验的前提。
+</p>
+
+<h2>六、表设计（一期 10 张 / 二期 5 张）</h2>
+<p class="lead">
+  前缀 <code>device_</code>（与 <code>wms_</code> 同构）。
+  <b>配置侧与记录侧严格分离</b>：配置可增删改，记录只增不改且不提供删除入口。
+</p>
+<table>
+  <tr><th style="width:34px">#</th><th style="width:170px">表</th><th>作用</th><th style="width:120px">性质</th></tr>
+  <tr><td>1</td><td><code>device_info</code></td><td>台账：接入五字段 + 占用锁四字段 + <b>忙闲/并发四字段</b> + 仿真开关 + 属性快照</td><td><span class="tag t-keep">配置</span></td></tr>
+  <tr><td>2</td><td><code>device_action</code></td><td>动作定义：<code>param_schema</code> / <code>request_template</code> / <code>need_busy_check</code> / 轮询配置</td><td><span class="tag t-keep">配置</span></td></tr>
+  <tr><td>3</td><td><code>device_property</code></td><td>可观测属性定义（遥测）</td><td><span class="tag t-keep">配置</span></td></tr>
+  <tr><td>4</td><td><code>device_param_set</code></td><td>参数集预设 + <code>validated</code> 标记</td><td><span class="tag t-keep">配置</span></td></tr>
+  <tr><td>5</td><td><code>device_codec</code></td><td>响应解析规则（L0 → L1）。一期<b>只开 JSON / REGEX</b></td><td><span class="tag t-keep">配置</span></td></tr>
+  <tr><td>6</td><td><code>device_command</code></td><td>命令：三态调用统一落点 + 状态机 + 幂等三键 + 锁</td><td><span class="tag t-new">记录</span></td></tr>
+  <tr><td>7</td><td><code>device_data_raw</code></td><td><b>L0 raw</b>（不可变）</td><td><span class="tag t-new">记录</span></td></tr>
+  <tr><td>8</td><td><code>device_measurement</code></td><td><b>L1 头</b>：含上下文必填字段 + <code>driver_version</code> 快照</td><td><span class="tag t-new">记录</span></td></tr>
+  <tr><td>9</td><td><code>device_measurement_data</code></td><td><b>L1 孔级读数</b>：96 孔 × 波长 = 行级可查（不做合并）</td><td><span class="tag t-new">记录</span></td></tr>
+  <tr><td>10</td><td><code>device_analysis_result</code></td><td><b>L2 结论/标签</b>：带 <code>rule_version</code> 可重判，<code>source_system</code> 区分来源</td><td><span class="tag t-new">记录</span></td></tr>
+</table>
+<p class="lead"><b>二期 5 张</b>：<code>device_status_log</code>（属性历史/上下线）· <code>device_alarm</code>（主动告警）· <code>device_analysis_rule</code>（规则可配置）· <code>device_data_relation</code>（数据血缘）· <code>device_command_step</code>（子步骤明细）。</p>
+
+<h3>三处关键唯一键分工（防止「重试等于没重试」）</h3>
+<table>
+  <tr><th style="width:210px">唯一键</th><th>管什么</th><th>为什么必须有</th></tr>
+  <tr><td><code>uk_command_no</code></td><td>对外命令号</td><td>调用方拿这个对账</td></tr>
+  <tr><td><code>uk_idempotent</code></td><td>传输层重投（MQTT 重发 / 人工重复点）</td><td>QoS 1/2 必然可能重复</td></tr>
+  <tr><td><code>uk_business</code><br><code>(tenant_id, source_type,<br>business_exec_id, node_id, attempt)</code></td><td>业务执行事实</td><td><b>只有单列键时，重试会被拦成「返回原命令」→ 调度域永远看不到第 2 次执行</b></td></tr>
+</table>
+<div class="note">
+  <b>实测验证（事务内执行后回滚，未污染数据）</b>：同业务节点同 <code>attempt</code> 的第 2 条 → 被唯一键拦下（<code>1062 Duplicate entry '0-FLOW-EXEC-1-NODE-A-1'</code>）；
+  手工命令（业务字段为 NULL）连插 2 条 → <b>都成功</b>（MySQL 唯一索引 NULL 不参与去重，正好实现「手工命令不做业务幂等」）；
+  同节点 <code>attempt=2</code> → <b>成功落库</b>，重试链路畅通。
+</div>
+
+<h2>七、执行模型：三种调用方式，一条路径</h2>
+<p class="lead">
+  三种调用方式<b>不是三个接口</b>，而是同一个命令的两个正交维度。给 sync / 异步 / 轮询各开一个接口，
+  后果是状态机三套、超时逻辑三套、事件三套、测试三套 —— 最终必然出现「某条路径漏了幂等、漏了流水」。
+</p>
+<table>
+  <tr><th style="width:150px">维度</th><th style="width:220px">取值</th><th>决定什么</th></tr>
+  <tr><td><code>dispatch_mode</code><br>下发方式</td><td><code>SYNC</code> / <code>ASYNC</code></td><td>调用什么时候返回</td></tr>
+  <tr><td><code>result_mode</code><br>回收方式</td><td><code>SYNC_RETURN</code> / <code>CALLBACK</code> / <code>POLL</code></td><td>结果怎么回来</td></tr>
+</table>
+<table>
+  <tr><th style="width:30px">#</th><th style="width:150px">形态</th><th>典型场景</th><th style="width:130px">超时来源</th></tr>
+  <tr><td>①</td><td><b>同步</b><br>SYNC + SYNC_RETURN</td><td>读属性、开关门、取状态、停止、急停</td><td>HTTP 超时 3~5s</td></tr>
+  <tr><td>②</td><td><b>异步回调</b><br>ASYNC + CALLBACK</td><td>跑板（仪器能推完成事件）</td><td><code>callback_timeout</code></td></tr>
+  <tr><td>③</td><td><b>异步轮询</b><br>ASYNC + POLL</td><td>老仪器只支持查询、无推送能力</td><td><code>poll_interval × max_poll</code></td></tr>
+</table>
+<p class="lead">
+  <b>四层决策，后者覆盖前者</b>：① <code>connection_type</code> 决定 Transport →
+  ② <code>estimate_duration_ms</code>（&gt;3000ms 一律 ASYNC）→
+  ③ <code>callback_enabled</code> 决定 CALLBACK 还是 POLL →
+  ④ <b>调用方显式指定</b>（设备能力只说明「能不能」，调度语义才决定「要不要等」）。
+</p>
+<div class="note">
+  <b>CALLBACK 超时必须先降级 POLL 兜一次</b>，不能直接判失败。MQTT QoS 0 可能丢消息、客户端可能掉线，
+  回调不可靠 —— 先兜一次轮询再判，否则会误报「设备没跑完」而实际早已跑完。这与「判 TIMED_OUT 前先对账」同源。
+</div>
+
+<h3>设备占用锁（对齐 SiLA Lock Controller）</h3>
+<table>
+  <tr><th style="width:210px">字段</th><th>作用</th></tr>
+  <tr><td><code>lock_holder</code></td><td>谁持锁（<code>command_no</code> / <code>USER:1</code> / <code>TASK:xxx</code>）</td></tr>
+  <tr><td><code>lock_type</code></td><td><code>COMMAND</code> / <code>MANUAL</code> / <code>MAINTENANCE</code>（人工检修也能锁设备）</td></tr>
+  <tr><td><code>lock_acquired_time</code> / <code>lock_expire_time</code></td><td><b>锁必须能过期</b>，否则设备永远锁死</td></tr>
+  <tr><td><code>lock_reason</code></td><td>人工加锁时必填</td></tr>
+</table>
+<p class="lead">
+  抢占用<b>原子 UPDATE</b>（<code>WHERE current_command_id IS NULL</code> 且 affected rows == 1），
+  <b>绝不写成「先查后改」</b> —— 并发下 check-then-act 会让两台仪器收到同一条命令。
+  锁只在 <code>concurrency_policy=EXCLUSIVE</code> 时使用。
+</p>
+
+<h2>八、三个域的边界</h2>
+<table>
+  <tr><th style="width:130px">域</th><th>一句话职责</th><th style="width:230px">明确不做</th></tr>
+  <tr><td><b>设备域</b>（本次）</td><td>这台设备怎么启动、参数怎么下发、跑完数据怎么收 / 怎么归</td><td>不决定跑谁、不决定顺序</td></tr>
+  <tr><td><b>调度域</b>（未来）</td><td>什么时候、用哪台、先后依赖、并行、异常重试</td><td>不碰厂商协议、不解析结果</td></tr>
+  <tr><td><b>WMS</b>（已落地）</td><td>板子在哪、何时上下机、谁占了槽位</td><td>不碰设备协议</td></tr>
+</table>
+<p class="lead">
+  <b>与 WMS 的缝合（零改表）</b>：从货架取板 <code>TAKE_OUT</code> → 进仪器栈 <code>PUT_IN</code> 到 <code>device_position_no</code> 槽位 →
+  跑板 <code>STATUS_CHANGE</code>（<code>AVAILABLE → IN_USE</code>，<code>ref_type=DEVICE</code>）→ 出仪器 / 回位。
+  这条链与 SiLA 官网举的自家示例流程一模一样 —— <b>说明我们的场景是行业标准场景，不是特例</b>。
+</p>
+<p class="lead">
+  <b>调度域不自研流程引擎</b>：竞品 UniteLabs 与 Roche AutoLab 均为 Camunda-based。项目根 pom 已有
+  <code>boheng-module-bpm</code> 占位（芋道自带 BPMN 引擎），但需从上游恢复。分工：流程定义走 BPMN 引擎，
+  资源分配（此刻用哪台 / 并行怎么排）自研，单设备执行属设备域。
+  <b>诚实提醒：BPMN 只解决「流程定义」约 60%，「资源分配 / 排程优化」仍要自研。</b>
+</p>
+
+<h2>九、传输层归属（v5 新增）</h2>
+<p class="lead">
+  结论：<b>传输层是 device 自己的 SPI</b>，外部网关（芋道 <code>iot-gateway</code> 等）只能作为它的「实现」接入。
+  这样才保住「device 整体模块化」—— 删掉适配器模块，主模块零改动。
+</p>
+<table>
+  <tr><th style="width:230px">否决理由</th><th>事实</th></tr>
+  <tr><td>它是 <b>sidecar</b></td><td>独立 Spring Boot 应用 + <code>RestTemplate</code> RPC 回调主程序 → 多一个进程、多一套契约</td></tr>
+  <tr><td>它的接缝是<b>物模型</b></td><td><code>IotDeviceMessage.deviceId</code> 是 <b>Long 主键</b>（我们跨模块只认 <code>device_code</code>）；<code>method</code> 是物模型语义，不是我们的 <code>action_code</code></td></tr>
+  <tr><td>它拖<b>重依赖</b></td><td><code>rocketmq-spring-boot-starter</code> 会被带进主应用</td></tr>
+</table>
+<p class="lead">
+  <b>落地形态（依赖单向）</b>：<code>device-api</code> ← <code>boheng-module-device</code>（自定义 <code>DeviceTransport</code> SPI + 三实现）
+  ← <code>boheng-module-device-transport-iot</code>（可选适配器，按需启用）。
+  <b>抄实现、不引依赖的三块</b>（一期就能用，零成本）：EMQX 认证事件报文形状 / Vert.x <code>MqttServer</code> 起法 / MQTT topic 拼装。
+</p>
+
+<h2>十、决策点与风险</h2>
+<h3>已定</h3>
+<table>
+  <tr><th style="width:52px">#</th><th>决策</th><th style="width:290px">结论</th></tr>
+  <tr><td>1</td><td>模块切分</td><td>拆两个 Maven 模块（<code>device-api</code> 纯契约 + <code>device</code> 实现）</td></tr>
+  <tr><td>3 / 4</td><td>动作模型 / 参数集一期上</td><td>都上（SiLA 已标准化，晚做要推倒）</td></tr>
+  <tr><td>5</td><td>设备占用</td><td>台账 CAS 锁，语义对齐 SiLA <code>Lock Controller</code>（仅 EXCLUSIVE 用）</td></tr>
+  <tr><td>9</td><td>SPI 回调一期定义</td><td>一期定义</td></tr>
+  <tr><td>10</td><td>接入协议</td><td>平台只开放 HTTP + MQTT；串口/私有协议由接入层翻译</td></tr>
+  <tr><td>11</td><td>Node-RED 定位</td><td>外置 Transport（只翻译协议，不做业务），且非必需</td></tr>
+  <tr><td>12</td><td>调用方式</td><td>三态统一建模（<code>dispatch_mode × result_mode</code>），不是三个接口</td></tr>
+  <tr><td>13</td><td><b>忙闲校验开关</b></td><td><code>busy_check_policy</code>(AUTO/ALWAYS/NEVER) —— 有的仪器不返回空闲状态，不许写死</td></tr>
+  <tr><td>14</td><td><b>并发策略开关</b></td><td><code>concurrency_policy</code>(EXCLUSIVE/DEVICE_QUEUED/PLATFORM_QUEUED) —— 有的仪器自带本地队列</td></tr>
+  <tr><td>K</td><td>v4 改动是否现在落 DDL</td><td>✅ 已执行：<code>device.sql</code> 升 v2.0-device（10 张）</td></tr>
+  <tr><td>L</td><td>传输层是否复用 iot-gateway</td><td>✅ 借「协议接法」，不借「模块 + 物模型 + 部署形态」</td></tr>
+</table>
+
+<div class="fig">
+  <h4>图 6 · 忙闲校验 × 并发策略：四类仪器，两个枚举字段</h4>
+  <p>把「仪器能力差异」收敛为两个可配置字段，而不是写死成三套代码路径。</p>
+  <svg viewBox="0 0 680 260" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>忙闲校验与并发策略开关矩阵</title>
+  <rect x="40" y="40" width="600" height="30" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="124" y="55" font-size="11" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">仪器类型</text>
+  <text x="318" y="55" font-size="11" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">busy_check_policy × concurrency_policy</text>
+  <text x="545" y="55" font-size="11" font-weight="500" fill="#2C2C2A" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">下发行为</text>
+
+  <rect x="40" y="76" width="600" height="34" rx="6" fill="#FFFFFF" stroke="#D3D1C7" stroke-width="0.5"/>
+  <text x="56" y="93" font-size="11" fill="#2C2C2A" dominant-baseline="central" font-family="system-ui, sans-serif">标准仪器</text>
+  <text x="124" y="93" font-size="10.5" fill="#185FA5" dominant-baseline="central" font-family="ui-monospace, monospace">AUTO × EXCLUSIVE</text>
+  <text x="318" y="93" font-size="10.5" fill="#5F5E5A" dominant-baseline="central" font-family="system-ui, sans-serif">台账 CAS 抢占，抢不到排队</text>
+
+  <rect x="40" y="114" width="600" height="34" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="56" y="131" font-size="11" fill="#633806" dominant-baseline="central" font-family="system-ui, sans-serif">不报空闲状态</text>
+  <text x="124" y="131" font-size="10.5" fill="#854F0B" dominant-baseline="central" font-family="ui-monospace, monospace">NEVER × EXCLUSIVE</text>
+  <text x="318" y="131" font-size="10.5" fill="#854F0B" dominant-baseline="central" font-family="system-ui, sans-serif">跳过预检，直接下发</text>
+
+  <rect x="40" y="152" width="600" height="34" rx="6" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text x="56" y="169" font-size="11" fill="#04342C" dominant-baseline="central" font-family="system-ui, sans-serif">自带本地队列</text>
+  <text x="124" y="169" font-size="10.5" fill="#0F6E56" dominant-baseline="central" font-family="ui-monospace, monospace">AUTO/NEVER × DEVICE_QUEUED</text>
+  <text x="318" y="169" font-size="10.5" fill="#0F6E56" dominant-baseline="central" font-family="system-ui, sans-serif">不做独占，连续下发（max_inflight=队列深度）</text>
+
+  <rect x="40" y="190" width="600" height="34" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="56" y="207" font-size="11" fill="#26215C" dominant-baseline="central" font-family="system-ui, sans-serif">既不报空闲也不支持并发</text>
+  <text x="124" y="207" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="ui-monospace, monospace">NEVER × PLATFORM_QUEUED</text>
+  <text x="318" y="207" font-size="10.5" fill="#534AB7" dominant-baseline="central" font-family="system-ui, sans-serif">平台侧排队，依次下发</text>
+
+  <rect x="40" y="232" width="600" height="20" rx="6" fill="#FFFFFF" stroke="#D3D1C7" stroke-width="0.5"/>
+  <text x="56" y="242" font-size="10" fill="#888780" dominant-baseline="central" font-family="system-ui, sans-serif">⚠️ 拟字段名刻意避开 dispatch_mode —— 后者已被 SYNC/ASYNC 占用（librax 对同名用了相反语义）</text>
+  </svg>
+</div>
+
+<h3>待拍板</h3>
+<table>
+  <tr><th style="width:52px">#</th><th>决策</th><th style="width:300px">建议</th></tr>
+  <tr><td>A</td><td>仿真驱动做不做一期第一个</td><td><b>强烈建议做</b> —— 把「等 Tecan 文档」的阻塞变成「可以并行推进」</td></tr>
+  <tr><td>C</td><td>表前缀 <code>device_</code> / <code>lab_</code></td><td><code>device_</code>（与 <code>wms_</code> 同构）</td></tr>
+  <tr><td>D</td><td>MQ 事件契约一期定还是二期定</td><td>一期定（规避二期改契约）</td></tr>
+  <tr><td>E</td><td>能力自描述一期做到哪</td><td>先手工填 + 留 <code>source</code> 字段（一期一台机，但机制要留）</td></tr>
+  <tr><td>F</td><td>分析归类深度</td><td>一期基础标记</td></tr>
+  <tr><td>G</td><td>是否恢复 <code>boheng-module-bpm</code> 做调度域</td><td>建议尽早立项（它是设备域的主要调用方）</td></tr>
+  <tr><td>H</td><td>MQTT broker 选型</td><td>一期先 HTTP 直连；真机接入时优先连外部 EMQX</td></tr>
+  <tr><td>I</td><td>Node-RED 是否一期就上</td><td>有需要再上（先备好 Http / Mqtt Transport）</td></tr>
+  <tr><td>J</td><td>大载荷转文件阈值</td><td>64KB（保守）</td></tr>
+</table>
+
+<h3>主要风险与缓解</h3>
+<table>
+  <tr><th style="width:300px">风险</th><th>缓解</th></tr>
+  <tr><td>仪器无 API 直取孔级数，只能解析文件</td><td>两条路都设计；<code>data_raw.content_type</code> 已留 FILE 分支</td></tr>
+  <tr><td>仪器在内网隔离区，后端连不到</td><td>设备侧出向连接（MQTT）；SiLA 也为同一问题加了 Server-Initiated Connection</td></tr>
+  <tr><td>i-control 版本升级改接口</td><td><code>driver_version</code> 快照 + <code>DeviceDriver.supports()</code> 按版本分派</td></tr>
+  <tr><td>设备卡死拖垮后端</td><td>命令表 + 超时 + <code>CANCEL</code> + <code>lock_expire_time</code>；异步执行与 HTTP 解耦</td></tr>
+  <tr><td><b>L1 没在摄入时挂上下文，半年后数据不可信</b></td><td>§三 硬约束进代码评审清单</td></tr>
+  <tr><td>L0 没存全，无法重算 L1 / L2</td><td>L0 不可变、不裁剪、不解释</td></tr>
+  <tr><td>自拍语义，三年后接 SiLA 要重构</td><td>一期就沿用 SiLA 语义与标准特性名</td></tr>
+  <tr><td>MQTT 消息重复投递（at-least-once）</td><td><code>idempotent_key</code> 一期就落，与 <code>uk_idempotent</code> 复用同一套机制</td></tr>
+  <tr><td>大载荷打爆 broker</td><td>&gt;64KB 转文件引用，用 infra 已有 S3 / SFTP</td></tr>
+  <tr><td>回调丢失导致误判命令失败</td><td>CALLBACK 超时先降级 POLL 兜一次再判</td></tr>
+  <tr><td>凭据明文</td><td><code>auth_config</code> 一期先 JSON 存储并标注待加固</td></tr>
+</table>
+
+<h3>仍需你提供</h3>
+<table>
+  <tr><th style="width:52px">#</th><th>内容</th><th style="width:200px">状态</th></tr>
+  <tr><td>1</td><td><b>Tecan <code>Reader.NETwork V1.9</code> 接口文档</b>（endpoint / 认证 / 请求响应样例 / 结果数据结构）</td><td>🔴 硬阻塞（有仿真驱动可先并行）</td></tr>
+  <tr><td>2</td><td>镁伽 <code>Labillion</code> 与本项目 <code>labillion-frame</code> 是否同源</td><td>🟡 影响对标口径</td></tr>
+  <tr><td>3</td><td>读板机台数与型号 / i-control PC 与后端是否同网段 / 是否含液体处理工作站 / 结果格式</td><td>🟡 见 Tecan 方案 §十</td></tr>
+</table>
+
+<p class="foot">
+  <b>完整资料索引</b>（均在 <code>boheng-frame/.workbuddy/reference/</code>）：
+  <code>device-domain-architecture.md</code>（v5 正文，813 行）·
+  <code>device-domain-architecture-v5.html</code>（本页）·
+  <code>device-architecture-v4.html</code>（v4 四张架构图）·
+  <code>device-design-prior-art-librax.md</code>（既往系统对标）·
+  <code>device-transport-boundary.md</code>（传输层借用边界）·
+  <code>device-domain-benchmark.md</code>（竞品与标准对标）·
+  <code>tecan-device-integration-design.md</code>（Tecan 驱动，已被本文收编）·
+  <code>boheng-module-wms/TODO.md</code>（H 区待办）<br>
+  DDL 与脚本：<code>sql/mysql/device.sql</code>（v2.0-device）· <code>device-v4-upgrade.sql</code>（增量迁移）·
+  <code>device-menu.sql</code>（菜单权限）· <code>device-seed.sql</code>（种子数据）。
+</p>
+
+</div>
+</body>
+</html>

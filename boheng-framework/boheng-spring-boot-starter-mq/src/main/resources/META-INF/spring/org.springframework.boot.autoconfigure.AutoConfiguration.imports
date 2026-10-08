@@ -1,0 +1,3 @@
+cn.boheng.frame.framework.mq.redis.config.BohengRedisMQProducerAutoConfiguration
+cn.boheng.frame.framework.mq.redis.config.BohengRedisMQConsumerAutoConfiguration
+cn.boheng.frame.framework.mq.rabbitmq.config.BohengRabbitMQAutoConfiguration

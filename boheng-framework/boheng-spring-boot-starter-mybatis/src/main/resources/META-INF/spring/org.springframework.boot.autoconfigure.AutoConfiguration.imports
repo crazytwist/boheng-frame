@@ -1,0 +1,3 @@
+cn.boheng.frame.framework.datasource.config.BohengDataSourceAutoConfiguration
+cn.boheng.frame.framework.mybatis.config.BohengMybatisAutoConfiguration
+cn.boheng.frame.framework.translate.config.BohengTranslateAutoConfiguration

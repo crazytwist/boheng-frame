@@ -1,0 +1,2 @@
+cn.boheng.frame.framework.redis.config.BohengRedisAutoConfiguration
+cn.boheng.frame.framework.redis.config.BohengCacheAutoConfiguration

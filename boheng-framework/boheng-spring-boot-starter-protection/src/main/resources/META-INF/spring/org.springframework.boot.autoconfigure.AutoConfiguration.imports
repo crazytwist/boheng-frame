@@ -1,0 +1,4 @@
+cn.boheng.frame.framework.idempotent.config.BohengIdempotentConfiguration
+cn.boheng.frame.framework.lock4j.config.BohengLock4jConfiguration
+cn.boheng.frame.framework.ratelimiter.config.BohengRateLimiterConfiguration
+cn.boheng.frame.framework.signature.config.BohengApiSignatureAutoConfiguration

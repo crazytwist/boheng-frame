@@ -1,0 +1,7 @@
+cn.boheng.frame.framework.apilog.config.BohengApiLogAutoConfiguration
+cn.boheng.frame.framework.jackson.config.BohengJacksonAutoConfiguration
+cn.boheng.frame.framework.swagger.config.BohengSwaggerAutoConfiguration
+cn.boheng.frame.framework.web.config.BohengWebAutoConfiguration
+cn.boheng.frame.framework.xss.config.BohengXssAutoConfiguration
+cn.boheng.frame.framework.banner.config.BohengBannerAutoConfiguration
+cn.boheng.frame.framework.encrypt.config.BohengApiEncryptAutoConfiguration

@@ -1,0 +1,2 @@
+cn.boheng.frame.framework.quartz.config.BohengQuartzAutoConfiguration
+cn.boheng.frame.framework.quartz.config.BohengAsyncAutoConfiguration

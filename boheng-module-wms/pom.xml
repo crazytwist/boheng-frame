@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>cn.boheng</groupId>
+        <artifactId>boheng</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>boheng-module-wms</artifactId>
+    <packaging>jar</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>
+        wms 模块，实验室仓储管理（Lab-WMS）。
+        放三块能力：
+            1. 空间管理：区域树（zone）+ 槽位（slot）
+            2. 物料与台账：物料主数据、批次、库存台账与变更流水
+            3. 出入库单据：入库单、出库单、移库单、盘点单
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-infra</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- 业务组件 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-biz-tenant</artifactId>
+        </dependency>
+
+        <!-- Web 相关 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- DB 相关 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-redis</artifactId>
+        </dependency>
+
+        <!-- 工具类相关 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-excel</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

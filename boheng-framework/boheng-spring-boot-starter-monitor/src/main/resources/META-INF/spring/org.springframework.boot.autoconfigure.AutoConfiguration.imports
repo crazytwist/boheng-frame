@@ -1,0 +1,2 @@
+cn.boheng.frame.framework.tracer.config.BohengTracerAutoConfiguration
+cn.boheng.frame.framework.tracer.config.BohengMetricsAutoConfiguration

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>cn.boheng</groupId>
+        <artifactId>boheng</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>boheng-module-device-api</artifactId>
+    <packaging>jar</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>
+        device-api 模块，设备域「纯契约」层。
+
+        只放：跨模块调用的接口（DeviceApi）、DTO、枚举、常量。
+        硬约束（本项目约定，见 .workbuddy/reference/device-domain-architecture.md §一）：
+            1. 零 Spring 依赖（不 import @Service / @Resource 等）
+            2. 零 MyBatis / 零 DAL（不 import DO / Mapper）
+            3. 只被 device 实现模块与消费方（调度域等）依赖，绝不反向依赖实现
+
+        目的：用 Maven 依赖方向物理强制「跨模块只走契约」，杜绝包级 api 的「靠自觉」。
+    </description>
+
+    <dependencies>
+        <!-- 仅依赖框架公共类型（CommonResult / PageParam / 异常 ErrorCode 等），不带任何业务实现 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-common</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

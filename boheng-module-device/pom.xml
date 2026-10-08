@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>cn.boheng</groupId>
+        <artifactId>boheng</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>boheng-module-device</artifactId>
+    <packaging>jar</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>
+        device 模块，实验室设备域（实现层）。
+
+        职责（设备域答「怎么启动、参数怎么下发、跑完怎么收数」，见架构文档 §八）：
+            1. 设备台账管理：device_info（含图片、接入、占用锁）
+            2. 设备能力：动作（device_action）+ 可观测属性（device_property）+ 参数集（device_param_set）
+            3. 命令执行：device_command（三态统一模型 + 状态机 + 进度 + 幂等）
+            4. 数据三层：raw(L0) → measurement(L1) → analysis_result(L2)
+            5. 驱动 SPI：DeviceDriver（Tecan / Simulated 等厂商实现）
+
+        依赖 device-api（契约），实现 DeviceApi；不对调度域反向依赖。
+    </description>
+
+    <dependencies>
+        <!-- 依赖设备域契约 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-device-api</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- 依赖 infra（文件服务：大结果/图片走文件引用） -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-infra</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- 业务组件 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-biz-tenant</artifactId>
+        </dependency>
+
+        <!-- Web 相关 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- DB 相关 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-redis</artifactId>
+        </dependency>
+
+        <!-- 工具类相关 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-excel</artifactId>
+        </dependency>
+
+    </dependencies>
+
+</project>

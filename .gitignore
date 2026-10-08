@@ -1,0 +1,69 @@
+######################################################################
+# Build Tools
+
+.gradle
+/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+.flattened-pom.xml
+
+######################################################################
+# IDE
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+nbproject/private/
+build/*
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+######################################################################
+# Others
+*.log
+*.xml.versionsBackup
+*.swp
+
+!*/build/*.java
+!*/build/*.html
+!*/build/*.xml
+
+### JRebel ###
+rebel.xml
+
+application-my.yaml
+
+/boheng-ui-app/unpackage/
+.DS_Store
+**/.DS_Store
+
+######################################################################
+# Frontend (web/) —— 前端源码随本仓库一起托管，构建产物与依赖不入库
+
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/dist-prod/
+web/pnpm-debug.log
+web/auto-*.d.ts
+web/.history/
+web/output/
+web/.playwright-cli/
+web/.idea/

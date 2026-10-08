@@ -1,0 +1,3 @@
+cn.boheng.frame.framework.security.config.BohengSecurityAutoConfiguration
+cn.boheng.frame.framework.security.config.BohengWebSecurityConfigurerAdapter
+cn.boheng.frame.framework.operatelog.config.BohengOperateLogConfiguration
