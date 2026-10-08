@@ -1,3 +1,4 @@
+-- ⚠️ 已并入 sql/mysql/wms-final.sql，请执行最终脚本。
 -- ----------------------------------------------------------------------------
 -- WMS 模块菜单与权限数据
 -- 对应后端 5 张表：zone / slot / container-type / content-def / material-instance

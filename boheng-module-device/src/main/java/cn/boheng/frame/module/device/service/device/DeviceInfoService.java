@@ -2,6 +2,7 @@ package cn.boheng.frame.module.device.service.device;
 
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DevicePageReqVO;
+import cn.boheng.frame.module.device.controller.admin.device.vo.DevicePortraitRespVO;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceSaveReqVO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
 
@@ -66,5 +67,13 @@ public interface DeviceInfoService {
      * @return 设备台账列表
      */
     List<DeviceInfoDO> getDeviceList();
+
+    /**
+     * 设备画像：台账加上接入、下发、占用的说明，以及同类型的动作、属性和参数集。
+     *
+     * @param id 设备编号
+     * @return 画像
+     */
+    DevicePortraitRespVO getDevicePortrait(Long id);
 
 }

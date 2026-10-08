@@ -10,7 +10,19 @@
             新增实例
           </el-button>
         </div>
+        <el-input
+          v-model="treeKeyword"
+          class="tree-search"
+          clearable
+          placeholder="搜索编码、名称或条码"
+          @input="filterTree"
+        >
+          <template #prefix>
+            <Icon icon="ep:search" />
+          </template>
+        </el-input>
         <el-tree
+          ref="treeRef"
           v-loading="treeLoading"
           class="instance-tree"
           :data="instanceTree"
@@ -18,6 +30,7 @@
           node-key="id"
           highlight-current
           :expand-on-click-node="false"
+          :filter-node-method="filterNode"
           @node-click="handleInstanceClick"
         >
           <template #default="{ data }">
@@ -122,6 +135,22 @@ const { t } = useI18n()
 const treeLoading = ref(false)
 const instanceTree = ref<MaterialInstanceVO[]>([])
 const containerTypes = ref<ContainerTypeVO[]>([])
+const treeRef = ref()
+const treeKeyword = ref('')
+
+const filterNode = (value: string, data: MaterialInstanceVO) => {
+  const keyword = value.trim().toLowerCase()
+  if (!keyword) return true
+  return [data.instanceName, data.instanceCode, data.barcode, data.contentDefCode, data.rootSlotCode, data.parentPositionCode]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(keyword)
+}
+
+const filterTree = () => {
+  treeRef.value?.filter(treeKeyword.value)
+}
 
 const instanceIcon = (data: MaterialInstanceVO) => {
   const ct = containerTypes.value.find((c) => c.id === data.containerTypeId)
@@ -207,6 +236,8 @@ const loadInstances = async () => {
     ])
     containerTypes.value = cts || []
     instanceTree.value = buildTree(instances || [])
+    await nextTick()
+    filterTree()
   } finally {
     treeLoading.value = false
   }
@@ -347,6 +378,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.tree-search {
   margin-bottom: 12px;
 }
 

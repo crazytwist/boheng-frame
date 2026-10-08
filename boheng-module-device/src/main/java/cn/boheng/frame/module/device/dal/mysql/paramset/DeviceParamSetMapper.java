@@ -34,6 +34,13 @@ public interface DeviceParamSetMapper extends BaseMapperX<DeviceParamSetDO> {
     }
 
     /**
+     * 按设备类型查参数集（台账详情展示这类设备有哪些可复用参数）
+     */
+    default List<DeviceParamSetDO> selectListByTypeCode(String deviceTypeCode) {
+        return selectList(DeviceParamSetDO::getDeviceTypeCode, deviceTypeCode);
+    }
+
+    /**
      * 按「类型 + 动作」查可选参数集（发起命令时下拉用）
      */
     default List<DeviceParamSetDO> selectListByTypeAndAction(String deviceTypeCode, String actionCode) {

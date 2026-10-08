@@ -60,8 +60,11 @@
           <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '开启' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="160" fixed="right">
+      <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['wms:content-def:query']" link type="primary" @click="openDetail(scope.row.id)">
+            详细
+          </el-button>
           <el-button v-hasPermi="['wms:content-def:update']" link type="primary" @click="openForm('update', scope.row.id)">
             编辑
           </el-button>
@@ -82,11 +85,13 @@
 
   <!-- 表单 -->
   <ContentDefForm ref="formRef" @success="getList" />
+  <ContentDefDetailDrawer ref="detailRef" />
 </template>
 
 <script lang="ts" setup>
 import { ContentDefApi, ContentDefVO } from '@/api/wms/content'
 import ContentDefForm from './ContentDefForm.vue'
+import ContentDefDetailDrawer from './ContentDefDetailDrawer.vue'
 import defaultContentImage from '@/assets/imgs/wms/content-default.svg'
 
 defineOptions({ name: 'WmsContentDef' })
@@ -167,8 +172,12 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
+const detailRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+const openDetail = (id: number) => {
+  detailRef.value.open(id)
 }
 
 const handleDelete = async (id: number) => {

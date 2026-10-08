@@ -35,6 +35,23 @@ export interface DeviceVO {
   createTime?: Date
 }
 
+export interface DeviceFacet {
+  title?: string
+  code?: string
+  detail?: string
+  active?: boolean
+}
+
+export interface DevicePortrait {
+  device?: DeviceVO
+  connectionSummary?: string
+  dispatchSummary?: string
+  occupancySummary?: string
+  actions?: DeviceFacet[]
+  properties?: DeviceFacet[]
+  paramSets?: DeviceFacet[]
+}
+
 // 设备台账 API
 export const DeviceInfoApi = {
   // 查询设备台账分页
@@ -50,6 +67,11 @@ export const DeviceInfoApi = {
   // 查询设备台账详情
   getDevice: async (id: number) => {
     return await request.get({ url: '/device/info/get?id=' + id })
+  },
+
+  // 设备画像：接入、下发、占用，以及同类型动作/属性/参数集
+  getDevicePortrait: async (id: number) => {
+    return await request.get({ url: '/device/info/portrait?id=' + id })
   },
 
   // 新增设备台账

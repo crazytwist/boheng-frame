@@ -76,6 +76,31 @@ public class DeviceActionDO extends TenantBaseDO {
     private Long estimateDurationMs;
 
     /**
+     * 本动作下发前是否需先确认设备空闲。最终是否真预检还要看设备台账的 busy_check_policy。
+     */
+    private Boolean needBusyCheck;
+
+    /**
+     * 忙闲查询动作编码。need_busy_check 开启时指向同类型的另一个动作；为空则降级为不预检。
+     */
+    private String statusCommandCode;
+
+    /**
+     * 请求报文模板，支持 ${param} 占位符。
+     */
+    private String requestTemplate;
+
+    /**
+     * 轮询完成判定表达式，例如 $.status == "DONE"。
+     */
+    private String pollDoneExpr;
+
+    /**
+     * 最大轮询次数，超限判超时；为空走全局默认。
+     */
+    private Integer pollMaxTimes;
+
+    /**
      * 启用状态: 0 启用 / 1 停用
      */
     private Integer status;

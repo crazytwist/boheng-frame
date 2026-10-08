@@ -53,8 +53,11 @@
           <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="160" fixed="right">
+      <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['device:property:query']" link type="primary" @click="openDetail(scope.row.id)">
+            详细
+          </el-button>
           <el-button v-hasPermi="['device:property:update']" link type="primary" @click="openForm('update', scope.row.id)">
             编辑
           </el-button>
@@ -75,11 +78,13 @@
 
   <!-- 表单 -->
   <PropertyForm ref="formRef" @success="getList" />
+  <PropertyDetailDrawer ref="detailRef" />
 </template>
 
 <script lang="ts" setup>
 import { DevicePropertyApi, DevicePropertyVO } from '@/api/device/property'
 import PropertyForm from './PropertyForm.vue'
+import PropertyDetailDrawer from './PropertyDetailDrawer.vue'
 
 defineOptions({ name: 'DeviceProperty' })
 
@@ -130,8 +135,12 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
+const detailRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+const openDetail = (id: number) => {
+  detailRef.value.open(id)
 }
 
 const handleDelete = async (id: number) => {

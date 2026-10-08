@@ -11,6 +11,11 @@ export interface DeviceActionVO {
   vendorRef?: string
   source?: string
   estimateDurationMs?: number
+  needBusyCheck?: boolean
+  statusCommandCode?: string
+  requestTemplate?: string
+  pollDoneExpr?: string
+  pollMaxTimes?: number
   status?: number
   createTime?: Date
 }

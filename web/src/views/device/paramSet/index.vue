@@ -49,8 +49,11 @@
           <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="220" fixed="right">
+      <el-table-column label="操作" align="center" width="280" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['device:param-set:query']" link type="primary" @click="openDetail(scope.row.id)">
+            详细
+          </el-button>
           <el-button
             v-hasPermi="['device:param-set:update']"
             link
@@ -79,11 +82,13 @@
 
   <!-- 表单 -->
   <ParamSetForm ref="formRef" @success="getList" />
+  <ParamSetDetailDrawer ref="detailRef" />
 </template>
 
 <script lang="ts" setup>
 import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 import ParamSetForm from './ParamSetForm.vue'
+import ParamSetDetailDrawer from './ParamSetDetailDrawer.vue'
 
 defineOptions({ name: 'DeviceParamSet' })
 
@@ -135,8 +140,12 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
+const detailRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+const openDetail = (id: number) => {
+  detailRef.value.open(id)
 }
 
 // 标记 / 取消验证（只有已验证的参数集才能用于发起命令）

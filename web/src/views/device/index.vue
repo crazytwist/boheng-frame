@@ -82,8 +82,11 @@
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" :show-overflow-tooltip="true" />
-      <el-table-column label="操作" align="center" width="160" fixed="right">
+      <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['device:info:query']" link type="primary" @click="openDetail(scope.row.id)">
+            详细
+          </el-button>
           <el-button v-hasPermi="['device:info:update']" link type="primary" @click="openForm('update', scope.row.id)">
             编辑
           </el-button>
@@ -104,11 +107,13 @@
 
   <!-- 表单 -->
   <DeviceForm ref="formRef" @success="getList" />
+  <DeviceDetailDrawer ref="detailRef" />
 </template>
 
 <script lang="ts" setup>
 import { DeviceInfoApi, DeviceVO } from '@/api/device'
 import DeviceForm from './DeviceForm.vue'
+import DeviceDetailDrawer from './DeviceDetailDrawer.vue'
 import defaultDeviceImage from '@/assets/imgs/device/device-default.svg'
 
 defineOptions({ name: 'WmsDeviceInfo' })
@@ -212,8 +217,12 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
+const detailRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+const openDetail = (id: number) => {
+  detailRef.value.open(id)
 }
 
 const handleDelete = async (id: number) => {

@@ -61,8 +61,11 @@
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="description" :show-overflow-tooltip="true" />
-      <el-table-column label="操作" align="center" width="160" fixed="right">
+      <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['wms:container-type:query']" link type="primary" @click="openDetail(scope.row.id)">
+            详细
+          </el-button>
           <el-button v-hasPermi="['wms:container-type:update']" link type="primary" @click="openForm('update', scope.row.id)">
             编辑
           </el-button>
@@ -83,11 +86,13 @@
 
   <!-- 表单 -->
   <ContainerTypeForm ref="formRef" @success="getList" />
+  <ContainerTypeDetailDrawer ref="detailRef" />
 </template>
 
 <script lang="ts" setup>
 import { ContainerTypeApi, ContainerTypeVO } from '@/api/wms/container'
 import ContainerTypeForm from './ContainerTypeForm.vue'
+import ContainerTypeDetailDrawer from './ContainerTypeDetailDrawer.vue'
 import defaultContainerImage from '@/assets/imgs/wms/container-default.svg'
 
 defineOptions({ name: 'WmsContainerType' })
@@ -153,8 +158,12 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
+const detailRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+const openDetail = (id: number) => {
+  detailRef.value.open(id)
 }
 
 const handleDelete = async (id: number) => {

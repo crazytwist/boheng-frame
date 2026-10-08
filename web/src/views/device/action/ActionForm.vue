@@ -1,3 +1,4 @@
+<script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 
 defineOptions({ name: 'DeviceActionForm' })
@@ -20,6 +21,11 @@ const createEmptyFormData = (): DeviceActionVO => ({
   vendorRef: undefined,
   source: 'MANUAL',
   estimateDurationMs: undefined,
+  needBusyCheck: false,
+  statusCommandCode: undefined,
+  requestTemplate: undefined,
+  pollDoneExpr: undefined,
+  pollMaxTimes: undefined,
   status: 0
 })
 
@@ -170,6 +176,36 @@ const emit = defineEmits<{ success: [] }>()
             <el-select v-model="formData.status" placeholder="请选择" class="!w-1/1">
               <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="下发前查空闲">
+            <el-switch v-model="formData.needBusyCheck" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="忙闲查询动作">
+            <el-input v-model="formData.statusCommandCode" maxlength="64" placeholder="如 GET_STATUS，可空" :disabled="!formData.needBusyCheck" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-form-item label="请求模板">
+        <el-input v-model="formData.requestTemplate" type="textarea" :rows="3" placeholder="支持 ${参数名} 占位，可空" />
+      </el-form-item>
+
+      <el-row :gutter="20">
+        <el-col :span="16">
+          <el-form-item label="完成判定">
+            <el-input v-model="formData.pollDoneExpr" maxlength="255" placeholder="如 $.status == &quot;DONE&quot;" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
+          <el-form-item label="最多轮询">
+            <el-input-number v-model="formData.pollMaxTimes" :min="1" controls-position="right" class="!w-1/1" />
           </el-form-item>
         </el-col>
       </el-row>

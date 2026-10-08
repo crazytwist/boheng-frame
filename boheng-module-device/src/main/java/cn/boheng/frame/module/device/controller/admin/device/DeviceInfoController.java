@@ -4,6 +4,7 @@ import cn.boheng.frame.framework.common.pojo.CommonResult;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DevicePageReqVO;
+import cn.boheng.frame.module.device.controller.admin.device.vo.DevicePortraitRespVO;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceRespVO;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceSaveReqVO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
@@ -74,6 +75,14 @@ public class DeviceInfoController {
     public CommonResult<PageResult<DeviceRespVO>> getDevicePage(@Valid DevicePageReqVO pageReqVO) {
         PageResult<DeviceInfoDO> pageResult = deviceInfoService.getDevicePage(pageReqVO);
         return success(BeanUtils.toBean(pageResult, DeviceRespVO.class));
+    }
+
+    @GetMapping("/portrait")
+    @Operation(summary = "获得设备台账画像")
+    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('device:info:query')")
+    public CommonResult<DevicePortraitRespVO> getDevicePortrait(@RequestParam("id") Long id) {
+        return success(deviceInfoService.getDevicePortrait(id));
     }
 
     @GetMapping("/get")

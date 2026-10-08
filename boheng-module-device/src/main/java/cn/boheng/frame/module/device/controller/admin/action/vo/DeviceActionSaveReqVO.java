@@ -52,6 +52,23 @@ public class DeviceActionSaveReqVO {
     @Schema(description = "预估耗时(毫秒)；< 3000 才允许 SYNC", example = "30000")
     private Long estimateDurationMs;
 
+    @Schema(description = "下发前是否确认设备空闲", example = "false")
+    private Boolean needBusyCheck;
+
+    @Schema(description = "忙闲查询动作编码", example = "GET_STATUS")
+    @Size(max = 64, message = "忙闲查询动作编码长度不能超过 64 个字符")
+    private String statusCommandCode;
+
+    @Schema(description = "请求报文模板")
+    private String requestTemplate;
+
+    @Schema(description = "轮询完成判定表达式", example = "$.status == \"DONE\"")
+    @Size(max = 255, message = "轮询完成判定表达式长度不能超过 255 个字符")
+    private String pollDoneExpr;
+
+    @Schema(description = "最大轮询次数", example = "12")
+    private Integer pollMaxTimes;
+
     @Schema(description = "启用状态: 0 启用/1 停用", example = "0")
     private Integer status;
 

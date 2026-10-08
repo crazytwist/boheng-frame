@@ -1,36 +1,49 @@
--- ⚠️ 已并入 sql/mysql/wms-final.sql，请执行最终脚本。
 -- =============================================================================
--- Lab-WMS · 物料实例层（最简版，收敛为 5 张表）
--- 版本: v1.4-minimal    底座: boheng-boot-mini (cn.boheng.frame)    目标库: MySQL 8.0+
--- 来源: 由 wms.sql v1.4 收敛而来
+-- Lab-WMS 物料域最终脚本（当前代码对齐版）
+-- 版本: v1.5-final    底座: boheng-frame    目标库: MySQL 8.0+ / boheng-frame
 --
--- 收敛原则:
---   1. 只保留 5 张表:
---        空间:  wms_zone_info(区域树) + wms_slot_info(槽位叶子)
---        实例:  wms_container_type(容器类型) + wms_content_def(内容物定义) + wms_material_instance(物料实例)
---      其余表(物料主数据、批次、台账、出入库单据、区域物料类型约束)全部移除
---   2. 「记录」类字段全部移除: 溯源(source_*)、批次(batch_no/lot_no)、
---      复用次数(reuse_count)、清洗时间(last_clean_time)、入库/开封/过期日期(received_at/opened_at/expired_at)
---      以及规格侧的机械/温区/设备映射字段(size_*、well_spacing、material、max_nest_depth、temp_*、device_labware_name)
---   3. 保留的核心能力:
---      - 空间: zone 可配置树 + slot 双状态正交(FREE/OCCUPIED/LOCKED/CHECKING)
---      - 实例: 可无限嵌套的树(parent_instance_id + parent_position_code)
---      - 位置即实例(WELL 孔/位也是实例，内容物 1:1 内联)
---      - 实例绑定容器类型(规格) + 内容物定义(物质)，六态 AVAILABLE/RESERVED/IN_USE/USED/EXPIRED/DISCARDED
---      - 顶层实例可落位 slot(root_slot_id/root_slot_code，仅顶层占用，内部 WELL 不落 slot)
---   4. 保留 instance_status 六态(回答「这一件现在能不能用」)，但移除 RESERVED 之外的调度语义字段
---   5. boheng 底座规范不变: BaseDO 审计字段 + tenant_id 多租户 + 雪花主键 + 无 DB 唯一键
+-- 本文件是物料域唯一应执行的结构脚本，取代：
+--   wms.sql                      v1.4 十八表历史脚本，不要再执行
+--   wms-instance-minimal.sql     五张表，已并入
+--   wms-movement.sql             物料流水，已并入
+--   wms-instance-slot-unique.sql 槽位唯一索引，已写进 wms_material_instance
+--   wms-menu.sql / wms-menu-movement.sql  菜单，已并入且改为可重复执行
 --
--- 已移除: wms_zone_material_type(区域物料类型约束)——其 material_type 值域已与
---   wms_content_def.content_type 脱节，区域约束能力整体后置到后续阶段
+-- 不包含：
+--   wms-dict.sql                 已过期，字典指向已删除的物料主数据表
+--   wms-cleanup-test-data.sql    一次性测试数据清理
+--   wms-slot-occupancy-fix.sql   存量数据修复，不是结构
 --
--- 五张表的分工:
---   区域树     管「空间层级」   —— zone_code/parent_zone_code 树 + 温区/生物安全沿树继承
---   槽位       管「空间叶子」   —— 可用状态(status) + 使用状态(slot_status) + 占用量
---   容器类型   管「能装什么」   —— 几何规格 + 层级角色(CARRIER/CONTAINER/WELL) + 承载子单元
---   内容物定义 管「物质是什么」 —— 浓度 / CAS / 危险等级 / 保质期规则 / 存储条件
---   物料实例   管「这一件实物」 —— 规格绑定 + 内容绑定 + 树层级 + 顶层落位
+-- 六张表：
+--   空间  wms_zone_info / wms_slot_info
+--   规格  wms_container_type / wms_content_def
+--   实物  wms_material_instance（含 uk_root_slot）
+--   流水  wms_material_movement
+--
+-- 与 Java DO 对齐的要点：
+--   zone / slot / instance 用 ext_data，不再单列 address、rack_rows、row_no、concentration
+--   container_type / content_def 有 image_url
+--   槽位占用真相源是 instance.root_slot_id，同一未删除槽位只能有一个实例
+--
+-- 前置：已导入 ruoyi-vue-pro.sql，且 system_menu 中存在 WMS 目录 id=1348。
+-- 警告：第 1 段会 DROP 上述 6 张表后重建，表内数据会清空。
+-- 用法：
+--   docker exec -i mysql-local mysql -uroot -proot --default-character-set=utf8mb4 boheng-frame \
+--     < sql/mysql/wms-final.sql
 -- =============================================================================
+
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- -----------------------------------------------------------------------------
+-- 1. 重建六张当前表
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `wms_material_movement`;
+DROP TABLE IF EXISTS `wms_material_instance`;
+DROP TABLE IF EXISTS `wms_slot_info`;
+DROP TABLE IF EXISTS `wms_zone_info`;
+DROP TABLE IF EXISTS `wms_container_type`;
+DROP TABLE IF EXISTS `wms_content_def`;
 
 -- -----------------------------------------------------------------------------
 -- 1. wms_zone_info  区域树（实验室/房间/功能区/温区/料架统一节点）
@@ -216,49 +229,154 @@ CREATE TABLE `wms_material_instance` (
   UNIQUE INDEX `uk_root_slot`(`tenant_id` ASC, `slot_unique_key` ASC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '物料实例(实物个体树：位置即实例 + 内容物内联)';
 
--- =============================================================================
--- 说明（最简版 · 5 张表）:
---   [空间] wms_zone_info / wms_slot_info
---   [实例] wms_container_type / wms_content_def / wms_material_instance
---
---   1. 空间: zone 是可配置树(zone_code/parent_zone_code)；slot 是叶子，zone_code 挂载。
---      温区、生物安全沿树继承；slot 不冗余温区。
---   2. 位置也是实例: hierarchy_role = WELL 的孔/位也是实例表一行，内容物 1:1 内联(content_* 组)。
---      一块 96 孔板 = 1 行载体实例 + 96 行孔实例；空孔同样建行，content_type = EMPTY。
---      CARRIER 自身不装物质，content_* 整组为空。
---   3. 树的边 = parent_instance_id + parent_position_code；顶层实例 parent_instance_id 为 NULL。
---   4. 四组绑定:
---        空间 <- zone        slot.zone_code 挂载区域
---        规格 <- wms_container_type  container_type_id / container_type_code（必填）
---        内容 <- wms_content_def     content_def_id / content_def_code（CARRIER、空容器为空）
---        落位 <- wms_slot_info      root_slot_id / root_slot_code（仅顶层实例，内部 WELL 不落 slot）
---   5. 无「启用 / 停用」状态位: 实例的终态是 DISCARDED(报废)，不是停用，故不设 status 列。
---   6. instance_path 走前缀索引(64): 支持 LIKE '/1001/1005/%' 子树查询。
---   7. content_type = EMPTY 表示「能装但现在是空的」；CARRIER 此列为 NULL 表示「不装东西」。
---      两者语义不同，不要互相替代。
---   8. 同级同位唯一: (parent_instance_id, parent_position_code) 由 Service 层校验。
---   9. 不允许删除仍有子节点的实例(否则路径断裂)；嵌套成环由应用层祖先链校验防护。
---  10. instance_status 只回答「这一件现在能不能用」；锁归调度域，本表只保留 RESERVED
---      这一个「被步骤占用」的语义。
---  11. current_vol_ul 与 current_count 二选一填写(液体填体积、固体/计数填数量)。
---  12. 落位只在顶层实例: 一块 96 孔板占 1 个 slot(root_slot_id 有值)，内部 96 孔是子实例、不落 slot。
---      移动整树时只改根实例的 root_slot_id/root_slot_code；「谁占用 slot」按 root_slot_id 反查。
---
--- 已移除的字段(如需恢复，回看 wms.sql v1.4):
---   规格侧:  size_x_mm / size_y_mm / size_z_mm / well_spacing_mm / material /
---            max_nest_depth / temp_min / temp_max / device_labware_name
---   内容物:  require_batch
---   实例侧:  depth / 溯源 source_execution_id/source_node_id / 批次 batch_no/lot_no /
---            复用 reuse_count/last_clean_time / 日期 received_at/opened_at/expired_at
--- 已移除的表(如需恢复，回看 wms.sql v1.4):
---   wms_zone_material_type(区域物料类型约束) / wms_material_info / wms_material_batch /
---   wms_inventory / wms_inventory_history / 出入库与盘点单据 6 组(12 表)
---
--- ext_data 迁移说明(保守迁移，只收描述/坐标/模板类，不动索引与强约束字段):
---   wms_zone_info:       address / rack_rows / rack_cols / slot_capacity
---   wms_slot_info:       row_no / col_no / layer_no
---   wms_material_instance: concentration(实例级覆盖值，标准浓度仍在 content_def)
---   保留为列的原因: temp_min/temp_max(温区沿树继承检索)、biosafety_level(安全校验)、
---   unique_batch(上架硬约束)、device_position_no(在 idx_device 索引)、barcode(扫码检索)、
---   slot_status/occupied_qty/capacity(状态流转与容量校验)
--- =============================================================================
+-- -----------------------------------------------------------------------------
+-- 6. wms_material_movement  物料流水（只增不改）
+-- -----------------------------------------------------------------------------
+CREATE TABLE `wms_material_movement` (
+  `id` bigint NOT NULL COMMENT '主键',
+  `movement_type` varchar(32) NOT NULL COMMENT '流水类型: CREATE 建账/PUT_IN 上架/TAKE_OUT 下架/MOVE 转移/CONSUME 消耗/STATUS_CHANGE 状态变更/RESERVE 预留/RELEASE 释放预留/ADJUST 冲正',
+  `biz_source` varchar(32) NOT NULL DEFAULT 'MANUAL' COMMENT '业务来源: MANUAL 手工/TASK 调度任务/DEVICE 设备/IMPORT 导入',
+  `operation_id` varchar(64) NULL DEFAULT NULL COMMENT '操作批次号(一次批量操作的多条明细共享，用于归组还原「一次操作」)',
+
+  `instance_id` bigint NOT NULL COMMENT '实例编号(流水主体，可以是根实例也可以是子实例)',
+  `instance_code` varchar(64) NOT NULL COMMENT '实例编码(冗余，编码寻址)',
+  `root_instance_id` bigint NULL DEFAULT NULL COMMENT '根实例编号(冗余，定位本条流水属于哪个顶层容器)',
+  `container_type_code` varchar(64) NULL DEFAULT NULL COMMENT '容器类型编码快照',
+  `content_def_code` varchar(64) NULL DEFAULT NULL COMMENT '内容物编码快照(便于按物质筛流水，避免 join 实例表)',
+  `content_type` varchar(32) NULL DEFAULT NULL COMMENT '内容物类型快照',
+
+  `from_slot_id` bigint NULL DEFAULT NULL COMMENT '源槽位编号(NULL=上架/建账，操作前不在架上)',
+  `from_slot_code` varchar(64) NULL DEFAULT NULL COMMENT '源槽位编码(冗余)',
+  `from_zone_code` varchar(64) NULL DEFAULT NULL COMMENT '源区域编码(冗余，便于按区域筛流水)',
+  `to_slot_id` bigint NULL DEFAULT NULL COMMENT '目标槽位编号(NULL=下架/消耗，操作后不在架上)',
+  `to_slot_code` varchar(64) NULL DEFAULT NULL COMMENT '目标槽位编码(冗余)',
+  `to_zone_code` varchar(64) NULL DEFAULT NULL COMMENT '目标区域编码(冗余)',
+
+  `before_status` varchar(32) NULL DEFAULT NULL COMMENT '变更前实例状态',
+  `after_status` varchar(32) NULL DEFAULT NULL COMMENT '变更后实例状态',
+
+  `before_qty` int NULL DEFAULT NULL COMMENT '变更前数量(个)，离散计数类(如离心管根数)填写',
+  `change_qty` int NULL DEFAULT NULL COMMENT '变更量(个，正为增负为减)',
+  `after_qty` int NULL DEFAULT NULL COMMENT '变更后数量(个)',
+  `before_vol_ul` decimal(10,2) NULL DEFAULT NULL COMMENT '变更前体积(μL)，液体类填写',
+  `change_vol_ul` decimal(10,2) NULL DEFAULT NULL COMMENT '变更量(μL，负为消耗)',
+  `after_vol_ul` decimal(10,2) NULL DEFAULT NULL COMMENT '变更后体积(μL)',
+
+  `ref_type` varchar(32) NULL DEFAULT NULL COMMENT '关联业务类型: TASK 调度任务/ORDER 单据/API 外部调用/CHECK 盘点',
+  `ref_id` varchar(64) NULL DEFAULT NULL COMMENT '关联业务编号(跨模块只认编码，不建外键)',
+  `ref_no` varchar(64) NULL DEFAULT NULL COMMENT '关联业务单号',
+  `idempotent_key` varchar(128) NULL DEFAULT NULL COMMENT '幂等键(外部模块调用防重复过账；为空不参与唯一约束)',
+
+  `operator` varchar(64) NULL DEFAULT NULL COMMENT '操作人(手工=登录用户；调度/设备=system 或设备编码)',
+  `operator_type` varchar(16) NOT NULL DEFAULT 'USER' COMMENT '操作者类型: USER 人工/DEVICE 设备/AUTO 自动',
+  `operate_time` datetime NOT NULL COMMENT '业务操作时间(≠入库时间，支持补录历史)',
+  `remark` varchar(512) NULL DEFAULT NULL COMMENT '备注/操作原因(下架不强制填写)',
+
+  `creator` varchar(64) NULL DEFAULT '' COMMENT '创建者',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updater` varchar(64) NULL DEFAULT '' COMMENT '更新者',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除(流水只增不改，业务侧不提供删除入口)',
+  `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_instance`(`instance_id` ASC, `operate_time` ASC) USING BTREE,
+  INDEX `idx_root_instance`(`root_instance_id` ASC, `operate_time` ASC) USING BTREE,
+  INDEX `idx_from_slot`(`from_slot_id` ASC, `operate_time` ASC) USING BTREE,
+  INDEX `idx_to_slot`(`to_slot_id` ASC, `operate_time` ASC) USING BTREE,
+  INDEX `idx_operation`(`operation_id` ASC) USING BTREE,
+  INDEX `idx_content`(`content_def_code` ASC, `operate_time` ASC) USING BTREE,
+  INDEX `idx_operate_time`(`operate_time` ASC) USING BTREE,
+  INDEX `idx_movement_type`(`movement_type` ASC) USING BTREE,
+  INDEX `idx_ref`(`ref_type` ASC, `ref_id` ASC) USING BTREE,
+  UNIQUE INDEX `uk_idempotent`(`tenant_id` ASC, `idempotent_key` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '物料流水(只增不改：上架/下架/转移/消耗/状态变更)';
+
+-- -----------------------------------------------------------------------------
+-- 3. 菜单与权限（可重复执行；父目录 WMS 系统 id=1348 须已存在）
+-- 执行后清 Redis：permission_menu_ids:* / menu_role_ids:* / user_role_ids:*
+-- -----------------------------------------------------------------------------
+DELETE FROM `system_role_menu` WHERE `menu_id` BETWEEN 12732 AND 12761;
+DELETE FROM `system_menu` WHERE `id` BETWEEN 12732 AND 12761;
+
+INSERT INTO `system_menu` (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`, `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`) VALUES
+-- 空间管理（区域 + 槽位）
+(12732, '空间管理', '', 2, 7, 1348, 'space', 'ep:grid', 'wms/space/index', 'WmsSpace', 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12733, '区域查询', 'wms:zone:query', 3, 1, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12734, '区域新增', 'wms:zone:create', 3, 2, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12735, '区域修改', 'wms:zone:update', 3, 3, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12736, '区域删除', 'wms:zone:delete', 3, 4, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12737, '槽位查询', 'wms:slot:query', 3, 5, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12738, '槽位新增', 'wms:slot:create', 3, 6, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12739, '槽位修改', 'wms:slot:update', 3, 7, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12740, '槽位删除', 'wms:slot:delete', 3, 8, 12732, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+-- 容器类型
+(12741, '容器类型', '', 2, 8, 1348, 'container-type', 'ep:box', 'wms/container-type/index', 'WmsContainerType', 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12742, '容器类型查询', 'wms:container-type:query', 3, 1, 12741, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12743, '容器类型新增', 'wms:container-type:create', 3, 2, 12741, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12744, '容器类型修改', 'wms:container-type:update', 3, 3, 12741, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12745, '容器类型删除', 'wms:container-type:delete', 3, 4, 12741, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+-- 内容物定义
+(12746, '内容物定义', '', 2, 9, 1348, 'content-def', 'ep:watermelon', 'wms/content-def/index', 'WmsContentDef', 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12747, '内容物定义查询', 'wms:content-def:query', 3, 1, 12746, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12748, '内容物定义新增', 'wms:content-def:create', 3, 2, 12746, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12749, '内容物定义修改', 'wms:content-def:update', 3, 3, 12746, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12750, '内容物定义删除', 'wms:content-def:delete', 3, 4, 12746, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+-- 物料实例
+(12751, '物料实例', '', 2, 10, 1348, 'instance', 'ep:files', 'wms/instance/index', 'WmsInstance', 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12752, '物料实例查询', 'wms:material-instance:query', 3, 1, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12753, '物料实例新增', 'wms:material-instance:create', 3, 2, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12754, '物料实例修改', 'wms:material-instance:update', 3, 3, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(12755, '物料实例删除', 'wms:material-instance:delete', 3, 4, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0');
+
+-- 授权给「普通角色」(role_id = 2)：WMS 目录 + 5 个菜单 + 20 个按钮权限
+-- 注：超级管理员(super_admin)无需 role_menu，框架已短路放行
+INSERT INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`) VALUES
+(2, 12732, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12733, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12734, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12735, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12736, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12737, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12738, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12739, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12740, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12741, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12742, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12743, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12744, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12745, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12746, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12747, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12748, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12749, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12750, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12751, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12752, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12753, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12754, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0'),
+(2, 12755, 'admin', '2026-09-26 03:40:00', '', '2026-09-26 03:40:00', b'0');
+
+DELETE FROM `system_role_menu` WHERE `menu_id` IN (12756, 12757, 12758, 12759, 12760, 12761);
+DELETE FROM `system_menu` WHERE `id` IN (12756, 12757, 12758, 12759, 12760, 12761);
+
+INSERT INTO `system_menu` (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`, `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`) VALUES
+-- 物料流水（独立菜单）
+(12756, '物料流水', '', 2, 11, 1348, 'movement', 'ep:tickets', 'wms/movement/index', 'WmsMovement', 0, b'1', b'1', b'1', 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(12757, '流水查询', 'wms:movement:query', 3, 1, 12756, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+-- 物料实例 · 落位操作与消耗（挂在原「物料实例」菜单 id=12751 下）
+(12758, '实例上架', 'wms:material-instance:put-in', 3, 5, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(12759, '实例下架', 'wms:material-instance:take-out', 3, 6, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(12760, '实例转移', 'wms:material-instance:transfer', 3, 7, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(12761, '实例消耗', 'wms:material-instance:consume', 3, 8, 12751, '', '', '', NULL, 0, b'1', b'1', b'1', 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0');
+
+-- 授权给「普通角色」(role_id = 2)
+-- 注：超级管理员(super_admin)无需 role_menu，框架已短路放行
+INSERT INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`) VALUES
+(2, 12756, 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(2, 12757, 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(2, 12758, 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(2, 12759, 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(2, 12760, 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0'),
+(2, 12761, 'admin', '2026-09-26 23:00:00', '', '2026-09-26 23:00:00', b'0');
+
+SET FOREIGN_KEY_CHECKS = 1;
