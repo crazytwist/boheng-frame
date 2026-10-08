@@ -35,10 +35,16 @@
       <el-table-column label="设备类型" align="center" width="140">
         <template #default="scope">{{ deviceTypeLabel(scope.row.deviceTypeCode) }}</template>
       </el-table-column>
-      <el-table-column label="动作编码" align="center" prop="actionCode" :show-overflow-tooltip="true" width="160" />
-      <el-table-column label="动作名称" align="center" prop="actionName" :show-overflow-tooltip="true" width="140" />
-      <el-table-column label="SiLA 标准特性" align="center" prop="standardFeature" :show-overflow-tooltip="true" width="220" />
-      <el-table-column label="厂商映射" align="center" prop="vendorRef" :show-overflow-tooltip="true" width="180" />
+      <el-table-column label="动作编码" align="center" prop="actionCode" :show-overflow-tooltip="true" />
+      <el-table-column label="动作名称" align="center" prop="actionName" :show-overflow-tooltip="true" />
+      <el-table-column label="SiLA 标准特性" align="center" prop="standardFeature" :show-overflow-tooltip="true" />
+      <el-table-column label="厂商映射" align="center" prop="vendorRef" :show-overflow-tooltip="true" />
+      <el-table-column label="接口路径" align="center" :show-overflow-tooltip="true">
+        <template #default="scope">
+          <span v-if="scope.row.requestPath">{{ scope.row.httpMethod || 'POST' }} {{ scope.row.requestPath }}</span>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="预估耗时" align="center" width="110">
         <template #default="scope">{{ durationLabel(scope.row.estimateDurationMs) }}</template>
       </el-table-column>
@@ -50,8 +56,11 @@
           <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="210" fixed="right">
+      <el-table-column label="操作" align="center" width="280" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['device:info:update']" link type="primary" @click="openTest(scope.row.id)">
+            测试
+          </el-button>
           <el-button v-hasPermi="['device:action:query']" link type="primary" @click="openDetail(scope.row.id)">
             详细
           </el-button>
@@ -76,12 +85,14 @@
   <!-- 表单 -->
   <ActionForm ref="formRef" @success="getList" />
   <ActionDetailDrawer ref="detailRef" />
+  <ActionTestDialog ref="testRef" />
 </template>
 
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import ActionForm from './ActionForm.vue'
 import ActionDetailDrawer from './ActionDetailDrawer.vue'
+import ActionTestDialog from './ActionTestDialog.vue'
 
 defineOptions({ name: 'DeviceAction' })
 
@@ -142,11 +153,15 @@ const resetQuery = () => {
 
 const formRef = ref()
 const detailRef = ref()
+const testRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 const openDetail = (id: number) => {
   detailRef.value.open(id)
+}
+const openTest = (id: number) => {
+  testRef.value.open(id)
 }
 
 const handleDelete = async (id: number) => {

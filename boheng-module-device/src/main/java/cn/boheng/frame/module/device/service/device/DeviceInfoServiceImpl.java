@@ -14,6 +14,7 @@ import cn.boheng.frame.module.device.dal.mysql.action.DeviceActionMapper;
 import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
 import cn.boheng.frame.module.device.dal.mysql.paramset.DeviceParamSetMapper;
 import cn.boheng.frame.module.device.dal.mysql.property.DevicePropertyMapper;
+import cn.boheng.frame.module.device.service.http.DeviceLoginTokenCache;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.google.common.annotations.VisibleForTesting;
@@ -48,6 +49,8 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
     private DevicePropertyMapper devicePropertyMapper;
     @Resource
     private DeviceParamSetMapper deviceParamSetMapper;
+    @Resource
+    private DeviceLoginTokenCache deviceLoginTokenCache;
 
     @Override
     public Long createDevice(DeviceSaveReqVO createReqVO) {
@@ -67,9 +70,13 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         // 校验设备编码唯一性
         validateDeviceCodeUnique(updateReqVO.getId(), updateReqVO.getDeviceCode());
 
-        // 更新
+        // 更新。密码留空表示不改，避免把已保存的登录密码清掉。
         DeviceInfoDO updateObj = BeanUtils.toBean(updateReqVO, DeviceInfoDO.class);
+        if (StrUtil.isBlank(updateReqVO.getLoginPassword())) {
+            updateObj.setLoginPassword(null);
+        }
         deviceInfoMapper.updateById(updateObj);
+        deviceLoginTokenCache.evict(updateReqVO.getId());
     }
 
     @Override
@@ -78,6 +85,7 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         validateDeviceExists(id);
         // 删除
         deviceInfoMapper.deleteById(id);
+        deviceLoginTokenCache.evict(id);
     }
 
     @Override
@@ -86,6 +94,7 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
             return;
         }
         deviceInfoMapper.deleteBatch(DeviceInfoDO::getId, ids);
+        ids.forEach(deviceLoginTokenCache::evict);
     }
 
     @Override
@@ -109,7 +118,7 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         String typeCode = device.getDeviceTypeCode();
 
         DevicePortraitRespVO portrait = new DevicePortraitRespVO();
-        portrait.setDevice(BeanUtils.toBean(device, DeviceRespVO.class));
+        portrait.setDevice(toResp(device));
         portrait.setConnectionSummary(buildConnectionSummary(device));
         portrait.setDispatchSummary(buildDispatchSummary(device));
         portrait.setOccupancySummary(buildOccupancySummary(device));
@@ -242,6 +251,13 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
 
     private String blank(String value, String fallback) {
         return StrUtil.isBlank(value) ? fallback : value;
+    }
+
+    private DeviceRespVO toResp(DeviceInfoDO device) {
+        DeviceRespVO resp = BeanUtils.toBean(device, DeviceRespVO.class);
+        resp.setLoginConfigured(StrUtil.isNotBlank(device.getLoginPassword()));
+        resp.setLoginPassword(null);
+        return resp;
     }
 
     @VisibleForTesting

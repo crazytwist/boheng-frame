@@ -26,11 +26,11 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
-      <el-table-column label="设备类型" align="center" width="150">
+      <el-table-column label="设备类型" align="center" width="140">
         <template #default="scope">{{ deviceTypeLabel(scope.row.deviceTypeCode) }}</template>
       </el-table-column>
-      <el-table-column label="属性编码" align="center" prop="propertyCode" :show-overflow-tooltip="true" width="180" />
-      <el-table-column label="属性名称" align="center" prop="propertyName" :show-overflow-tooltip="true" width="150" />
+      <el-table-column label="属性编码" align="center" prop="propertyCode" :show-overflow-tooltip="true" />
+      <el-table-column label="属性名称" align="center" prop="propertyName" :show-overflow-tooltip="true" />
       <el-table-column label="数据类型" align="center" width="120">
         <template #default="scope">{{ scope.row.dataType || '—' }}</template>
       </el-table-column>

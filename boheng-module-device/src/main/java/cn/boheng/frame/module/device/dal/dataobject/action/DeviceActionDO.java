@@ -86,9 +86,29 @@ public class DeviceActionDO extends TenantBaseDO {
     private String statusCommandCode;
 
     /**
+     * HTTP 方法。与台账上的接入地址拼接时使用。
+     */
+    private String httpMethod;
+
+    /**
+     * 请求报文格式: JSON / FORM / TEXT / XML。
+     */
+    private String bodyFormat;
+
+    /**
+     * 接口相对路径，如 /api/read。主机在设备台账，动作按设备类型共用，不写完整地址。
+     */
+    private String requestPath;
+
+    /**
      * 请求报文模板，支持 ${param} 占位符。
      */
     private String requestTemplate;
+
+    /**
+     * 响应解析规则编码。调用成功后用它把响应写成测量。
+     */
+    private String codecCode;
 
     /**
      * 轮询完成判定表达式，例如 $.status == "DONE"。

@@ -13,7 +13,11 @@ export interface DeviceActionVO {
   estimateDurationMs?: number
   needBusyCheck?: boolean
   statusCommandCode?: string
+  httpMethod?: string
+  bodyFormat?: string
+  requestPath?: string
   requestTemplate?: string
+  codecCode?: string
   pollDoneExpr?: string
   pollMaxTimes?: number
   status?: number

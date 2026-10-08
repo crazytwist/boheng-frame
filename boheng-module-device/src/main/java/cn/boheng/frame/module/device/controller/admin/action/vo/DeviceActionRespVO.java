@@ -47,8 +47,20 @@ public class DeviceActionRespVO {
     @Schema(description = "忙闲查询动作编码", example = "GET_STATUS")
     private String statusCommandCode;
 
+    @Schema(description = "HTTP 方法", example = "POST")
+    private String httpMethod;
+
+    @Schema(description = "请求报文格式: JSON/FORM/TEXT/XML", example = "JSON")
+    private String bodyFormat;
+
+    @Schema(description = "接口相对路径", example = "/api/read")
+    private String requestPath;
+
     @Schema(description = "请求报文模板")
     private String requestTemplate;
+
+    @Schema(description = "响应解析规则编码")
+    private String codecCode;
 
     @Schema(description = "轮询完成判定表达式", example = "$.status == \"DONE\"")
     private String pollDoneExpr;

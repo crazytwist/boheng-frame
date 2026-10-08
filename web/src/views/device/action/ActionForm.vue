@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
+import { DeviceCodecApi, DeviceCodecVO } from '@/api/device/codec'
 
 defineOptions({ name: 'DeviceActionForm' })
 
@@ -23,13 +24,18 @@ const createEmptyFormData = (): DeviceActionVO => ({
   estimateDurationMs: undefined,
   needBusyCheck: false,
   statusCommandCode: undefined,
+  httpMethod: 'POST',
+  bodyFormat: 'JSON',
+  requestPath: undefined,
   requestTemplate: undefined,
+  codecCode: undefined,
   pollDoneExpr: undefined,
   pollMaxTimes: undefined,
   status: 0
 })
 
 const formData = ref<DeviceActionVO>(createEmptyFormData())
+const codecOptions = ref<DeviceCodecVO[]>([])
 
 const formRules = reactive({
   deviceTypeCode: [{ required: true, message: '设备类型不能为空', trigger: 'change' }],
@@ -69,11 +75,17 @@ const open = async (type: string, id?: number) => {
   formType.value = type
   formData.value = createEmptyFormData()
   formRef.value?.clearValidate()
+  DeviceCodecApi.getCodecList().then((list) => {
+    codecOptions.value = Array.isArray(list) ? list : []
+  }).catch(() => {
+    codecOptions.value = []
+  })
   if (id) {
     formLoading.value = true
     try {
       const data = await DeviceActionApi.getAction(id)
       Object.assign(formData.value, data)
+      if (!formData.value.bodyFormat) formData.value.bodyFormat = 'JSON'
     } finally {
       formLoading.value = false
     }
@@ -193,8 +205,48 @@ const emit = defineEmits<{ success: [] }>()
         </el-col>
       </el-row>
 
+      <el-row :gutter="20">
+        <el-col :span="8">
+          <el-form-item label="请求方法">
+            <el-select v-model="formData.httpMethod" placeholder="请选择" clearable class="!w-1/1">
+              <el-option label="GET" value="GET" />
+              <el-option label="POST" value="POST" />
+              <el-option label="PUT" value="PUT" />
+              <el-option label="PATCH" value="PATCH" />
+              <el-option label="DELETE" value="DELETE" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
+          <el-form-item label="接口路径">
+            <el-input v-model="formData.requestPath" maxlength="255" placeholder="如 /api/read" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
+          <el-form-item label="报文格式">
+            <el-select v-model="formData.bodyFormat" class="!w-1/1">
+              <el-option label="JSON" value="JSON" />
+              <el-option label="表单" value="FORM" />
+              <el-option label="纯文本" value="TEXT" />
+              <el-option label="XML" value="XML" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-form-item label="解析规则">
+        <el-select v-model="formData.codecCode" clearable filterable placeholder="调用成功后按这条规则拆测量" class="!w-1/1">
+          <el-option v-for="item in codecOptions" :key="item.codecCode" :label="`${item.codecName} (${item.codecCode})`" :value="item.codecCode!" />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="请求模板">
-        <el-input v-model="formData.requestTemplate" type="textarea" :rows="3" placeholder="支持 ${参数名} 占位，可空" />
+        <el-input
+          v-model="formData.requestTemplate"
+          type="textarea"
+          :rows="3"
+          placeholder="可选。用 ${参数名} 填进 JSON / 表单 / 文本 / XML。XML 必须写模板"
+        />
       </el-form-item>
 
       <el-row :gutter="20">

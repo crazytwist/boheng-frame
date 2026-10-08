@@ -34,6 +34,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
     public Long createAction(DeviceActionSaveReqVO createReqVO) {
         // 校验「类型 + 动作」唯一性
         validateActionUnique(createReqVO.getId(), createReqVO.getDeviceTypeCode(), createReqVO.getActionCode());
+        normalizeRequest(createReqVO);
 
         // 插入
         DeviceActionDO action = BeanUtils.toBean(createReqVO, DeviceActionDO.class);
@@ -47,6 +48,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         validateActionExists(updateReqVO.getId());
         // 校验「类型 + 动作」唯一性
         validateActionUnique(updateReqVO.getId(), updateReqVO.getDeviceTypeCode(), updateReqVO.getActionCode());
+        normalizeRequest(updateReqVO);
 
         // 更新
         DeviceActionDO updateObj = BeanUtils.toBean(updateReqVO, DeviceActionDO.class);
@@ -106,6 +108,32 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         if (id == null || !action.getId().equals(id)) {
             throw exception(DEVICE_ACTION_CODE_DUPLICATE, deviceTypeCode, actionCode);
         }
+    }
+
+    /**
+     * 路径是相对地址。补上前导斜杠，避免和台账上的 base URL 拼成缺分隔符的地址。
+     */
+    private void normalizeRequest(DeviceActionSaveReqVO reqVO) {
+        if (StrUtil.isBlank(reqVO.getHttpMethod())) {
+            reqVO.setHttpMethod(null);
+        } else {
+            reqVO.setHttpMethod(reqVO.getHttpMethod().trim().toUpperCase());
+        }
+        if (StrUtil.isBlank(reqVO.getBodyFormat())) {
+            reqVO.setBodyFormat("JSON");
+        } else {
+            reqVO.setBodyFormat(reqVO.getBodyFormat().trim().toUpperCase());
+        }
+        reqVO.setCodecCode(StrUtil.trimToNull(reqVO.getCodecCode()));
+        if (StrUtil.isBlank(reqVO.getRequestPath())) {
+            reqVO.setRequestPath(null);
+            return;
+        }
+        String path = reqVO.getRequestPath().trim();
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        reqVO.setRequestPath(path);
     }
 
 }

@@ -31,6 +31,26 @@ export const statusTagType = (v?: string): 'success' | 'info' | 'warning' | 'dan
 export const connectionLabel = (v?: string) =>
   ({ HTTP: 'HTTP 直连', MQTT: 'MQTT', NODE_RED: '经 Node-RED', SIMULATED: '仿真' }[v || ''] || v || '未设置')
 
+export const commandStatusOptions = [
+  { label: '已创建', value: 'CREATED' },
+  { label: '已占用', value: 'ACQUIRED' },
+  { label: '已下发', value: 'SENT' },
+  { label: '等待结果', value: 'WAITING' },
+  { label: '成功', value: 'SUCCEEDED' },
+  { label: '失败', value: 'FAILED' },
+  { label: '超时', value: 'TIMED_OUT' },
+  { label: '已取消', value: 'CANCELLED' }
+]
+
+export const commandStatusLabel = (v?: string) => commandStatusOptions.find((i) => i.value === v)?.label || v || '—'
+
+export const commandStatusType = (v?: string): 'success' | 'info' | 'warning' | 'danger' => {
+  if (v === 'SUCCEEDED') return 'success'
+  if (v === 'FAILED' || v === 'TIMED_OUT') return 'danger'
+  if (v === 'WAITING' || v === 'ACQUIRED') return 'warning'
+  return 'info'
+}
+
 export const sourceLabel = (v?: string) =>
   ({ MANUAL: '手工录入', DEVICE_DECLARED: '驱动上报' }[v || ''] || v || '未标明')
 

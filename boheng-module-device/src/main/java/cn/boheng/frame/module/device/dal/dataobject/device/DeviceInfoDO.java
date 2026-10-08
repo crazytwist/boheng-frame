@@ -88,6 +88,56 @@ public class DeviceInfoDO extends TenantBaseDO {
     private String endpointUrl;
 
     /**
+     * 登录相对路径。空表示调用前不登录。
+     */
+    private String loginPath;
+
+    /**
+     * 登录 HTTP 方法，默认 POST。
+     */
+    private String loginMethod;
+
+    /**
+     * 登录用户名。
+     */
+    private String loginUsername;
+
+    /**
+     * 登录密码。接口响应里不回传。
+     */
+    private String loginPassword;
+
+    /**
+     * 登录报文里用户名的字段名，默认 username。
+     */
+    private String loginUsernameKey;
+
+    /**
+     * 登录报文里密码的字段名，默认 password。
+     */
+    private String loginPasswordKey;
+
+    /**
+     * 登录响应里 token 的 JSON 路径，如 token 或 data.accessToken。
+     */
+    private String tokenPath;
+
+    /**
+     * 携带 token 的请求头，默认 Authorization。
+     */
+    private String tokenHeader;
+
+    /**
+     * token 前缀，默认 Bearer。
+     */
+    private String tokenPrefix;
+
+    /**
+     * token 缓存秒数，到期后重新登录。
+     */
+    private Integer tokenTtlSec;
+
+    /**
      * MQTT 主题前缀(如 device/{code}/)，直连 MQTT 时使用
      */
     private String mqttTopicPrefix;

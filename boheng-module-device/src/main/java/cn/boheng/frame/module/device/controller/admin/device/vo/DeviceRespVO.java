@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.device.controller.admin.device.vo;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -49,6 +50,40 @@ public class DeviceRespVO {
 
     @Schema(description = "接入地址", example = "http://192.168.1.100:8080")
     private String endpointUrl;
+
+    @Schema(description = "登录相对路径", example = "/api/login")
+    private String loginPath;
+
+    @Schema(description = "登录方法", example = "POST")
+    private String loginMethod;
+
+    @Schema(description = "登录用户名", example = "admin")
+    private String loginUsername;
+
+    @Schema(description = "登录密码，响应中不返回")
+    @JsonIgnore
+    private String loginPassword;
+
+    @Schema(description = "是否已保存登录密码")
+    private Boolean loginConfigured;
+
+    @Schema(description = "用户名字段名", example = "username")
+    private String loginUsernameKey;
+
+    @Schema(description = "密码字段名", example = "password")
+    private String loginPasswordKey;
+
+    @Schema(description = "token 的 JSON 路径", example = "data.accessToken")
+    private String tokenPath;
+
+    @Schema(description = "token 请求头", example = "Authorization")
+    private String tokenHeader;
+
+    @Schema(description = "token 前缀", example = "Bearer")
+    private String tokenPrefix;
+
+    @Schema(description = "token 缓存秒数", example = "1800")
+    private Integer tokenTtlSec;
 
     @Schema(description = "MQTT 主题前缀", example = "device/DEV-001/")
     private String mqttTopicPrefix;

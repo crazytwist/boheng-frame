@@ -69,6 +69,45 @@ public class DeviceSaveReqVO {
     @Size(max = 512, message = "接入地址长度不能超过 512 个字符")
     private String endpointUrl;
 
+    @Schema(description = "登录相对路径", example = "/api/login")
+    @Size(max = 255, message = "登录路径长度不能超过 255 个字符")
+    private String loginPath;
+
+    @Schema(description = "登录方法", example = "POST")
+    @Size(max = 16, message = "登录方法长度不能超过 16 个字符")
+    private String loginMethod;
+
+    @Schema(description = "登录用户名", example = "admin")
+    @Size(max = 128, message = "登录用户名长度不能超过 128 个字符")
+    private String loginUsername;
+
+    @Schema(description = "登录密码。修改时留空表示不改", example = "secret")
+    @Size(max = 255, message = "登录密码长度不能超过 255 个字符")
+    private String loginPassword;
+
+    @Schema(description = "用户名字段名", example = "username")
+    @Size(max = 64, message = "用户名字段名长度不能超过 64 个字符")
+    private String loginUsernameKey;
+
+    @Schema(description = "密码字段名", example = "password")
+    @Size(max = 64, message = "密码字段名长度不能超过 64 个字符")
+    private String loginPasswordKey;
+
+    @Schema(description = "token 的 JSON 路径", example = "data.accessToken")
+    @Size(max = 128, message = "token 路径长度不能超过 128 个字符")
+    private String tokenPath;
+
+    @Schema(description = "token 请求头", example = "Authorization")
+    @Size(max = 64, message = "token 请求头长度不能超过 64 个字符")
+    private String tokenHeader;
+
+    @Schema(description = "token 前缀", example = "Bearer")
+    @Size(max = 32, message = "token 前缀长度不能超过 32 个字符")
+    private String tokenPrefix;
+
+    @Schema(description = "token 缓存秒数", example = "1800")
+    private Integer tokenTtlSec;
+
     @Schema(description = "MQTT 主题前缀", example = "device/DEV-001/")
     @Size(max = 128, message = "MQTT 主题前缀长度不能超过 128 个字符")
     private String mqttTopicPrefix;

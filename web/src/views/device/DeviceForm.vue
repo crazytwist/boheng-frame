@@ -69,6 +69,75 @@
         <el-input v-model="formData.endpointUrl" maxlength="512" placeholder="HTTP=base url；MQTT=broker host:port；Node-RED=入站节点 url" />
       </el-form-item>
 
+      <template v-if="formData.connectionType === 'HTTP' || formData.connectionType === 'NODE_RED'">
+        <el-divider content-position="left">登录</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="登录方法">
+              <el-select v-model="formData.loginMethod" clearable placeholder="POST" class="!w-1/1">
+                <el-option label="POST" value="POST" />
+                <el-option label="GET" value="GET" />
+                <el-option label="PUT" value="PUT" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="16">
+            <el-form-item label="登录路径">
+              <el-input v-model="formData.loginPath" maxlength="255" placeholder="相对路径，如 /api/login。留空则调用前不登录" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="用户名">
+              <el-input v-model="formData.loginUsername" maxlength="128" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="密码">
+              <el-input v-model="formData.loginPassword" maxlength="255" type="password" show-password
+                :placeholder="formData.loginConfigured ? '已保存，留空则不修改' : ''" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="用户名字段">
+              <el-input v-model="formData.loginUsernameKey" maxlength="64" placeholder="默认 username" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="密码字段">
+              <el-input v-model="formData.loginPasswordKey" maxlength="64" placeholder="默认 password" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="Token 路径">
+              <el-input v-model="formData.tokenPath" maxlength="128" placeholder="如 data.accessToken" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="有效秒数">
+              <el-input-number v-model="formData.tokenTtlSec" :min="1" controls-position="right" class="!w-1/1" placeholder="默认 1800" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="Token 请求头">
+              <el-input v-model="formData.tokenHeader" maxlength="64" placeholder="默认 Authorization" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Token 前缀">
+              <el-input v-model="formData.tokenPrefix" maxlength="32" placeholder="默认 Bearer" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </template>
+
       <el-form-item v-if="formData.connectionType === 'MQTT' || formData.connectionType === 'NODE_RED'" label="MQTT 主题前缀" prop="mqttTopicPrefix">
         <el-input v-model="formData.mqttTopicPrefix" maxlength="128" placeholder="如 device/DEV-001/" />
       </el-form-item>
@@ -189,6 +258,17 @@ const createEmptyFormData = (): DeviceVO => ({
   status: 'OFFLINE',
   connectionType: 'SIMULATED',
   endpointUrl: undefined,
+  loginPath: undefined,
+  loginMethod: 'POST',
+  loginUsername: undefined,
+  loginPassword: undefined,
+  loginConfigured: false,
+  loginUsernameKey: 'username',
+  loginPasswordKey: 'password',
+  tokenPath: 'token',
+  tokenHeader: 'Authorization',
+  tokenPrefix: 'Bearer',
+  tokenTtlSec: 1800,
   mqttTopicPrefix: undefined,
   callbackEnabled: false,
   pollIntervalSec: 5,

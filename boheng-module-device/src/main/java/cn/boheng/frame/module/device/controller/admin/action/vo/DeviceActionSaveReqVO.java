@@ -59,8 +59,24 @@ public class DeviceActionSaveReqVO {
     @Size(max = 64, message = "忙闲查询动作编码长度不能超过 64 个字符")
     private String statusCommandCode;
 
+    @Schema(description = "HTTP 方法", example = "POST")
+    @Size(max = 16, message = "HTTP 方法长度不能超过 16 个字符")
+    private String httpMethod;
+
+    @Schema(description = "请求报文格式: JSON/FORM/TEXT/XML", example = "JSON")
+    @Size(max = 16, message = "报文格式长度不能超过 16 个字符")
+    private String bodyFormat;
+
+    @Schema(description = "接口相对路径，与台账接入地址拼接", example = "/api/read")
+    @Size(max = 255, message = "接口路径长度不能超过 255 个字符")
+    private String requestPath;
+
     @Schema(description = "请求报文模板")
     private String requestTemplate;
+
+    @Schema(description = "响应解析规则编码", example = "TECAN_READER_RESULT_V1")
+    @Size(max = 64, message = "解析规则编码长度不能超过 64 个字符")
+    private String codecCode;
 
     @Schema(description = "轮询完成判定表达式", example = "$.status == \"DONE\"")
     @Size(max = 255, message = "轮询完成判定表达式长度不能超过 255 个字符")

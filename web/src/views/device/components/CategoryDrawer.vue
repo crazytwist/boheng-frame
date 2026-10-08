@@ -93,7 +93,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   }
 
   .cat-kicker {
-    margin-bottom: 4px;
+    margin-bottom: 8px;
     color: var(--el-color-primary);
     font-size: 12px;
     font-weight: 600;
@@ -117,7 +117,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
 
   dl.cat-facts {
     display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
     margin: 0;
     overflow: hidden;
     border: 1px solid var(--el-border-color-lighter);
@@ -147,6 +147,10 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
     border-left: 1px solid var(--el-border-color-lighter);
     color: var(--el-text-color-primary);
     word-break: break-word;
+  }
+
+  .cat-facts .is-off {
+    opacity: 0.55;
   }
 
   .facet,

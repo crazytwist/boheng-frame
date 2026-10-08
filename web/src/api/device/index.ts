@@ -14,6 +14,17 @@ export interface DeviceVO {
   status?: string
   connectionType?: string
   endpointUrl?: string
+  loginPath?: string
+  loginMethod?: string
+  loginUsername?: string
+  loginPassword?: string
+  loginConfigured?: boolean
+  loginUsernameKey?: string
+  loginPasswordKey?: string
+  tokenPath?: string
+  tokenHeader?: string
+  tokenPrefix?: string
+  tokenTtlSec?: number
   mqttTopicPrefix?: string
   callbackEnabled?: boolean
   pollIntervalSec?: number
@@ -87,5 +98,10 @@ export const DeviceInfoApi = {
   // 删除设备台账
   deleteDevice: async (id: number) => {
     return await request.delete({ url: '/device/info/delete?id=' + id })
+  },
+
+  // 调用设备动作。已配置登录时先登录，token 失效后重新登录再试一次
+  invoke: async (data: { deviceId: number; actionCode: string; paramsJson?: string }) => {
+    return await request.post({ url: '/device/info/invoke', data })
   }
 }
