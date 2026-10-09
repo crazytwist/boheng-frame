@@ -28,13 +28,22 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_LOGI
 @Slf4j
 public class DeviceHttpGateway {
 
+    /** 单次 HTTP 超时，毫秒 */
     private static final int TIMEOUT_MS = 20_000;
+    /** 台账没填有效秒数时，令牌默认缓存 1800 秒 */
     private static final int DEFAULT_TTL_SEC = 1800;
+    /** 写进命令记录的响应正文上限 */
     private static final int BODY_LIMIT = 4000;
+    /**
+     * 登录令牌缓存
+     */
 
     @Resource
     private DeviceLoginTokenCache tokenCache;
 
+    /**
+     * 向设备发一次 HTTP。配了登录路径时先带上令牌，401 时重新登录再发一次。
+     */
     public DeviceInvokeRespVO invoke(DeviceInfoDO device, DeviceActionDO action, String paramsJson) {
         String url = joinUrl(device.getEndpointUrl(), action.getRequestPath());
         if (url == null) {
@@ -66,10 +75,16 @@ public class DeviceHttpGateway {
         return resp;
     }
 
+    /**
+     * 丢掉这台设备缓存的登录令牌
+     */
     public void evict(Long deviceId) {
         tokenCache.evict(deviceId);
     }
 
+    /**
+     * 取缓存令牌；强制刷新或过期时重新登录
+     */
     private String token(DeviceInfoDO device, boolean force) {
         if (!force) {
             String cached = tokenCache.getValid(device.getId());
@@ -94,12 +109,19 @@ public class DeviceHttpGateway {
         }
     }
 
+    /** 按设备编号存放的登录锁 */
     private final java.util.concurrent.ConcurrentHashMap<Long, Object> locks = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * 同一台设备的登录互斥锁
+     */
     private Object deviceLock(Long deviceId) {
         return locks.computeIfAbsent(deviceId, id -> new Object());
     }
 
+    /**
+     * 按台账上的登录配置取 token
+     */
     private String login(DeviceInfoDO device) {
         String url = joinUrl(device.getEndpointUrl(), device.getLoginPath());
         if (url == null) {
@@ -155,6 +177,9 @@ public class DeviceHttpGateway {
         }
     }
 
+    /**
+     * 把台账上的主机和动作上的相对路径拼成完整地址
+     */
     static String joinUrl(String base, String path) {
         if (StrUtil.isBlank(base) || StrUtil.isBlank(path)) {
             return null;
@@ -173,6 +198,9 @@ public class DeviceHttpGateway {
         return root + suffix;
     }
 
+    /**
+     * 按 JSON 路径从登录响应里取出 token
+     */
     static String readToken(String body, String path) {
         if (StrUtil.isBlank(body) || !JSONUtil.isTypeJSON(body)) {
             return null;
@@ -181,6 +209,9 @@ public class DeviceHttpGateway {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 给 token 加上前缀，已经带前缀的不再重复加
+     */
     private static String headerValue(DeviceInfoDO device, String token) {
         String prefix = device.getTokenPrefix();
         if (StrUtil.isBlank(prefix)) {
@@ -229,6 +260,9 @@ public class DeviceHttpGateway {
         return params.isEmpty() ? null : JSONUtil.toJsonStr(params);
     }
 
+    /**
+     * 用参数替换模板里的 ${参数名}
+     */
     private static String render(String template, Map<String, Object> params) {
         if (StrUtil.isBlank(template)) {
             return template;
@@ -241,6 +275,9 @@ public class DeviceHttpGateway {
         return rendered;
     }
 
+    /**
+     * 没有模板时，纯文本按参数名=值逐行拼
+     */
     private static String plainLines(Map<String, Object> params) {
         if (params.isEmpty()) {
             return "";
@@ -255,6 +292,9 @@ public class DeviceHttpGateway {
         return text.toString();
     }
 
+    /**
+     * 把参数写成表单或查询参数
+     */
     private static void writeForm(HttpRequest request, Map<String, Object> query) {
         if (query == null) {
             return;
@@ -266,6 +306,9 @@ public class DeviceHttpGateway {
         });
     }
 
+    /**
+     * 报文格式对应的 Content-Type
+     */
     private static String mediaType(String format) {
         return switch (format) {
             case "FORM" -> "application/x-www-form-urlencoded;charset=UTF-8";
@@ -275,6 +318,13 @@ public class DeviceHttpGateway {
         };
     }
 
+    /**
+     * 一次 HTTP 交换的结果。
+     *
+     * @param status HTTP 状态码
+     * @param body 响应正文
+     * @param contentType 响应 Content-Type
+     */
     private record HttpResult(int status, String body, String contentType) {
     }
 

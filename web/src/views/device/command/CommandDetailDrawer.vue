@@ -21,6 +21,10 @@
           <dd>{{ command.operator || '—' }}</dd>
         </dl>
       </section>
+      <section class="cat-block">
+        <div class="cat-kicker">参数快照</div>
+        <pre class="raw">{{ pretty(command.paramsJson) }}</pre>
+      </section>
       <section v-if="command.errorMsg" class="cat-block">
         <div class="cat-kicker">说明</div>
         <pre class="raw">{{ command.errorMsg }}</pre>

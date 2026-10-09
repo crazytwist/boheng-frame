@@ -17,6 +17,7 @@ import java.util.List;
 @Mapper
 public interface DeviceInfoMapper extends BaseMapperX<DeviceInfoDO> {
 
+    /** 分页查询设备台账 */
     default PageResult<DeviceInfoDO> selectPage(DevicePageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<DeviceInfoDO>()
                 .likeIfPresent(DeviceInfoDO::getDeviceCode, reqVO.getDeviceCode())
@@ -30,6 +31,7 @@ public interface DeviceInfoMapper extends BaseMapperX<DeviceInfoDO> {
                 .orderByDesc(DeviceInfoDO::getId));
     }
 
+    /** 按设备编码查询 */
     default DeviceInfoDO selectByDeviceCode(String deviceCode) {
         return selectOne(DeviceInfoDO::getDeviceCode, deviceCode);
     }

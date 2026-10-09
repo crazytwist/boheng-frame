@@ -31,6 +31,9 @@ import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
 @RequestMapping("/device/property")
 @Validated
 public class DevicePropertyController {
+    /**
+     * 设备属性服务
+     */
 
     @Resource
     private DevicePropertyService devicePropertyService;

@@ -39,7 +39,7 @@
           v-model="formData.fieldMapping"
           type="textarea"
           :rows="6"
-          placeholder='JSON 路径，如 {"wavelengthNm":"data.wavelength","wells":"data.wells"}。孔对象认 wellPosition / readValue'
+          placeholder='JSON 路径，如 {"wells":"data.list"}。孔位认 wellPosition 或 parentPositionCode，读数认 readValue 或 currentVolUl'
         />
       </el-form-item>
       <el-form-item label="样例报文">

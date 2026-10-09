@@ -12,9 +12,21 @@ import lombok.ToString;
 @ToString(callSuper = true)
 public class DeviceCommandPageReqVO extends PageParam {
 
+    /**
+     * 命令号
+     */
     private String commandNo;
+    /**
+     * 设备编码
+     */
     private String deviceCode;
+    /**
+     * 动作编码
+     */
     private String actionCode;
+    /**
+     * 命令状态
+     */
     private String status;
 
 }

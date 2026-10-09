@@ -29,12 +29,18 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
+/**
+ * 解析规则接口
+ */
 
 @Tag(name = "管理后台 - 设备解析规则")
 @RestController
 @RequestMapping("/device/codec")
 @Validated
 public class DeviceCodecController {
+    /**
+     * 解析规则服务
+     */
 
     @Resource
     private DeviceCodecService deviceCodecService;

@@ -27,9 +27,15 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class DeviceParamSetServiceImpl implements DeviceParamSetService {
+    /**
+     * 参数集表
+     */
 
     @Resource
     private DeviceParamSetMapper deviceParamSetMapper;
+    /**
+     * 创建参数集
+     */
 
     @Override
     public Long createParamSet(DeviceParamSetSaveReqVO createReqVO) {
@@ -41,6 +47,9 @@ public class DeviceParamSetServiceImpl implements DeviceParamSetService {
         deviceParamSetMapper.insert(paramSet);
         return paramSet.getId();
     }
+    /**
+     * 更新参数集
+     */
 
     @Override
     public void updateParamSet(DeviceParamSetSaveReqVO updateReqVO) {
@@ -53,12 +62,18 @@ public class DeviceParamSetServiceImpl implements DeviceParamSetService {
         DeviceParamSetDO updateObj = BeanUtils.toBean(updateReqVO, DeviceParamSetDO.class);
         deviceParamSetMapper.updateById(updateObj);
     }
+    /**
+     * 删除参数集
+     */
 
     @Override
     public void deleteParamSet(Long id) {
         validateParamSetExists(id);
         deviceParamSetMapper.deleteById(id);
     }
+    /**
+     * 批量删除参数集
+     */
 
     @Override
     public void deleteParamSetList(List<Long> ids) {
@@ -67,16 +82,25 @@ public class DeviceParamSetServiceImpl implements DeviceParamSetService {
         }
         deviceParamSetMapper.deleteBatch(DeviceParamSetDO::getId, ids);
     }
+    /**
+     * 获得参数集
+     */
 
     @Override
     public DeviceParamSetDO getParamSet(Long id) {
         return deviceParamSetMapper.selectById(id);
     }
+    /**
+     * 获得参数集分页
+     */
 
     @Override
     public PageResult<DeviceParamSetDO> getParamSetPage(DeviceParamSetPageReqVO pageReqVO) {
         return deviceParamSetMapper.selectPage(pageReqVO);
     }
+    /**
+     * 获得参数集列表，可按设备类型和动作过滤
+     */
 
     @Override
     public List<DeviceParamSetDO> getParamSetList(String deviceTypeCode, String actionCode) {
@@ -85,6 +109,9 @@ public class DeviceParamSetServiceImpl implements DeviceParamSetService {
         }
         return deviceParamSetMapper.selectListByTypeAndAction(deviceTypeCode, actionCode);
     }
+    /**
+     * 标记参数集是否已验证
+     */
 
     @Override
     public void updateValidated(Long id, Boolean validated, String validatedBy) {
@@ -98,6 +125,9 @@ public class DeviceParamSetServiceImpl implements DeviceParamSetService {
         updateObj.setValidatedTime(Boolean.TRUE.equals(validated) ? LocalDateTime.now() : null);
         deviceParamSetMapper.updateById(updateObj);
     }
+    /**
+     * 校验参数集存在
+     */
 
     @VisibleForTesting
     DeviceParamSetDO validateParamSetExists(Long id) {
@@ -107,6 +137,9 @@ public class DeviceParamSetServiceImpl implements DeviceParamSetService {
         }
         return paramSet;
     }
+    /**
+     * 校验参数集编码不重复
+     */
 
     @VisibleForTesting
     void validateParamSetCodeUnique(Long id, String paramSetCode) {

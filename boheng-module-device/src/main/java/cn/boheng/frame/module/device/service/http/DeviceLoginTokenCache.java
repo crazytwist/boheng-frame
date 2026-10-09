@@ -10,8 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class DeviceLoginTokenCache {
 
+    /** 设备编号到令牌的缓存 */
     private final ConcurrentHashMap<Long, Entry> tokens = new ConcurrentHashMap<>();
 
+    /**
+     * 取还没过期的令牌，过期则删掉并返回空
+     */
     public String getValid(Long deviceId) {
         if (deviceId == null) {
             return null;
@@ -27,6 +31,9 @@ public class DeviceLoginTokenCache {
         return entry.token;
     }
 
+    /**
+     * 写入令牌，并按有效秒数计算过期时间
+     */
     public void put(Long deviceId, String token, int ttlSec) {
         if (deviceId == null || token == null) {
             return;
@@ -35,12 +42,21 @@ public class DeviceLoginTokenCache {
         tokens.put(deviceId, new Entry(token, System.currentTimeMillis() + ttlMillis));
     }
 
+    /**
+     * 丢掉这台设备缓存的登录令牌
+     */
     public void evict(Long deviceId) {
         if (deviceId != null) {
             tokens.remove(deviceId);
         }
     }
 
+    /**
+     * 一条缓存的登录令牌。
+     *
+     * @param token 令牌
+     * @param expireAtMillis 过期时间戳，毫秒
+     */
     private record Entry(String token, long expireAtMillis) {
     }
 

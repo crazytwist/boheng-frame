@@ -26,16 +26,31 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_NOT_
 @Service
 @Validated
 public class DeviceHttpService {
+    /**
+     * 设备台账服务
+     */
 
     @Resource
     private DeviceInfoService deviceInfoService;
+    /**
+     * 设备动作表
+     */
     @Resource
     private DeviceActionMapper deviceActionMapper;
+    /**
+     * 设备 HTTP 访问
+     */
     @Resource
     private DeviceHttpGateway deviceHttpGateway;
+    /**
+     * 命令记录服务
+     */
     @Resource
     private DeviceCommandService deviceCommandService;
 
+    /**
+     * 校验设备和动作后发起调用，并记下命令
+     */
     public DeviceInvokeRespVO invoke(DeviceInvokeReqVO reqVO) {
         DeviceInfoDO device = deviceInfoService.getDevice(reqVO.getDeviceId());
         if (device == null) {

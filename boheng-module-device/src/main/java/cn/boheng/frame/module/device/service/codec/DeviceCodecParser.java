@@ -15,9 +15,15 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_CODE
  */
 public final class DeviceCodecParser {
 
+    /**
+     * 禁止实例化
+     */
     private DeviceCodecParser() {
     }
 
+    /**
+     * 按 JSON 路径或正则，把原文收成一个对象
+     */
     public static JSONObject parse(String parseType, String fieldMapping, String regexPattern, String raw) {
         if (StrUtil.isBlank(raw)) {
             throw exception(DEVICE_CODEC_PARSE_FAILED, "没有报文");
@@ -29,6 +35,9 @@ public final class DeviceCodecParser {
         return parseJson(mapping, raw);
     }
 
+    /**
+     * 读字段映射。空映射表示按原文自身的结构
+     */
     private static JSONObject parseMapping(String fieldMapping) {
         if (StrUtil.isBlank(fieldMapping)) {
             return new JSONObject();
@@ -40,6 +49,9 @@ public final class DeviceCodecParser {
         }
     }
 
+    /**
+     * 用字段映射里的路径从 JSON 取值
+     */
     private static JSONObject parseJson(JSONObject mapping, String raw) {
         cn.hutool.json.JSON parsed;
         try {
@@ -68,6 +80,9 @@ public final class DeviceCodecParser {
         return out;
     }
 
+    /**
+     * 用正则捕获组按字段映射取值
+     */
     private static JSONObject parseRegex(JSONObject mapping, String regexPattern, String raw) {
         if (StrUtil.isBlank(regexPattern)) {
             throw exception(DEVICE_CODEC_PARSE_FAILED, "正则不能为空");
@@ -90,6 +105,9 @@ public final class DeviceCodecParser {
         return out;
     }
 
+    /**
+     * 取出正则的一个捕获组。group:1 是序号，group:名称是命名组
+     */
     private static String group(Matcher matcher, String spec) {
         String token = spec == null ? "" : spec.trim();
         if (token.startsWith("group:")) {

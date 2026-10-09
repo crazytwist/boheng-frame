@@ -93,4 +93,7 @@ const resetQuery = () => {
 const openDetail = (id: number) => detailRef.value.open(id)
 
 onMounted(() => getList())
+onActivated(() => {
+  if (!loading.value) getList()
+})
 </script>

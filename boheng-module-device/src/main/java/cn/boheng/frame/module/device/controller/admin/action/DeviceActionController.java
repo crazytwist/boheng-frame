@@ -31,6 +31,9 @@ import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
 @RequestMapping("/device/action")
 @Validated
 public class DeviceActionController {
+    /**
+     * 设备动作服务
+     */
 
     @Resource
     private DeviceActionService deviceActionService;

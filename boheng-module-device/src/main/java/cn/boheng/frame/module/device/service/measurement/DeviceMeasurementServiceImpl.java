@@ -14,22 +14,40 @@ import jakarta.annotation.Resource;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_MEASUREMENT_NOT_EXISTS;
+/**
+ * 测量记录服务实现
+ */
 
 @Service
 public class DeviceMeasurementServiceImpl implements DeviceMeasurementService {
+    /**
+     * 测量记录表
+     */
 
     @Resource
     private DeviceMeasurementMapper deviceMeasurementMapper;
+    /**
+     * 孔级读数表
+     */
     @Resource
     private DeviceMeasurementDataMapper deviceMeasurementDataMapper;
+    /**
+     * 分析结论表
+     */
     @Resource
     private DeviceAnalysisResultMapper deviceAnalysisResultMapper;
+    /**
+     * 测量记录分页
+     */
 
     @Override
     public PageResult<DeviceMeasurementRespVO> getMeasurementPage(DeviceMeasurementPageReqVO pageReqVO) {
         PageResult<DeviceMeasurementDO> page = deviceMeasurementMapper.selectPage(pageReqVO);
         return BeanUtils.toBean(page, DeviceMeasurementRespVO.class);
     }
+    /**
+     * 测量详情，包含孔位读数和分析结论
+     */
 
     @Override
     public DeviceMeasurementRespVO getMeasurement(Long id) {

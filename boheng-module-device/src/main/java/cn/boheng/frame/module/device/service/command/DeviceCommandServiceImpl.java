@@ -35,22 +35,46 @@ import java.time.LocalDateTime;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_COMMAND_NOT_EXISTS;
+/**
+ * 命令记录服务实现
+ */
 
 @Service
 public class DeviceCommandServiceImpl implements DeviceCommandService {
+    /**
+     * 命令记录表
+     */
 
     @Resource
     private DeviceCommandMapper deviceCommandMapper;
+    /**
+     * 原始响应表
+     */
     @Resource
     private DeviceDataRawMapper deviceDataRawMapper;
+    /**
+     * 解析规则表
+     */
     @Resource
     private DeviceCodecMapper deviceCodecMapper;
+    /**
+     * 测量记录表
+     */
     @Resource
     private DeviceMeasurementMapper deviceMeasurementMapper;
+    /**
+     * 孔级读数表
+     */
     @Resource
     private DeviceMeasurementDataMapper deviceMeasurementDataMapper;
+    /**
+     * 分析结论表
+     */
     @Resource
     private DeviceAnalysisResultMapper deviceAnalysisResultMapper;
+    /**
+     * 调用开始时落一条已占用的命令
+     */
 
     @Override
     public DeviceCommandDO open(DeviceInfoDO device, DeviceActionDO action, String paramsJson, String codecCode) {
@@ -75,6 +99,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         deviceCommandMapper.insert(row);
         return row;
     }
+    /**
+     * 写入请求、响应和原始数据；配了解析规则时再生成测量
+     */
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -113,6 +140,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         deviceCommandMapper.updateById(command);
     }
+    /**
+     * 调用没有完成时把命令标成失败
+     */
 
     @Override
     public void fail(Long commandId, String message) {
@@ -125,12 +155,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         command.setErrorMsg(limit(message, 1000));
         deviceCommandMapper.updateById(command);
     }
+    /**
+     * 命令记录分页
+     */
 
     @Override
     public PageResult<DeviceCommandRespVO> getCommandPage(DeviceCommandPageReqVO pageReqVO) {
         PageResult<DeviceCommandDO> page = deviceCommandMapper.selectPage(pageReqVO);
         return BeanUtils.toBean(page, DeviceCommandRespVO.class);
     }
+    /**
+     * 命令详情，带上原始响应正文
+     */
 
     @Override
     public DeviceCommandRespVO getCommand(Long id) {
@@ -149,6 +185,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return vo;
     }
 
+    /**
+     * 用解析规则读响应。解析失败只记在命令上，原始响应保留
+     */
     private void applyCodec(DeviceCommandDO command, DeviceDataRawDO raw) {
         try {
             DeviceCodecDO codec = deviceCodecMapper.selectByCodecCode(command.getCodecCode());
@@ -164,6 +203,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
     }
 
+    /**
+     * 把解析结果写成测量、孔位读数和分析结论
+     */
     private void ingest(DeviceCommandDO command, DeviceDataRawDO raw, JSONObject parsed) {
         DeviceMeasurementDO measurement = new DeviceMeasurementDO();
         measurement.setCommandId(command.getId());
@@ -186,7 +228,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
                     insertWell(measurement.getId(), object, measurement.getWavelengthNm());
                 }
             }
-        } else if (StrUtil.isNotBlank(firstString(parsed, "wellPosition", "well", "position"))) {
+        } else if (StrUtil.isNotBlank(firstString(parsed, "wellPosition", "well", "position", "parentPositionCode", "instanceName"))) {
             insertWell(measurement.getId(), parsed, measurement.getWavelengthNm());
         }
 
@@ -203,8 +245,12 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
     }
 
+    /**
+     * 写入一个孔的读数。孔位认 wellPosition、parentPositionCode 或 instanceName，没有孔位则跳过。
+     * 读数认 readValue 或 currentVolUl，体积没有单位时记为 µL。
+     */
     private void insertWell(Long measurementId, JSONObject object, Integer fallbackWavelength) {
-        String position = firstString(object, "wellPosition", "well", "position");
+        String position = firstString(object, "wellPosition", "well", "position", "parentPositionCode", "instanceName");
         if (StrUtil.isBlank(position)) {
             return;
         }
@@ -216,13 +262,21 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         if (row.getWavelengthNm() == null) {
             row.setWavelengthNm(fallbackWavelength);
         }
-        row.setReadValue(asDecimal(first(object, "readValue", "value", "od")));
-        row.setUnit(firstString(object, "unit"));
-        row.setRawText(limit(firstString(object, "rawText"), 128));
-        row.setQualityFlag(firstString(object, "qualityFlag"));
+        Object volume = first(object, "readValue", "value", "od", "currentVolUl", "currentCount");
+        row.setReadValue(asDecimal(volume));
+        String unit = firstString(object, "unit");
+        if (StrUtil.isBlank(unit) && object.get("currentVolUl") != null) {
+            unit = "µL";
+        }
+        row.setUnit(unit);
+        row.setRawText(limit(firstString(object, "rawText", "instanceCode"), 128));
+        row.setQualityFlag(firstString(object, "qualityFlag", "instanceStatus"));
         deviceMeasurementDataMapper.insert(row);
     }
 
+    /**
+     * 从 A1 这种孔位算出行号和列号
+     */
     private static void fillIndex(DeviceMeasurementDataDO row, String position) {
         if (!position.matches("(?i)[A-Z]+\\d+")) {
             return;
@@ -237,10 +291,16 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         row.setColIndex(Integer.parseInt(digits));
     }
 
+    /**
+     * 命令是否已经进入终态
+     */
     private static boolean isTerminal(String status) {
         return "SUCCEEDED".equals(status) || "FAILED".equals(status) || "TIMED_OUT".equals(status) || "CANCELLED".equals(status);
     }
 
+    /**
+     * 拼成可以写入 JSON 列的对象
+     */
     private static String envelope(Object... pairs) {
         JSONObject object = new JSONObject();
         for (int i = 0; i + 1 < pairs.length; i += 2) {
@@ -249,6 +309,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return object.toString();
     }
 
+    /**
+     * 原文已是 JSON 则原样保存，否则包进 text 字段
+     */
     private static String jsonText(String text) {
         if (StrUtil.isBlank(text)) {
             return null;
@@ -260,6 +323,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return envelope("text", text);
     }
 
+    /**
+     * 从保存的原始 JSON 里取出响应正文
+     */
     private static String textOf(String rawJson) {
         if (StrUtil.isBlank(rawJson) || !JSONUtil.isTypeJSONObject(rawJson)) {
             return rawJson;
@@ -272,6 +338,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return rawJson;
     }
 
+    /**
+     * 根据 Content-Type 判断结果格式
+     */
     private static String formatOf(String contentType, String body) {
         String type = contentType == null ? "" : contentType.toLowerCase();
         if (type.contains("xml")) {
@@ -286,6 +355,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return "TEXT";
     }
 
+    /**
+     * 按给出的字段名顺序，取第一个有值的字段
+     */
     private static Object first(JSONObject object, String... keys) {
         for (String key : keys) {
             if (object.containsKey(key) && object.get(key) != null) {
@@ -295,11 +367,17 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return null;
     }
 
+    /**
+     * 按字段名顺序取第一个有值的字段，并转成字符串
+     */
     private static String firstString(JSONObject object, String... keys) {
         Object value = first(object, keys);
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 转成整数。转不了时返回空
+     */
     private static Integer asInt(Object value) {
         if (value == null || StrUtil.isBlank(String.valueOf(value))) {
             return null;
@@ -311,6 +389,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
     }
 
+    /**
+     * 转成小数。转不了时返回空
+     */
     private static BigDecimal asDecimal(Object value) {
         if (value == null || StrUtil.isBlank(String.valueOf(value))) {
             return null;
@@ -322,6 +403,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
     }
 
+    /**
+     * 截断到数据库列能放下的长度
+     */
     private static String limit(String text, int max) {
         if (text == null) {
             return null;

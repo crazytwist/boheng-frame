@@ -36,9 +36,15 @@ import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
 @RequestMapping("/device/info")
 @Validated
 public class DeviceInfoController {
+    /**
+     * 设备台账服务
+     */
 
     @Resource
     private DeviceInfoService deviceInfoService;
+    /**
+     * 按台账和动作发起 HTTP 调用
+     */
     @Resource
     private DeviceHttpService deviceHttpService;
 
@@ -121,6 +127,9 @@ public class DeviceInfoController {
         return success(result);
     }
 
+    /**
+     * 列表和详情不回传登录密码，只告诉前端是否已配置
+     */
     private void maskLogin(DeviceRespVO device) {
         if (device == null) {
             return;

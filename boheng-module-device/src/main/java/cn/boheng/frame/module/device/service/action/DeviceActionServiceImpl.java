@@ -26,9 +26,15 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class DeviceActionServiceImpl implements DeviceActionService {
+    /**
+     * 设备动作表
+     */
 
     @Resource
     private DeviceActionMapper deviceActionMapper;
+    /**
+     * 创建设备动作
+     */
 
     @Override
     public Long createAction(DeviceActionSaveReqVO createReqVO) {
@@ -41,6 +47,9 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         deviceActionMapper.insert(action);
         return action.getId();
     }
+    /**
+     * 更新设备动作
+     */
 
     @Override
     public void updateAction(DeviceActionSaveReqVO updateReqVO) {
@@ -54,12 +63,18 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         DeviceActionDO updateObj = BeanUtils.toBean(updateReqVO, DeviceActionDO.class);
         deviceActionMapper.updateById(updateObj);
     }
+    /**
+     * 删除设备动作
+     */
 
     @Override
     public void deleteAction(Long id) {
         validateActionExists(id);
         deviceActionMapper.deleteById(id);
     }
+    /**
+     * 批量删除设备动作
+     */
 
     @Override
     public void deleteActionList(List<Long> ids) {
@@ -68,16 +83,25 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         }
         deviceActionMapper.deleteBatch(DeviceActionDO::getId, ids);
     }
+    /**
+     * 获得设备动作
+     */
 
     @Override
     public DeviceActionDO getAction(Long id) {
         return deviceActionMapper.selectById(id);
     }
+    /**
+     * 获得设备动作分页
+     */
 
     @Override
     public PageResult<DeviceActionDO> getActionPage(DeviceActionPageReqVO pageReqVO) {
         return deviceActionMapper.selectPage(pageReqVO);
     }
+    /**
+     * 获得设备动作列表，可按设备类型过滤
+     */
 
     @Override
     public List<DeviceActionDO> getActionList(String deviceTypeCode) {
@@ -86,6 +110,9 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         }
         return deviceActionMapper.selectListByTypeCode(deviceTypeCode);
     }
+    /**
+     * 校验动作存在
+     */
 
     @VisibleForTesting
     DeviceActionDO validateActionExists(Long id) {
@@ -95,6 +122,9 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         }
         return action;
     }
+    /**
+     * 校验同一设备类型下动作编码不重复
+     */
 
     @VisibleForTesting
     void validateActionUnique(Long id, String deviceTypeCode, String actionCode) {

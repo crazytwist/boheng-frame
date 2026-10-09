@@ -17,12 +17,21 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DeviceCodecDO extends TenantBaseDO {
+    /**
+     * 主键，雪花算法
+     */
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    /**
+     * 解析规则编码
+     */
     private String codecCode;
 
+    /**
+     * 解析规则名称
+     */
     private String codecName;
 
     /** JSON 或 REGEX */
@@ -31,13 +40,22 @@ public class DeviceCodecDO extends TenantBaseDO {
     /** 输出字段 -> JSON 路径，或 group:N / group:名称 */
     private String fieldMapping;
 
+    /**
+     * 正则。解析类型为 REGEX 时使用
+     */
     private String regexPattern;
 
+    /**
+     * 样例原文，供页面上试解析
+     */
     private String sampleRaw;
 
     /** 0 启用 / 1 停用 */
     private Integer status;
 
+    /**
+     * 备注
+     */
     private String remark;
 
 }

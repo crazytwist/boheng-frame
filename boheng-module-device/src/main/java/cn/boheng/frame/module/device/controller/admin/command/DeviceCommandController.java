@@ -17,12 +17,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
+/**
+ * 命令记录接口。只查询，不提供删除
+ */
 
 @Tag(name = "管理后台 - 设备命令")
 @RestController
 @RequestMapping("/device/command")
 @Validated
 public class DeviceCommandController {
+    /**
+     * 命令记录服务
+     */
 
     @Resource
     private DeviceCommandService deviceCommandService;

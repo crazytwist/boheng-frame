@@ -17,6 +17,7 @@ import java.util.List;
 @Mapper
 public interface DeviceActionMapper extends BaseMapperX<DeviceActionDO> {
 
+    /** 分页查询动作 */
     default PageResult<DeviceActionDO> selectPage(DeviceActionPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<DeviceActionDO>()
                 .eqIfPresent(DeviceActionDO::getDeviceTypeCode, reqVO.getDeviceTypeCode())

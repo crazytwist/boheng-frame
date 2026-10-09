@@ -8,10 +8,14 @@ import cn.boheng.frame.module.device.dal.dataobject.codec.DeviceCodecDO;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
+/**
+ * 解析规则 Mapper
+ */
 
 @Mapper
 public interface DeviceCodecMapper extends BaseMapperX<DeviceCodecDO> {
 
+    /** 分页查询解析规则 */
     default PageResult<DeviceCodecDO> selectPage(DeviceCodecPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<DeviceCodecDO>()
                 .likeIfPresent(DeviceCodecDO::getCodecCode, reqVO.getCodecCode())
@@ -21,10 +25,12 @@ public interface DeviceCodecMapper extends BaseMapperX<DeviceCodecDO> {
                 .orderByDesc(DeviceCodecDO::getId));
     }
 
+    /** 按规则编码查询 */
     default DeviceCodecDO selectByCodecCode(String codecCode) {
         return selectOne(DeviceCodecDO::getCodecCode, codecCode);
     }
 
+    /** 查询启用的解析规则 */
     default List<DeviceCodecDO> selectEnabledList() {
         return selectList(new LambdaQueryWrapperX<DeviceCodecDO>()
                 .eq(DeviceCodecDO::getStatus, 0)

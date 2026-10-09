@@ -39,18 +39,37 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 @Validated
 public class DeviceInfoServiceImpl implements DeviceInfoService {
 
+    /** 占用锁时间在画像里的展示格式 */
     private static final DateTimeFormatter LOCK_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm");
+    /**
+     * 设备台账表
+     */
 
     @Resource
     private DeviceInfoMapper deviceInfoMapper;
+    /**
+     * 设备动作表
+     */
     @Resource
     private DeviceActionMapper deviceActionMapper;
+    /**
+     * 设备属性表
+     */
     @Resource
     private DevicePropertyMapper devicePropertyMapper;
+    /**
+     * 参数集表
+     */
     @Resource
     private DeviceParamSetMapper deviceParamSetMapper;
+    /**
+     * 设备登录令牌缓存
+     */
     @Resource
     private DeviceLoginTokenCache deviceLoginTokenCache;
+    /**
+     * 创建设备台账
+     */
 
     @Override
     public Long createDevice(DeviceSaveReqVO createReqVO) {
@@ -62,6 +81,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         deviceInfoMapper.insert(device);
         return device.getId();
     }
+    /**
+     * 更新设备台账。登录密码留空时保留原密码
+     */
 
     @Override
     public void updateDevice(DeviceSaveReqVO updateReqVO) {
@@ -78,6 +100,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         deviceInfoMapper.updateById(updateObj);
         deviceLoginTokenCache.evict(updateReqVO.getId());
     }
+    /**
+     * 删除设备台账，并清掉缓存的登录令牌
+     */
 
     @Override
     public void deleteDevice(Long id) {
@@ -87,6 +112,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         deviceInfoMapper.deleteById(id);
         deviceLoginTokenCache.evict(id);
     }
+    /**
+     * 批量删除设备台账
+     */
 
     @Override
     public void deleteDeviceList(List<Long> ids) {
@@ -96,21 +124,33 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         deviceInfoMapper.deleteBatch(DeviceInfoDO::getId, ids);
         ids.forEach(deviceLoginTokenCache::evict);
     }
+    /**
+     * 获得设备台账
+     */
 
     @Override
     public DeviceInfoDO getDevice(Long id) {
         return deviceInfoMapper.selectById(id);
     }
+    /**
+     * 获得设备台账分页
+     */
 
     @Override
     public PageResult<DeviceInfoDO> getDevicePage(DevicePageReqVO pageReqVO) {
         return deviceInfoMapper.selectPage(pageReqVO);
     }
+    /**
+     * 获得设备台账列表
+     */
 
     @Override
     public List<DeviceInfoDO> getDeviceList() {
         return deviceInfoMapper.selectList();
     }
+    /**
+     * 组装设备画像：接入、动作、属性和参数集
+     */
 
     @Override
     public DevicePortraitRespVO getDevicePortrait(Long id) {
@@ -128,6 +168,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return portrait;
     }
 
+    /**
+     * 画像里的接入说明
+     */
     private String buildConnectionSummary(DeviceInfoDO device) {
         String mode = Boolean.TRUE.equals(device.getSimulationMode()) ? "当前走仿真，不连接真机。" : "";
         String type = device.getConnectionType() == null ? "" : device.getConnectionType();
@@ -147,6 +190,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return mode + body + result;
     }
 
+    /**
+     * 画像里的下发策略说明
+     */
     private String buildDispatchSummary(DeviceInfoDO device) {
         String concurrency = device.getConcurrencyPolicy() == null ? "EXCLUSIVE" : device.getConcurrencyPolicy();
         String busy = device.getBusyCheckPolicy() == null ? "AUTO" : device.getBusyCheckPolicy();
@@ -159,6 +205,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         };
     }
 
+    /**
+     * 忙闲校验开关对应的说明
+     */
     private String busyClause(String busy) {
         return switch (busy) {
             case "ALWAYS" -> "下发前一律先问仪器是否空闲。";
@@ -167,6 +216,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         };
     }
 
+    /**
+     * 画像里的占用锁说明
+     */
     private String buildOccupancySummary(DeviceInfoDO device) {
         String concurrency = device.getConcurrencyPolicy() == null ? "EXCLUSIVE" : device.getConcurrencyPolicy();
         if (!"EXCLUSIVE".equals(concurrency)) {
@@ -187,6 +239,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return holder + " 占用中，" + until + "。";
     }
 
+    /**
+     * 把动作列表转成画像条目
+     */
     private List<DevicePortraitRespVO.Facet> toActionFacets(List<DeviceActionDO> actions) {
         List<DevicePortraitRespVO.Facet> facets = new ArrayList<>();
         for (DeviceActionDO action : actions) {
@@ -202,6 +257,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return facets;
     }
 
+    /**
+     * 把属性列表转成画像条目
+     */
     private List<DevicePortraitRespVO.Facet> toPropertyFacets(List<DevicePropertyDO> properties) {
         List<DevicePortraitRespVO.Facet> facets = new ArrayList<>();
         for (DevicePropertyDO property : properties) {
@@ -226,6 +284,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return facets;
     }
 
+    /**
+     * 把参数集转成画像条目
+     */
     private List<DevicePortraitRespVO.Facet> toParamSetFacets(List<DeviceParamSetDO> paramSets) {
         List<DevicePortraitRespVO.Facet> facets = new ArrayList<>();
         for (DeviceParamSetDO paramSet : paramSets) {
@@ -239,6 +300,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return facets;
     }
 
+    /**
+     * 把预估毫秒数转成可读时长
+     */
     private String formatDuration(Long millis) {
         if (millis < 1000) {
             return millis + " 毫秒";
@@ -249,16 +313,25 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return String.format("%.1f 秒", millis / 1000.0);
     }
 
+    /**
+     * 空文本换成兜底文案
+     */
     private String blank(String value, String fallback) {
         return StrUtil.isBlank(value) ? fallback : value;
     }
 
+    /**
+     * 台账转响应对象，不回传登录密码
+     */
     private DeviceRespVO toResp(DeviceInfoDO device) {
         DeviceRespVO resp = BeanUtils.toBean(device, DeviceRespVO.class);
         resp.setLoginConfigured(StrUtil.isNotBlank(device.getLoginPassword()));
         resp.setLoginPassword(null);
         return resp;
     }
+    /**
+     * 校验设备存在
+     */
 
     @VisibleForTesting
     DeviceInfoDO validateDeviceExists(Long id) {
@@ -268,6 +341,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         }
         return device;
     }
+    /**
+     * 校验设备编码不重复
+     */
 
     @VisibleForTesting
     void validateDeviceCodeUnique(Long id, String deviceCode) {

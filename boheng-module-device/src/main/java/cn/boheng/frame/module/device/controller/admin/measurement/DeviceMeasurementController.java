@@ -17,12 +17,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
+/**
+ * 测量记录接口
+ */
 
 @Tag(name = "管理后台 - 设备测量")
 @RestController
 @RequestMapping("/device/measurement")
 @Validated
 public class DeviceMeasurementController {
+    /**
+     * 测量记录服务
+     */
 
     @Resource
     private DeviceMeasurementService deviceMeasurementService;

@@ -22,9 +22,15 @@ import java.util.List;
 @Service
 @Validated
 public class DeviceApiImpl implements DeviceApi {
+    /**
+     * 设备台账表
+     */
 
     @Resource
     private DeviceInfoMapper deviceInfoMapper;
+    /**
+     * 按设备类型挑选在线且空闲的设备
+     */
 
     @Override
     public List<DeviceSummaryDTO> selectDevices(DeviceSelectReqDTO reqVO) {

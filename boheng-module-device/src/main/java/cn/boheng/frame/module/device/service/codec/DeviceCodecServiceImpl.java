@@ -19,13 +19,22 @@ import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUt
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_CODEC_CODE_DUPLICATE;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_CODEC_NOT_EXISTS;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_CODEC_PARSE_FAILED;
+/**
+ * 解析规则服务实现
+ */
 
 @Service
 @Validated
 public class DeviceCodecServiceImpl implements DeviceCodecService {
+    /**
+     * 解析规则表
+     */
 
     @Resource
     private DeviceCodecMapper deviceCodecMapper;
+    /**
+     * 创建解析规则
+     */
 
     @Override
     public Long createCodec(DeviceCodecSaveReqVO createReqVO) {
@@ -35,6 +44,9 @@ public class DeviceCodecServiceImpl implements DeviceCodecService {
         deviceCodecMapper.insert(row);
         return row.getId();
     }
+    /**
+     * 更新解析规则
+     */
 
     @Override
     public void updateCodec(DeviceCodecSaveReqVO updateReqVO) {
@@ -43,17 +55,26 @@ public class DeviceCodecServiceImpl implements DeviceCodecService {
         validateCodeUnique(updateReqVO.getId(), updateReqVO.getCodecCode());
         deviceCodecMapper.updateById(BeanUtils.toBean(updateReqVO, DeviceCodecDO.class));
     }
+    /**
+     * 删除解析规则
+     */
 
     @Override
     public void deleteCodec(Long id) {
         validateExists(id);
         deviceCodecMapper.deleteById(id);
     }
+    /**
+     * 获得解析规则
+     */
 
     @Override
     public DeviceCodecDO getCodec(Long id) {
         return deviceCodecMapper.selectById(id);
     }
+    /**
+     * 按规则编码获得解析规则
+     */
 
     @Override
     public DeviceCodecDO getByCode(String codecCode) {
@@ -62,16 +83,25 @@ public class DeviceCodecServiceImpl implements DeviceCodecService {
         }
         return deviceCodecMapper.selectByCodecCode(codecCode);
     }
+    /**
+     * 解析规则分页
+     */
 
     @Override
     public PageResult<DeviceCodecDO> getCodecPage(DeviceCodecPageReqVO pageReqVO) {
         return deviceCodecMapper.selectPage(pageReqVO);
     }
+    /**
+     * 获得启用中的解析规则，供动作选择
+     */
 
     @Override
     public List<DeviceCodecDO> getEnabledList() {
         return deviceCodecMapper.selectEnabledList();
     }
+    /**
+     * 用当前表单里的样例报文试解析，不落库
+     */
 
     @Override
     public JSONObject preview(DeviceCodecPreviewReqVO reqVO) {
@@ -82,6 +112,9 @@ public class DeviceCodecServiceImpl implements DeviceCodecService {
         return DeviceCodecParser.parse(type, reqVO.getFieldMapping(), reqVO.getRegexPattern(), reqVO.getSampleRaw());
     }
 
+    /**
+     * 整理编码和解析类型。只允许 JSON 和正则
+     */
     private void normalize(DeviceCodecSaveReqVO reqVO) {
         reqVO.setCodecCode(reqVO.getCodecCode().trim());
         reqVO.setParseType(reqVO.getParseType().trim().toUpperCase());
@@ -93,12 +126,18 @@ public class DeviceCodecServiceImpl implements DeviceCodecService {
         }
     }
 
+    /**
+     * 校验解析规则存在
+     */
     private void validateExists(Long id) {
         if (id == null || deviceCodecMapper.selectById(id) == null) {
             throw exception(DEVICE_CODEC_NOT_EXISTS);
         }
     }
 
+    /**
+     * 校验解析规则编码不重复
+     */
     private void validateCodeUnique(Long id, String codecCode) {
         DeviceCodecDO existing = deviceCodecMapper.selectByCodecCode(codecCode);
         if (existing == null) {

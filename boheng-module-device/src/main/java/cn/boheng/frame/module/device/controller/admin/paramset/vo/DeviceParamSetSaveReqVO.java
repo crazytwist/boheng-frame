@@ -40,6 +40,9 @@ public class DeviceParamSetSaveReqVO {
 
     @Schema(description = "参数取值 JSON（与 device_action.param_schema 对齐）",
             example = "{\"wavelength\":450,\"mode\":\"ABSORBANCE\"}")
+    /**
+     * 下发时的参数快照
+     */
     @NotEmpty(message = "参数取值不能为空")
     private String paramsJson;
 

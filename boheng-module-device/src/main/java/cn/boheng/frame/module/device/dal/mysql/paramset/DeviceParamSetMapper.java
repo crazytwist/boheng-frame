@@ -17,6 +17,7 @@ import java.util.List;
 @Mapper
 public interface DeviceParamSetMapper extends BaseMapperX<DeviceParamSetDO> {
 
+    /** 分页查询参数集 */
     default PageResult<DeviceParamSetDO> selectPage(DeviceParamSetPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<DeviceParamSetDO>()
                 .likeIfPresent(DeviceParamSetDO::getParamSetCode, reqVO.getParamSetCode())
@@ -29,6 +30,7 @@ public interface DeviceParamSetMapper extends BaseMapperX<DeviceParamSetDO> {
                 .orderByDesc(DeviceParamSetDO::getId));
     }
 
+    /** 按参数集编码查询 */
     default DeviceParamSetDO selectByParamSetCode(String paramSetCode) {
         return selectOne(DeviceParamSetDO::getParamSetCode, paramSetCode);
     }

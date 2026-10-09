@@ -32,6 +32,9 @@ import static cn.boheng.frame.framework.security.core.util.SecurityFrameworkUtil
 @RequestMapping("/device/param-set")
 @Validated
 public class DeviceParamSetController {
+    /**
+     * 参数集服务
+     */
 
     @Resource
     private DeviceParamSetService deviceParamSetService;

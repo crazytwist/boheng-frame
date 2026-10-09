@@ -26,9 +26,15 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class DevicePropertyServiceImpl implements DevicePropertyService {
+    /**
+     * 设备属性表
+     */
 
     @Resource
     private DevicePropertyMapper devicePropertyMapper;
+    /**
+     * 创建设备属性
+     */
 
     @Override
     public Long createProperty(DevicePropertySaveReqVO createReqVO) {
@@ -40,6 +46,9 @@ public class DevicePropertyServiceImpl implements DevicePropertyService {
         devicePropertyMapper.insert(property);
         return property.getId();
     }
+    /**
+     * 更新设备属性
+     */
 
     @Override
     public void updateProperty(DevicePropertySaveReqVO updateReqVO) {
@@ -52,12 +61,18 @@ public class DevicePropertyServiceImpl implements DevicePropertyService {
         DevicePropertyDO updateObj = BeanUtils.toBean(updateReqVO, DevicePropertyDO.class);
         devicePropertyMapper.updateById(updateObj);
     }
+    /**
+     * 删除设备属性
+     */
 
     @Override
     public void deleteProperty(Long id) {
         validatePropertyExists(id);
         devicePropertyMapper.deleteById(id);
     }
+    /**
+     * 批量删除设备属性
+     */
 
     @Override
     public void deletePropertyList(List<Long> ids) {
@@ -66,16 +81,25 @@ public class DevicePropertyServiceImpl implements DevicePropertyService {
         }
         devicePropertyMapper.deleteBatch(DevicePropertyDO::getId, ids);
     }
+    /**
+     * 获得设备属性
+     */
 
     @Override
     public DevicePropertyDO getProperty(Long id) {
         return devicePropertyMapper.selectById(id);
     }
+    /**
+     * 获得设备属性分页
+     */
 
     @Override
     public PageResult<DevicePropertyDO> getPropertyPage(DevicePropertyPageReqVO pageReqVO) {
         return devicePropertyMapper.selectPage(pageReqVO);
     }
+    /**
+     * 获得设备属性列表，可按设备类型过滤
+     */
 
     @Override
     public List<DevicePropertyDO> getPropertyList(String deviceTypeCode) {
@@ -84,6 +108,9 @@ public class DevicePropertyServiceImpl implements DevicePropertyService {
         }
         return devicePropertyMapper.selectListByTypeCode(deviceTypeCode);
     }
+    /**
+     * 校验属性存在
+     */
 
     @VisibleForTesting
     DevicePropertyDO validatePropertyExists(Long id) {
@@ -93,6 +120,9 @@ public class DevicePropertyServiceImpl implements DevicePropertyService {
         }
         return property;
     }
+    /**
+     * 校验同一设备类型下属性编码不重复
+     */
 
     @VisibleForTesting
     void validatePropertyUnique(Long id, String deviceTypeCode, String propertyCode) {
