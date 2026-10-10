@@ -78,10 +78,20 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Override
     public DeviceCommandDO open(DeviceInfoDO device, DeviceActionDO action, String paramsJson, String codecCode) {
+        return open(device, action, paramsJson, codecCode, CommandSource.manual());
+    }
+
+    /**
+     * 带来源的落命令。流程引擎的命令按 FLOW 记，事后能沿 source_ref 找回是哪个节点哪次尝试发的
+     */
+    @Override
+    public DeviceCommandDO open(DeviceInfoDO device, DeviceActionDO action, String paramsJson, String codecCode,
+                                CommandSource source) {
+        CommandSource src = source == null ? CommandSource.manual() : source;
         DeviceCommandDO row = new DeviceCommandDO();
         row.setCommandNo("C" + IdUtil.getSnowflakeNextIdStr());
-        row.setSourceType("MANUAL");
-        row.setAttempt(1);
+        row.setSourceType(StrUtil.blankToDefault(src.sourceType(), "MANUAL"));
+        row.setAttempt(src.attempt() == null || src.attempt() < 1 ? 1 : src.attempt());
         row.setDeviceId(device.getId());
         row.setDeviceCode(device.getDeviceCode());
         row.setDeviceTypeCode(device.getDeviceTypeCode());
@@ -92,7 +102,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         row.setStatus("ACQUIRED");
         row.setParamsJson(jsonText(paramsJson));
         row.setCodecCode(StrUtil.trimToNull(codecCode));
-        row.setOperator(StrUtil.blankToDefault(SecurityFrameworkUtils.getLoginUserNickname(), "user"));
+        row.setOperator(StrUtil.blankToDefault(src.operator(),
+                StrUtil.blankToDefault(SecurityFrameworkUtils.getLoginUserNickname(), "user")));
         row.setOperatorType("USER");
         row.setAcquiredAt(LocalDateTime.now());
         row.setVersion(0);
@@ -123,22 +134,147 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             command.setErrorMsg(limit(StrUtil.blankToDefault(resp.getBody(), "HTTP " + resp.getStatus()), 1000));
         }
 
-        DeviceDataRawDO raw = new DeviceDataRawDO();
-        raw.setCommandId(command.getId());
-        raw.setDeviceId(command.getDeviceId());
-        raw.setDeviceCode(command.getDeviceCode());
-        raw.setDataType("HTTP_RESPONSE");
-        raw.setRawJson(envelope("body", resp.getBody()));
-        raw.setMimeType(limit(resp.getContentType(), 64));
-        raw.setFormat(formatOf(resp.getContentType(), resp.getBody()));
-        raw.setReceivedTime(now);
-        deviceDataRawMapper.insert(raw);
-        command.setDataRawId(raw.getId());
-
+        DeviceDataRawDO raw = saveRaw(command, "HTTP_RESPONSE", resp.getBody(), resp.getContentType(), now);
         if (ok && StrUtil.isNotBlank(command.getCodecCode())) {
             applyCodec(command, raw);
         }
         deviceCommandMapper.updateById(command);
+    }
+
+    /**
+     * 发请求之前就转入等回调，设备回调得比受理应答还快时也能对上
+     */
+    @Override
+    public void awaitCallback(Long commandId, String tokenHash, LocalDateTime timeoutAt) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        if (command == null || isTerminal(command.getStatus())) {
+            return;
+        }
+        command.setDispatchMode("ASYNC");
+        command.setResultMode("CALLBACK");
+        command.setStatus("WAITING");
+        command.setWaitingFor("DEVICE_CALLBACK");
+        command.setSentAt(LocalDateTime.now());
+        command.setTimeoutAt(timeoutAt);
+        command.setCallbackTokenHash(tokenHash);
+        deviceCommandMapper.updateById(command);
+    }
+
+    /**
+     * 只写请求列。响应列归回调，两边并发也互不覆盖。
+     */
+    @Override
+    public void recordSent(Long commandId, DeviceInvokeRespVO ack) {
+        DeviceCommandDO update = new DeviceCommandDO();
+        update.setId(commandId);
+        update.setRequestJson(envelope("method", ack.getHttpMethod(), "url", ack.getRequestUrl(), "body", ack.getRequestBody(),
+                "ack", ackOf(ack.getStatus(), ack.getContentType(), ack.getBody())));
+        update.setPayloadJson(jsonText(ack.getRequestBody()));
+        deviceCommandMapper.updateById(update);
+    }
+
+    /**
+     * 回调正文按响应处理：落原始数据、按解析规则生成测量。先抢状态，抢不到说明已超时或已收过一次。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean completeCallback(Long commandId, String body, String contentType) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        if (command == null || !"WAITING".equals(command.getStatus())) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String failure = callbackFailure(body);
+        DeviceCommandDO claim = new DeviceCommandDO();
+        claim.setId(commandId);
+        claim.setStatus(failure == null ? "SUCCEEDED" : "FAILED");
+        claim.setWaitingFor("");
+        claim.setFinishedAt(now);
+        if (!deviceCommandMapper.updateIfStatus(claim, "WAITING")) {
+            return false;
+        }
+        command.setErrorMsg(failure == null ? null : limit(failure, 1000));
+        DeviceDataRawDO raw = saveRaw(command, "HTTP_CALLBACK", body, contentType, now);
+        if (failure == null && StrUtil.isNotBlank(command.getCodecCode())) {
+            applyCodec(command, raw);
+        }
+        DeviceCommandDO result = new DeviceCommandDO();
+        result.setId(commandId);
+        result.setResponseJson(envelope("status", 200, "contentType", contentType, "body", body));
+        result.setDataRawId(command.getDataRawId());
+        result.setErrorMsg(command.getErrorMsg());
+        deviceCommandMapper.updateById(result);
+        return true;
+    }
+
+    /**
+     * 到期还在等回调的命令标成超时。回调先到时不覆盖。
+     */
+    @Override
+    public void timeout(Long commandId, String message) {
+        DeviceCommandDO update = new DeviceCommandDO();
+        update.setId(commandId);
+        update.setStatus("TIMED_OUT");
+        update.setWaitingFor("");
+        update.setFinishedAt(LocalDateTime.now());
+        update.setErrorMsg(limit(message, 1000));
+        deviceCommandMapper.updateIfStatus(update, "WAITING");
+    }
+
+    /**
+     * 命令当前状态，不存在时返回空
+     */
+    @Override
+    public String getStatus(Long commandId) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        return command == null ? null : command.getStatus();
+    }
+
+    /**
+     * 写一条原始数据，并挂到命令上
+     */
+    private DeviceDataRawDO saveRaw(DeviceCommandDO command, String dataType, String body, String contentType,
+                                    LocalDateTime now) {
+        DeviceDataRawDO raw = new DeviceDataRawDO();
+        raw.setCommandId(command.getId());
+        raw.setDeviceId(command.getDeviceId());
+        raw.setDeviceCode(command.getDeviceCode());
+        raw.setDataType(dataType);
+        raw.setRawJson(envelope("body", body));
+        raw.setMimeType(limit(contentType, 64));
+        raw.setFormat(formatOf(contentType, body));
+        raw.setReceivedTime(now);
+        deviceDataRawMapper.insert(raw);
+        command.setDataRawId(raw.getId());
+        return raw;
+    }
+
+    /**
+     * 受理应答写进响应记录时的样子
+     */
+    private static JSONObject ackOf(Integer status, String contentType, String body) {
+        JSONObject ack = new JSONObject();
+        ack.set("status", status);
+        ack.set("contentType", contentType);
+        ack.set("body", body);
+        return ack;
+    }
+
+    /**
+     * 回调正文里明确写了失败时返回原因，否则返回空。认 status 为 FAILED/ERROR/FAIL，或 success 为 false。
+     */
+    private static String callbackFailure(String body) {
+        if (StrUtil.isBlank(body) || !JSONUtil.isTypeJSONObject(body.trim())) {
+            return null;
+        }
+        JSONObject object = JSONUtil.parseObj(body);
+        String status = object.getStr("status");
+        boolean failed = "FAILED".equalsIgnoreCase(status) || "ERROR".equalsIgnoreCase(status) || "FAIL".equalsIgnoreCase(status)
+                || Boolean.FALSE.equals(object.getBool("success"));
+        if (!failed) {
+            return null;
+        }
+        return "设备回调失败：" + StrUtil.blankToDefault(firstString(object, "message", "msg", "error"), body);
     }
     /**
      * 调用没有完成时把命令标成失败
@@ -155,6 +291,38 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         command.setErrorMsg(limit(message, 1000));
         deviceCommandMapper.updateById(command);
     }
+
+    /**
+     * 按这次仿真调用记下发方式和结果回收方式
+     */
+    @Override
+    public void bindMode(Long commandId, String dispatchMode, String resultMode) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        if (command == null) {
+            throw exception(DEVICE_COMMAND_NOT_EXISTS);
+        }
+        command.setDispatchMode(dispatchMode);
+        command.setResultMode(resultMode);
+        deviceCommandMapper.updateById(command);
+    }
+
+    /**
+     * 记下已轮询次数。还没拿到结果时命令停在等待轮询。
+     */
+    @Override
+    public void recordPoll(Long commandId, int pollCount, boolean done) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        if (command == null || isTerminal(command.getStatus())) {
+            return;
+        }
+        command.setPollCount(pollCount);
+        command.setWaitingFor(done ? "" : "POLL_TICK");
+        if (!done) {
+            command.setStatus("WAITING");
+        }
+        deviceCommandMapper.updateById(command);
+    }
+
     /**
      * 命令记录分页
      */

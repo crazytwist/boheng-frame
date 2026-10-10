@@ -2,8 +2,11 @@ package cn.boheng.frame.module.device.api;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSelectReqDTO;
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
+import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
+import cn.boheng.frame.module.device.dal.mysql.action.DeviceActionMapper;
 import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
+import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -28,6 +31,12 @@ public class DeviceApiImpl implements DeviceApi {
 
     @Resource
     private DeviceInfoMapper deviceInfoMapper;
+
+    /**
+     * 设备动作表。发布流程时用来确认动作仍启用
+     */
+    @Resource
+    private DeviceActionMapper deviceActionMapper;
     /**
      * 按设备类型挑选在线且空闲的设备
      */
@@ -59,6 +68,48 @@ public class DeviceApiImpl implements DeviceApi {
         // 截取数量上限（默认 1）
         int limit = reqVO.getLimit() == null ? 1 : reqVO.getLimit();
         return result.size() > limit ? result.subList(0, limit) : result;
+    }
+
+    /**
+     * 按编码取设备摘要。不存在时返回 null，不抛业务异常，交给调用方决定怎么提示。
+     */
+    @Override
+    public DeviceSummaryDTO getDeviceByCode(String deviceCode) {
+        if (StrUtil.isBlank(deviceCode)) {
+            return null;
+        }
+        DeviceInfoDO device = deviceInfoMapper.selectByDeviceCode(deviceCode.trim());
+        if (device == null) {
+            return null;
+        }
+        DeviceSummaryDTO summary = toSummary(device);
+        summary.setIdle(isIdle(device));
+        return summary;
+    }
+
+    /**
+     * 类型下存在该动作，且状态为空或 0（启用）时返回 true。停用动作不能进已发布流程。
+     */
+    @Override
+    public boolean hasEnabledAction(String deviceTypeCode, String actionCode) {
+        if (StrUtil.hasBlank(deviceTypeCode, actionCode)) {
+            return false;
+        }
+        DeviceActionDO action = deviceActionMapper.selectByTypeAndAction(deviceTypeCode.trim(), actionCode.trim());
+        return action != null && (action.getStatus() == null || action.getStatus() == 0);
+    }
+
+    /**
+     * 把台账行收成跨模块摘要，不带接入地址和登录信息。
+     */
+    private DeviceSummaryDTO toSummary(DeviceInfoDO device) {
+        DeviceSummaryDTO summary = new DeviceSummaryDTO();
+        summary.setId(device.getId());
+        summary.setDeviceCode(device.getDeviceCode());
+        summary.setDeviceName(device.getDeviceName());
+        summary.setDeviceTypeCode(device.getDeviceTypeCode());
+        summary.setStatus(device.getStatus());
+        return summary;
     }
 
     /**

@@ -8,62 +8,74 @@
 
     <template v-if="action">
       <section class="cat-block">
-        <div class="cat-kicker">动作</div>
+        <div class="cat-kicker">基本信息</div>
         <dl class="cat-facts">
           <dt>设备类型</dt>
           <dd>{{ deviceTypeLabel(action.deviceTypeCode) }}</dd>
-          <dt>编码</dt>
+          <dt>动作编码</dt>
           <dd>{{ action.actionCode }}</dd>
-          <dt>来源</dt>
+          <dt>能力来源</dt>
           <dd>{{ sourceLabel(action.source) }}</dd>
-          <dt>预计耗时</dt>
+          <dt>预估耗时</dt>
           <dd>{{ durationText(action.estimateDurationMs) }}</dd>
-          <dt>标准特性</dt>
+          <dt>SiLA 标准特性</dt>
           <dd>{{ action.standardFeature || '—' }}</dd>
           <dt>厂商映射</dt>
           <dd>{{ action.vendorRef || '—' }}</dd>
-          <dt>请求方法</dt>
-          <dd>{{ action.httpMethod || '—' }}</dd>
-          <dt>报文格式</dt>
-          <dd>{{ formatLabel(action.bodyFormat) }}</dd>
-          <dt>接口路径</dt>
-          <dd>{{ action.requestPath || '—' }}</dd>
-          <dt>解析规则</dt>
-          <dd>{{ action.codecCode || '—' }}</dd>
         </dl>
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">下发前</div>
+        <div class="cat-kicker">请求配置</div>
         <dl class="cat-facts">
-          <dt>空闲预检</dt>
+          <dt>请求方法</dt>
+          <dd>{{ action.httpMethod || '—' }}</dd>
+          <dt>请求路径</dt>
+          <dd>{{ action.requestPath || '—' }}</dd>
+          <dt>报文格式</dt>
+          <dd>{{ formatLabel(action.bodyFormat) }}</dd>
+        </dl>
+        <p v-if="action.requestTemplate" class="mono">{{ action.requestTemplate }}</p>
+      </section>
+
+      <section class="cat-block">
+        <div class="cat-kicker">结果处理</div>
+        <dl class="cat-facts">
+          <dt>结果获取方式</dt>
+          <dd>{{ resultModeLabel(action.resultMode || 'SYNC_RETURN') }}</dd>
+          <template v-if="action.resultMode === 'CALLBACK'">
+            <dt>回调超时</dt>
+            <dd>{{ action.callbackTimeoutSec ? `${action.callbackTimeoutSec} 秒` : '取设备配置' }}</dd>
+          </template>
+          <dt>解析规则</dt>
+          <dd>{{ action.codecCode || '—' }}</dd>
+          <dt>完成判定表达式</dt>
+          <dd>{{ action.pollDoneExpr || '—' }}</dd>
+          <dt>最大轮询次数</dt>
+          <dd>{{ action.pollMaxTimes ?? '—' }}</dd>
+        </dl>
+      </section>
+
+      <section class="cat-block">
+        <div class="cat-kicker">下发前检查</div>
+        <dl class="cat-facts">
+          <dt>空闲检查</dt>
           <dd>{{ action.needBusyCheck ? '需要' : '不需要' }}</dd>
           <template v-if="action.needBusyCheck">
-            <dt>查询动作</dt>
+            <dt>状态查询动作</dt>
             <dd>{{ action.statusCommandCode || '—' }}</dd>
           </template>
         </dl>
       </section>
 
-      <section class="cat-block">
-        <div class="cat-kicker">回收</div>
-        <dl class="cat-facts">
-          <dt>完成条件</dt>
-          <dd>{{ action.pollDoneExpr || '—' }}</dd>
-          <dt>轮询次数</dt>
-          <dd>{{ action.pollMaxTimes ?? '—' }}</dd>
-        </dl>
-        <p v-if="action.requestTemplate" class="mono">{{ action.requestTemplate }}</p>
-      </section>
-
       <section v-if="fields.length" class="cat-block">
-        <div class="cat-kicker">参数</div>
+        <div class="cat-kicker">参数定义</div>
         <div v-for="field in fields" :key="field.key" class="param-card">
           <div class="param-name">{{ field.label }}</div>
           <div class="param-meta">
             {{ field.type || '未声明类型' }}
             <template v-if="field.unit"> · {{ field.unit }}</template>
-            · {{ field.required ? '必填' : '可选' }}
+            · {{ field.required ? '必填' : '选填' }}
             <template v-if="field.defaultValue !== undefined && field.defaultValue !== null">
               · 默认 {{ field.defaultValue }}
             </template>
@@ -78,7 +90,7 @@
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import CategoryDrawer from '../components/CategoryDrawer.vue'
-import { constraintText, deviceTypeLabel, durationText, parseSchema, sourceLabel } from '../labels'
+import { constraintText, deviceTypeLabel, durationText, parseSchema, resultModeLabel, sourceLabel } from '../labels'
 
 const visible = ref(false)
 const loading = ref(false)

@@ -3,6 +3,8 @@ package cn.boheng.frame.module.device.service.http;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceInvokeRespVO;
 import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
+import cn.boheng.frame.module.device.service.callback.DeviceCallbackService;
+import cn.boheng.frame.module.device.service.callback.DeviceCallbackTicket;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.Resource;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -43,25 +46,39 @@ public class DeviceHttpGateway {
 
     /**
      * 向设备发一次 HTTP。配了登录路径时先带上令牌，401 时重新登录再发一次。
+     * 等回调的命令会多带命令号、回调地址和回调令牌，模板里也能用 ${commandNo}、${callbackUrl}、${callbackToken}。
      */
-    public DeviceInvokeRespVO invoke(DeviceInfoDO device, DeviceActionDO action, String paramsJson) {
+    public DeviceInvokeRespVO invoke(DeviceInfoDO device, DeviceActionDO action, String paramsJson,
+                                     String commandNo, DeviceCallbackTicket ticket) {
         String url = joinUrl(device.getEndpointUrl(), action.getRequestPath());
         if (url == null) {
             throw exception(DEVICE_ENDPOINT_MISSING, device.getDeviceCode());
         }
         Map<String, Object> params = parseParams(device, paramsJson);
+        Map<String, Object> vars = new LinkedHashMap<>(params);
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (StrUtil.isNotBlank(commandNo)) {
+            vars.putIfAbsent("commandNo", commandNo);
+            headers.put(DeviceCallbackService.COMMAND_HEADER, commandNo);
+        }
+        if (ticket != null) {
+            vars.putIfAbsent("callbackUrl", ticket.url());
+            vars.putIfAbsent("callbackToken", ticket.token());
+            headers.put(DeviceCallbackService.CALLBACK_URL_HEADER, ticket.url());
+            headers.put(DeviceCallbackService.TOKEN_HEADER, ticket.token());
+        }
         String method = StrUtil.blankToDefault(action.getHttpMethod(), "POST").toUpperCase();
         String format = StrUtil.blankToDefault(action.getBodyFormat(), "JSON").toUpperCase();
-        String body = requestBody(device, method, format, action.getRequestTemplate(), params);
+        String body = requestBody(device, method, format, action.getRequestTemplate(), params, vars);
 
         boolean login = StrUtil.isNotBlank(device.getLoginPath());
         String token = login ? token(device, false) : null;
-        HttpResult result = exchange(device, method, url, body, params, token, format);
+        HttpResult result = exchange(device, method, url, body, params, token, format, headers);
         boolean retried = false;
         if (login && result.status == 401) {
             log.info("[invoke][设备({}) 动作({}) token 失效，重新登录]", device.getDeviceCode(), action.getActionCode());
             token = token(device, true);
-            result = exchange(device, method, url, body, params, token, format);
+            result = exchange(device, method, url, body, params, token, format, headers);
             retried = true;
         }
         DeviceInvokeRespVO resp = new DeviceInvokeRespVO();
@@ -133,7 +150,8 @@ public class DeviceHttpGateway {
                 StrUtil.blankToDefault(device.getLoginUsername(), ""));
         payload.set(StrUtil.blankToDefault(device.getLoginPasswordKey(), "password"),
                 StrUtil.blankToDefault(device.getLoginPassword(), ""));
-        HttpResult result = exchange(device, method, url, payload.toString(), Collections.emptyMap(), null, "JSON");
+        HttpResult result = exchange(device, method, url, payload.toString(), Collections.emptyMap(), null, "JSON",
+                Collections.emptyMap());
         if (result.status < 200 || result.status >= 300) {
             throw exception(DEVICE_LOGIN_FAILED, device.getDeviceCode(), "HTTP " + result.status);
         }
@@ -145,9 +163,10 @@ public class DeviceHttpGateway {
     }
 
     private HttpResult exchange(DeviceInfoDO device, String method, String url, String body,
-                                Map<String, Object> query, String token, String format) {
+                                Map<String, Object> query, String token, String format, Map<String, String> headers) {
         try {
             HttpRequest request = HttpRequest.of(url).method(Method.valueOf(method)).timeout(TIMEOUT_MS);
+            headers.forEach(request::header);
             if (StrUtil.isNotBlank(token)) {
                 request.header(StrUtil.blankToDefault(device.getTokenHeader(), "Authorization"), headerValue(device, token));
             }
@@ -237,11 +256,11 @@ public class DeviceHttpGateway {
     }
 
     private static String requestBody(DeviceInfoDO device, String method, String format, String template,
-                                      Map<String, Object> params) {
+                                      Map<String, Object> params, Map<String, Object> vars) {
         if ("GET".equals(method) || "DELETE".equals(method)) {
             return null;
         }
-        String rendered = render(template, params);
+        String rendered = render(template, vars);
         if ("FORM".equals(format)) {
             return StrUtil.isNotBlank(template) ? rendered : null;
         }

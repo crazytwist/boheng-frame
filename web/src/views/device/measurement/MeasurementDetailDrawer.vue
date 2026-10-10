@@ -1,24 +1,24 @@
 <template>
-  <CategoryDrawer v-model="visible" :loading="loading" kicker="测量" :title="row?.deviceCode" size="640px">
+  <CategoryDrawer v-model="visible" :loading="loading" kicker="测量记录" :title="row?.deviceCode" size="640px">
     <template v-if="row">
       <section class="cat-block">
-        <div class="cat-kicker">测量</div>
+        <div class="cat-kicker">基本信息</div>
         <dl class="cat-facts">
-          <dt>设备</dt>
+          <dt>设备编码</dt>
           <dd>{{ row.deviceCode || '—' }}</dd>
-          <dt>命令</dt>
+          <dt>命令编号</dt>
           <dd>{{ row.commandId || '—' }}</dd>
-          <dt>模式</dt>
+          <dt>检测模式</dt>
           <dd>{{ row.measureMode || '—' }}</dd>
           <dt>波长</dt>
           <dd>{{ row.wavelengthNm ? `${row.wavelengthNm} nm` : '—' }}</dd>
-          <dt>方法</dt>
+          <dt>检测方法</dt>
           <dd>{{ row.scriptName || '—' }}</dd>
         </dl>
       </section>
 
       <section v-if="row.analyses?.length" class="cat-block">
-        <div class="cat-kicker">结论</div>
+        <div class="cat-kicker">测量结论</div>
         <dl class="cat-facts">
           <template v-for="item in row.analyses" :key="item.resultType">
             <dt>{{ item.resultType }}</dt>
@@ -28,15 +28,15 @@
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">孔位</div>
+        <div class="cat-kicker">孔位读数</div>
         <el-table v-if="row.wells?.length" :data="row.wells" size="small">
           <el-table-column label="孔位" prop="wellPosition" width="80" />
           <el-table-column label="波长" prop="wavelengthNm" width="80" />
           <el-table-column label="读数" prop="readValue" />
           <el-table-column label="单位" prop="unit" width="80" />
-          <el-table-column label="质量" prop="qualityFlag" />
+          <el-table-column label="质量标记" prop="qualityFlag" />
         </el-table>
-        <div v-else class="empty">这次响应里没有孔位读数</div>
+        <div v-else class="empty">本次响应中无孔位读数</div>
       </section>
     </template>
   </CategoryDrawer>

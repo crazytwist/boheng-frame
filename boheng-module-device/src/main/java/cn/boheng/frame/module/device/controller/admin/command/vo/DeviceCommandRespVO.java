@@ -48,9 +48,17 @@ public class DeviceCommandRespVO {
      */
     private String resultMode;
     /**
-     * 命令状态：ACQUIRED 已占用，SUCCEEDED 成功，FAILED 失败
+     * 命令状态：ACQUIRED 已占用，WAITING 等结果，SUCCEEDED 成功，FAILED 失败，TIMED_OUT 超时
      */
     private String status;
+    /**
+     * 等待原因：DEVICE_CALLBACK 等回调，POLL_TICK 等下次轮询
+     */
+    private String waitingFor;
+    /**
+     * 等回调的截止时刻
+     */
+    private LocalDateTime timeoutAt;
     /**
      * 下发时的参数快照
      */

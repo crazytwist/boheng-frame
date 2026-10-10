@@ -27,6 +27,8 @@ export interface DeviceVO {
   tokenTtlSec?: number
   mqttTopicPrefix?: string
   callbackEnabled?: boolean
+  callbackUrl?: string
+  callbackTimeoutSec?: number
   pollIntervalSec?: number
   busyCheckPolicy?: string
   concurrencyPolicy?: string
@@ -101,7 +103,8 @@ export const DeviceInfoApi = {
   },
 
   // 调用设备动作。已配置登录时先登录，token 失效后重新登录再试一次
+  // 仿真的异步等待和轮询会在一次请求里等结果，所以超时放宽到 11 分钟
   invoke: async (data: { deviceId: number; actionCode: string; paramsJson?: string }) => {
-    return await request.post({ url: '/device/info/invoke', data })
+    return await request.post({ url: '/device/info/invoke', data, timeout: 11 * 60 * 1000 })
   }
 }

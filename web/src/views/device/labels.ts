@@ -29,7 +29,7 @@ export const statusTagType = (v?: string): 'success' | 'info' | 'warning' | 'dan
 }
 
 export const connectionLabel = (v?: string) =>
-  ({ HTTP: 'HTTP 直连', MQTT: 'MQTT', NODE_RED: '经 Node-RED', SIMULATED: '仿真' }[v || ''] || v || '未设置')
+  ({ HTTP: 'HTTP 直连', MQTT: 'MQTT 直连', NODE_RED: 'Node-RED 转接', SIMULATED: '仿真' }[v || ''] || v || '未设置')
 
 export const commandStatusOptions = [
   { label: '已创建', value: 'CREATED' },
@@ -38,7 +38,7 @@ export const commandStatusOptions = [
   { label: '等待结果', value: 'WAITING' },
   { label: '成功', value: 'SUCCEEDED' },
   { label: '失败', value: 'FAILED' },
-  { label: '超时', value: 'TIMED_OUT' },
+  { label: '已超时', value: 'TIMED_OUT' },
   { label: '已取消', value: 'CANCELLED' }
 ]
 
@@ -50,6 +50,9 @@ export const commandStatusType = (v?: string): 'success' | 'info' | 'warning' | 
   if (v === 'WAITING' || v === 'ACQUIRED') return 'warning'
   return 'info'
 }
+
+export const resultModeLabel = (v?: string) =>
+  ({ SYNC_RETURN: '同步返回', CALLBACK: '设备回调', POLL: '平台轮询' }[v || ''] || v || '—')
 
 export const sourceLabel = (v?: string) =>
   ({ MANUAL: '手工录入', DEVICE_DECLARED: '驱动上报' }[v || ''] || v || '未标明')

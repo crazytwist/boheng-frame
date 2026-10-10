@@ -3,7 +3,10 @@ package cn.boheng.frame.module.device.controller.admin.action.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -84,6 +87,15 @@ public class DeviceActionSaveReqVO {
 
     @Schema(description = "最大轮询次数", example = "12")
     private Integer pollMaxTimes;
+
+    @Schema(description = "结果怎么拿: SYNC_RETURN 直接看响应/CALLBACK 等设备回调", example = "SYNC_RETURN")
+    @Pattern(regexp = "SYNC_RETURN|CALLBACK", message = "结果方式只能是直接看响应或等设备回调")
+    private String resultMode;
+
+    @Schema(description = "等回调的秒数，空则用设备默认", example = "120")
+    @Min(value = 1, message = "等回调时间至少 1 秒")
+    @Max(value = 600, message = "等回调时间不能超过 600 秒")
+    private Integer callbackTimeoutSec;
 
     @Schema(description = "启用状态: 0 启用/1 停用", example = "0")
     private Integer status;

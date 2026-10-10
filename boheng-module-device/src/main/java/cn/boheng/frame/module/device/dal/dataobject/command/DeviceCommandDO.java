@@ -147,6 +147,16 @@ public class DeviceCommandDO extends TenantBaseDO {
     private LocalDateTime finishedAt;
 
     /**
+     * 回调令牌的 SHA-256 摘要。只有等回调的命令才有，明文只出现在发给设备的回调地址里
+     */
+    private String callbackTokenHash;
+
+    /**
+     * 等回调的截止时刻
+     */
+    private LocalDateTime timeoutAt;
+
+    /**
      * 乐观锁版本
      */
     private Integer version;

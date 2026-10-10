@@ -1,11 +1,11 @@
 <template>
-  <Dialog v-model="visible" title="测试接口" width="720px">
+  <Dialog v-model="visible" title="动作调试" width="720px">
     <el-form v-loading="loading" label-width="110px">
-      <el-form-item label="动作">
+      <el-form-item label="设备动作">
         <span>{{ actionLine }}</span>
       </el-form-item>
       <el-form-item label="目标设备" required>
-        <el-select v-model="deviceId" placeholder="选择一台 HTTP 设备" class="!w-1/1" filterable>
+        <el-select v-model="deviceId" placeholder="请选择 HTTP 接入或仿真设备" class="!w-1/1" filterable>
           <el-option
             v-for="item in devices"
             :key="item.id"
@@ -21,7 +21,7 @@
             v-model="values[field.key]"
             clearable
             class="!w-1/1"
-            :placeholder="field.required ? '请选择' : '可选'"
+            :placeholder="field.required ? '请选择' : '选填'"
           >
             <el-option v-for="option in enumOptions(field)" :key="option" :label="option" :value="option" />
           </el-select>
@@ -32,30 +32,38 @@
             controls-position="right"
             class="!w-1/1"
           />
-          <el-input v-else v-model="values[field.key]" clearable :placeholder="field.unit ? `单位 ${field.unit}` : ''" />
+          <el-input v-else v-model="values[field.key]" clearable :placeholder="field.unit ? `单位：${field.unit}` : '请输入'" />
         </el-form-item>
       </template>
-      <el-form-item v-else label="参数">
+      <el-form-item v-else label="调用参数">
         <el-input
           v-model="rawParams"
           type="textarea"
           :rows="5"
-          placeholder='参数对象，如 {"wavelength":450}。发出去的格式由动作上的报文格式决定'
+          placeholder='JSON 对象，如 {"wavelength":450}；实际发送格式由动作的报文格式决定'
         />
       </el-form-item>
     </el-form>
+    <el-alert
+      v-if="sending"
+      type="info"
+      :closable="false"
+      show-icon
+      class="test-waiting"
+      :title="waitingText"
+    />
     <div v-if="result" class="test-result">
       <div class="test-result__head">
         <el-tag :type="statusType" effect="dark" size="small">HTTP {{ result.status ?? '—' }}</el-tag>
         <span v-if="result.contentType" class="test-result__meta">{{ result.contentType }}</span>
         <el-tag v-if="result.retriedLogin" type="warning" size="small">已重新登录</el-tag>
-        <span v-if="result.commandNo" class="test-result__meta">命令 {{ result.commandNo }}</span>
+        <span v-if="result.commandNo" class="test-result__meta">命令编号：{{ result.commandNo }}</span>
       </div>
       <pre class="test-result__body">{{ prettyBody }}</pre>
     </div>
     <template #footer>
       <el-button @click="visible = false">关 闭</el-button>
-      <el-button type="primary" :loading="sending" @click="send">测 试</el-button>
+      <el-button type="primary" :loading="sending" @click="send">发 送</el-button>
     </template>
   </Dialog>
 </template>
@@ -82,10 +90,34 @@ const formatNames: Record<string, string> = { JSON: 'JSON', FORM: '表单', TEXT
 const actionLine = computed(() => {
   if (!action.value) return ''
   const method = action.value.httpMethod || 'POST'
-  const path = action.value.requestPath || '未配置路径'
+  const path = action.value.requestPath || '未配置请求路径'
   const format = formatNames[action.value.bodyFormat || 'JSON'] || action.value.bodyFormat || 'JSON'
   return `${action.value.actionName}  ${method} ${path}  · ${format}`
 })
+
+const elapsed = ref(0)
+let elapsedTimer: ReturnType<typeof setInterval> | undefined
+
+const waitingText = computed(() => {
+  const head =
+    action.value?.resultMode === 'CALLBACK'
+      ? '设备已受理请求，正在等待设备回调执行结果'
+      : '正在等待设备返回结果，回调或轮询方式耗时较长'
+  return `${head}（已等待 ${elapsed.value} 秒），请勿关闭窗口`
+})
+
+const startElapsed = () => {
+  elapsed.value = 0
+  stopElapsed()
+  elapsedTimer = setInterval(() => elapsed.value++, 1000)
+}
+
+const stopElapsed = () => {
+  if (elapsedTimer) clearInterval(elapsedTimer)
+  elapsedTimer = undefined
+}
+
+onBeforeUnmount(stopElapsed)
 
 const statusType = computed(() => {
   const status = result.value?.status
@@ -109,8 +141,11 @@ const prettyBody = computed(() => {
   return body
 })
 
+const isSimulated = (item: DeviceVO) =>
+  item.connectionType === 'SIMULATED' || item.driverType === 'SIMULATED' || Boolean(item.simulationMode)
+
 const deviceOptionLabel = (item: DeviceVO) =>
-  `${item.deviceName || item.deviceCode} · ${item.endpointUrl || '未填地址'}`
+  `${item.deviceName || item.deviceCode} · ${isSimulated(item) ? '仿真' : item.endpointUrl || '未配置接入地址'}`
 
 const enumOptions = (field: SchemaField) => (Array.isArray(field.constraints) ? field.constraints.map(String) : [])
 
@@ -125,7 +160,7 @@ const resetValues = (schema: SchemaField[]) => {
   })
 }
 
-const open = async (id: number) => {
+const open = async (id: number, presetDeviceId?: number) => {
   visible.value = true
   loading.value = true
   sending.value = false
@@ -146,9 +181,12 @@ const open = async (id: number) => {
     devices.value = rows.filter(
       (item) =>
         item.deviceTypeCode === data?.deviceTypeCode &&
-        (item.connectionType === 'HTTP' || item.connectionType === 'NODE_RED')
+        (item.connectionType === 'HTTP' || item.connectionType === 'NODE_RED' || isSimulated(item) ||
+          item.id === presetDeviceId)
     )
-    if (devices.value.length === 1) {
+    if (presetDeviceId && devices.value.some((item) => item.id === presetDeviceId)) {
+      deviceId.value = presetDeviceId
+    } else if (devices.value.length === 1) {
       deviceId.value = devices.value[0].id
     }
   } finally {
@@ -159,7 +197,11 @@ const open = async (id: number) => {
 const buildParams = () => {
   if (!fields.value.length) {
     if (!rawParams.value.trim()) return undefined
-    JSON.parse(rawParams.value)
+    try {
+      JSON.parse(rawParams.value)
+    } catch {
+      throw new Error('调用参数不是合法的 JSON')
+    }
     return rawParams.value
   }
   const payload: Record<string, unknown> = {}
@@ -168,7 +210,7 @@ const buildParams = () => {
     const empty = value === undefined || value === null || value === ''
     if (empty) {
       if (field.required) {
-        throw new Error(`请填写${field.label}`)
+        throw new Error(`${field.label}不能为空`)
       }
       continue
     }
@@ -186,11 +228,12 @@ const send = async () => {
   try {
     paramsJson = buildParams()
   } catch (error: any) {
-    message.warning(error?.message || '参数不正确')
+    message.warning(error?.message || '调用参数不正确')
     return
   }
   sending.value = true
   result.value = undefined
+  startElapsed()
   try {
     result.value = await DeviceInfoApi.invoke({
       deviceId: deviceId.value,
@@ -199,6 +242,7 @@ const send = async () => {
     })
   } finally {
     sending.value = false
+    stopElapsed()
   }
 }
 
@@ -206,6 +250,9 @@ defineExpose({ open })
 </script>
 
 <style scoped>
+.test-waiting {
+  margin-bottom: 8px;
+}
 .test-result {
   margin-top: 4px;
   overflow: hidden;

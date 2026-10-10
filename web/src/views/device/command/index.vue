@@ -1,17 +1,17 @@
 <template>
   <ContentWrap title="命令记录">
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
-      <el-form-item label="命令号" prop="commandNo">
-        <el-input v-model="queryParams.commandNo" clearable class="!w-200px" @keyup.enter="handleQuery" />
+      <el-form-item label="命令编号" prop="commandNo">
+        <el-input v-model="queryParams.commandNo" placeholder="请输入命令编号" clearable class="!w-200px" @keyup.enter="handleQuery" />
       </el-form-item>
       <el-form-item label="设备编码" prop="deviceCode">
-        <el-input v-model="queryParams.deviceCode" clearable class="!w-180px" @keyup.enter="handleQuery" />
+        <el-input v-model="queryParams.deviceCode" placeholder="请输入设备编码" clearable class="!w-180px" @keyup.enter="handleQuery" />
       </el-form-item>
-      <el-form-item label="动作" prop="actionCode">
-        <el-input v-model="queryParams.actionCode" clearable class="!w-160px" @keyup.enter="handleQuery" />
+      <el-form-item label="动作编码" prop="actionCode">
+        <el-input v-model="queryParams.actionCode" placeholder="请输入动作编码" clearable class="!w-160px" @keyup.enter="handleQuery" />
       </el-form-item>
       <el-form-item label="状态" prop="status">
-        <el-select v-model="queryParams.status" clearable placeholder="全部" class="!w-140px">
+        <el-select v-model="queryParams.status" clearable placeholder="请选择状态" class="!w-140px">
           <el-option v-for="item in commandStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
@@ -24,9 +24,9 @@
 
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
-      <el-table-column label="命令号" align="center" prop="commandNo" :show-overflow-tooltip="true" />
-      <el-table-column label="设备" align="center" prop="deviceCode" :show-overflow-tooltip="true" />
-      <el-table-column label="动作" align="center" prop="actionCode" :show-overflow-tooltip="true" />
+      <el-table-column label="命令编号" align="center" prop="commandNo" :show-overflow-tooltip="true" />
+      <el-table-column label="设备编码" align="center" prop="deviceCode" :show-overflow-tooltip="true" />
+      <el-table-column label="动作编码" align="center" prop="actionCode" :show-overflow-tooltip="true" />
       <el-table-column label="状态" align="center" width="110">
         <template #default="scope">
           <el-tag :type="commandStatusType(scope.row.status)">{{ commandStatusLabel(scope.row.status) }}</el-tag>
@@ -34,10 +34,10 @@
       </el-table-column>
       <el-table-column label="解析规则" align="center" prop="codecCode" :show-overflow-tooltip="true" />
       <el-table-column label="操作人" align="center" prop="operator" width="120" />
-      <el-table-column label="时间" align="center" prop="createTime" width="180" :formatter="dateFormatter" />
+      <el-table-column label="创建时间" align="center" prop="createTime" width="180" :formatter="dateFormatter" />
       <el-table-column label="操作" align="center" width="90" fixed="right">
         <template #default="scope">
-          <el-button link type="primary" @click="openDetail(scope.row.id)">详细</el-button>
+          <el-button link type="primary" @click="openDetail(scope.row.id)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>

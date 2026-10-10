@@ -10,6 +10,9 @@ export interface DeviceCommandVO {
   dispatchMode?: string
   resultMode?: string
   status?: string
+  waitingFor?: string
+  sentAt?: Date
+  timeoutAt?: Date
   paramsJson?: string
   requestJson?: string
   responseJson?: string

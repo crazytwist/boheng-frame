@@ -1,20 +1,20 @@
 <template>
-  <ContentWrap title="参数集预设">
+  <ContentWrap title="参数集">
     <!-- 搜索 -->
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
       <el-form-item label="参数集编码" prop="paramSetCode">
-        <el-input v-model="queryParams.paramSetCode" placeholder="请输入编码" clearable @keyup.enter="handleQuery" class="!w-200px" />
+        <el-input v-model="queryParams.paramSetCode" placeholder="请输入参数集编码" clearable @keyup.enter="handleQuery" class="!w-200px" />
       </el-form-item>
-      <el-form-item label="名称" prop="paramSetName">
-        <el-input v-model="queryParams.paramSetName" placeholder="请输入名称" clearable @keyup.enter="handleQuery" class="!w-200px" />
+      <el-form-item label="参数集名称" prop="paramSetName">
+        <el-input v-model="queryParams.paramSetName" placeholder="请输入参数集名称" clearable @keyup.enter="handleQuery" class="!w-200px" />
       </el-form-item>
       <el-form-item label="设备类型" prop="deviceTypeCode">
-        <el-select v-model="queryParams.deviceTypeCode" placeholder="全部" clearable class="!w-180px">
+        <el-select v-model="queryParams.deviceTypeCode" placeholder="请选择设备类型" clearable class="!w-180px">
           <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="已验证" prop="validated">
-        <el-select v-model="queryParams.validated" placeholder="全部" clearable class="!w-140px">
+      <el-form-item label="验证状态" prop="validated">
+        <el-select v-model="queryParams.validated" placeholder="请选择验证状态" clearable class="!w-140px">
           <el-option label="已验证" :value="true" />
           <el-option label="未验证" :value="false" />
         </el-select>
@@ -33,13 +33,13 @@
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
       <el-table-column label="参数集编码" align="center" prop="paramSetCode" :show-overflow-tooltip="true" width="170" />
-      <el-table-column label="名称" align="center" prop="paramSetName" :show-overflow-tooltip="true" />
+      <el-table-column label="参数集名称" align="center" prop="paramSetName" :show-overflow-tooltip="true" />
       <el-table-column label="设备类型" align="center" width="150">
         <template #default="scope">{{ deviceTypeLabel(scope.row.deviceTypeCode) }}</template>
       </el-table-column>
       <el-table-column label="关联动作" align="center" prop="actionCode" width="150" />
       <el-table-column label="参数取值" align="center" prop="paramsJson" :show-overflow-tooltip="true" />
-      <el-table-column label="验证" align="center" width="100">
+      <el-table-column label="验证状态" align="center" width="100">
         <template #default="scope">
           <el-tag :type="scope.row.validated ? 'success' : 'warning'">{{ scope.row.validated ? '已验证' : '未验证' }}</el-tag>
         </template>
@@ -52,7 +52,7 @@
       <el-table-column label="操作" align="center" width="280" fixed="right">
         <template #default="scope">
           <el-button v-hasPermi="['device:param-set:query']" link type="primary" @click="openDetail(scope.row.id)">
-            详细
+            详情
           </el-button>
           <el-button
             v-hasPermi="['device:param-set:update']"
@@ -157,7 +157,7 @@ const handleToggleValidated = async (row: DeviceParamSetVO) => {
     return
   }
   await DeviceParamSetApi.updateValidated(row.id!, next)
-  message.success(next ? '已标记为验证通过' : '已取消验证')
+  message.success(next ? '已标记为已验证' : '已取消验证')
   getList()
 }
 

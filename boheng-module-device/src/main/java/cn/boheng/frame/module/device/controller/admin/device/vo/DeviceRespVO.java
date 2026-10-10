@@ -91,6 +91,12 @@ public class DeviceRespVO {
     @Schema(description = "仪器能否主动推送结果", example = "false")
     private Boolean callbackEnabled;
 
+    @Schema(description = "设备回调平台用的地址，空则用平台默认地址")
+    private String callbackUrl;
+
+    @Schema(description = "默认等回调的秒数", example = "300")
+    private Integer callbackTimeoutSec;
+
     @Schema(description = "默认轮询间隔(秒)", example = "5")
     private Integer pollIntervalSec;
 

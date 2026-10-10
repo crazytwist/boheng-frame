@@ -3,7 +3,7 @@
     <!-- 搜索 -->
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
       <el-form-item label="设备类型" prop="deviceTypeCode">
-        <el-select v-model="queryParams.deviceTypeCode" placeholder="全部" clearable class="!w-180px">
+        <el-select v-model="queryParams.deviceTypeCode" placeholder="请选择设备类型" clearable class="!w-180px">
           <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
@@ -14,7 +14,7 @@
         <el-input v-model="queryParams.actionName" placeholder="请输入动作名称" clearable @keyup.enter="handleQuery" class="!w-200px" />
       </el-form-item>
       <el-form-item label="状态" prop="status">
-        <el-select v-model="queryParams.status" placeholder="全部" clearable class="!w-140px">
+        <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-140px">
           <el-option label="启用" :value="0" />
           <el-option label="停用" :value="1" />
         </el-select>
@@ -39,7 +39,7 @@
       <el-table-column label="动作名称" align="center" prop="actionName" :show-overflow-tooltip="true" />
       <el-table-column label="SiLA 标准特性" align="center" prop="standardFeature" :show-overflow-tooltip="true" />
       <el-table-column label="厂商映射" align="center" prop="vendorRef" :show-overflow-tooltip="true" />
-      <el-table-column label="接口路径" align="center" :show-overflow-tooltip="true">
+      <el-table-column label="请求路径" align="center" :show-overflow-tooltip="true">
         <template #default="scope">
           <span v-if="scope.row.requestPath">{{ scope.row.httpMethod || 'POST' }} {{ scope.row.requestPath }}</span>
           <span v-else>—</span>
@@ -56,13 +56,16 @@
           <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="280" fixed="right">
+      <el-table-column label="操作" align="center" width="320" fixed="right">
         <template #default="scope">
-          <el-button v-hasPermi="['device:info:update']" link type="primary" @click="openTest(scope.row.id)">
-            测试
+          <el-button v-hasPermi="['device:info:invoke']" link type="primary" @click="openTest(scope.row.id)">
+            调试
+          </el-button>
+          <el-button v-hasPermi="['device:simulate:query']" link type="primary" @click="openSimulate(scope.row.id)">
+            仿真配置
           </el-button>
           <el-button v-hasPermi="['device:action:query']" link type="primary" @click="openDetail(scope.row.id)">
-            详细
+            详情
           </el-button>
           <el-button v-hasPermi="['device:action:update']" link type="primary" @click="openForm('update', scope.row.id)">
             编辑
@@ -86,6 +89,7 @@
   <ActionForm ref="formRef" @success="getList" />
   <ActionDetailDrawer ref="detailRef" />
   <ActionTestDialog ref="testRef" />
+  <ActionSimulateDialog ref="simulateRef" @test="openTest" />
 </template>
 
 <script lang="ts" setup>
@@ -93,6 +97,7 @@ import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import ActionForm from './ActionForm.vue'
 import ActionDetailDrawer from './ActionDetailDrawer.vue'
 import ActionTestDialog from './ActionTestDialog.vue'
+import ActionSimulateDialog from './ActionSimulateDialog.vue'
 
 defineOptions({ name: 'DeviceAction' })
 
@@ -154,14 +159,18 @@ const resetQuery = () => {
 const formRef = ref()
 const detailRef = ref()
 const testRef = ref()
+const simulateRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 const openDetail = (id: number) => {
   detailRef.value.open(id)
 }
-const openTest = (id: number) => {
-  testRef.value.open(id)
+const openTest = (id: number, deviceId?: number) => {
+  testRef.value.open(id, deviceId)
+}
+const openSimulate = (id: number) => {
+  simulateRef.value.open(id)
 }
 
 const handleDelete = async (id: number) => {

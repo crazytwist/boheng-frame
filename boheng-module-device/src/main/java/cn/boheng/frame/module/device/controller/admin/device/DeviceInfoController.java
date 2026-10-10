@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.device.controller.admin.device;
 
+import cn.boheng.frame.framework.apilog.core.annotation.ApiAccessLog;
 import cn.boheng.frame.framework.common.pojo.CommonResult;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
@@ -51,6 +52,7 @@ public class DeviceInfoController {
     @PostMapping("/create")
     @Operation(summary = "创建设备台账")
     @PreAuthorize("@ss.hasPermission('device:info:create')")
+    @ApiAccessLog(sanitizeKeys = "loginPassword")
     public CommonResult<Long> createDevice(@Valid @RequestBody DeviceSaveReqVO createReqVO) {
         return success(deviceInfoService.createDevice(createReqVO));
     }
@@ -58,6 +60,7 @@ public class DeviceInfoController {
     @PutMapping("/update")
     @Operation(summary = "更新设备台账")
     @PreAuthorize("@ss.hasPermission('device:info:update')")
+    @ApiAccessLog(sanitizeKeys = "loginPassword")
     public CommonResult<Boolean> updateDevice(@Valid @RequestBody DeviceSaveReqVO updateReqVO) {
         deviceInfoService.updateDevice(updateReqVO);
         return success(true);
@@ -82,8 +85,8 @@ public class DeviceInfoController {
     }
 
     @PostMapping("/invoke")
-    @Operation(summary = "调用设备 HTTP 动作。已配置登录时先登录，token 失效后重新登录再试一次")
-    @PreAuthorize("@ss.hasPermission('device:info:update')")
+    @Operation(summary = "调用设备动作", description = "已配置登录时先登录，令牌失效后重新登录再试一次；动作要求回调时等待设备回调")
+    @PreAuthorize("@ss.hasPermission('device:info:invoke')")
     public CommonResult<DeviceInvokeRespVO> invoke(@Valid @RequestBody DeviceInvokeReqVO reqVO) {
         return success(deviceHttpService.invoke(reqVO));
     }

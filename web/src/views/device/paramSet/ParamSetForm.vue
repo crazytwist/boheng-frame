@@ -1,23 +1,21 @@
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle" width="720px">
     <el-form ref="formRef" v-loading="formLoading" :model="formData" :rules="formRules" label-width="110px">
+      <el-divider content-position="left">基本信息</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="参数集编码" prop="paramSetCode">
-            <el-input v-model="formData.paramSetCode" maxlength="64" placeholder="如 PS-ABSORB-450" />
+            <el-input v-model="formData.paramSetCode" maxlength="64" placeholder="请输入参数集编码，如 PS-ABSORB-450" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="参数集名称" prop="paramSetName">
-            <el-input v-model="formData.paramSetName" maxlength="128" placeholder="如 吸光度 450nm 标准读板" />
+            <el-input v-model="formData.paramSetName" maxlength="128" placeholder="请输入参数集名称" />
           </el-form-item>
         </el-col>
-      </el-row>
-
-      <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="设备类型" prop="deviceTypeCode">
-            <el-select v-model="formData.deviceTypeCode" placeholder="请选择" class="!w-1/1" @change="handleTypeChange">
+            <el-select v-model="formData.deviceTypeCode" placeholder="请选择设备类型" class="!w-1/1" @change="handleTypeChange">
               <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
@@ -26,7 +24,7 @@
           <el-form-item label="关联动作" prop="actionCode">
             <el-select
               v-model="formData.actionCode"
-              placeholder="请先选设备类型"
+              :placeholder="formData.deviceTypeCode ? '请选择关联动作' : '请先选择设备类型'"
               clearable
               filterable
               allow-create
@@ -37,29 +35,27 @@
             </el-select>
           </el-form-item>
         </el-col>
-      </el-row>
-
-      <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="状态">
-            <el-select v-model="formData.status" placeholder="请选择" class="!w-1/1">
-              <el-option label="启用" :value="0" />
-              <el-option label="停用" :value="1" />
-            </el-select>
+            <el-radio-group v-model="formData.status">
+              <el-radio :value="0">启用</el-radio>
+              <el-radio :value="1">停用</el-radio>
+            </el-radio-group>
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="已验证">
-            <el-switch v-model="formData.validated" active-text="已通过验证" inactive-text="未验证" />
+          <el-form-item label="验证状态">
+            <el-switch v-model="formData.validated" active-text="已验证" inactive-text="未验证" />
           </el-form-item>
         </el-col>
       </el-row>
 
+      <el-divider content-position="left">参数配置</el-divider>
       <el-form-item label="参数取值" prop="paramsJson">
         <div class="json-editor-wrap">
           <el-input v-model="formData.paramsJson" type="textarea" :rows="8" :placeholder="paramsPlaceholder" />
           <div class="json-editor-tip">
-            <span>需与动作的「参数模式」对齐；只有已验证的参数集才能被用于发起命令</span>
+            <span>须与关联动作的参数定义一致；仅已验证的参数集可用于下发命令</span>
             <el-button link type="primary" @click="formatParamsJson">格式化</el-button>
           </div>
         </div>
@@ -178,7 +174,7 @@ const submitForm = async () => {
   try {
     JSON.parse(formData.value.paramsJson!)
   } catch {
-    message.error('参数取值不是合法的 JSON，请检查或点击「格式化」')
+    message.error('参数取值不是合法的 JSON，请检查后重试')
     return
   }
   formLoading.value = true

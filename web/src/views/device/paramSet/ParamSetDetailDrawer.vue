@@ -8,11 +8,11 @@
 
     <template v-if="paramSet">
       <section class="cat-block">
-        <div class="cat-kicker">用途</div>
+        <div class="cat-kicker">基本信息</div>
         <dl class="cat-facts">
           <dt>设备类型</dt>
           <dd>{{ deviceTypeLabel(paramSet.deviceTypeCode) }}</dd>
-          <dt>动作</dt>
+          <dt>关联动作</dt>
           <dd>{{ action?.actionName || paramSet.actionCode || '—' }}</dd>
           <dt>状态</dt>
           <dd>{{ paramSet.status === 1 ? '停用' : '启用' }}</dd>
@@ -20,7 +20,7 @@
       </section>
 
       <section v-if="rows.length" class="cat-block">
-        <div class="cat-kicker">取值</div>
+        <div class="cat-kicker">参数取值</div>
         <div v-for="row in rows" :key="row.key" class="param-card">
           <div class="param-name">{{ row.label }}</div>
           <div class="param-meta">
@@ -30,14 +30,14 @@
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">验证</div>
+        <div class="cat-kicker">验证信息</div>
         <dl class="cat-facts">
-          <dt>状态</dt>
+          <dt>验证状态</dt>
           <dd>{{ paramSet.validated ? '已验证' : '未验证' }}</dd>
           <template v-if="paramSet.validated">
             <dt>验证人</dt>
             <dd>{{ paramSet.validatedBy || '—' }}</dd>
-            <dt>时间</dt>
+            <dt>验证时间</dt>
             <dd>{{ paramSet.validatedTime ? formatDate(paramSet.validatedTime) : '—' }}</dd>
           </template>
         </dl>

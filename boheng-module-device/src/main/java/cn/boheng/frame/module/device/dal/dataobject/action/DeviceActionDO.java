@@ -1,7 +1,9 @@
 package cn.boheng.frame.module.device.dal.dataobject.action;
 
 import cn.boheng.frame.framework.tenant.core.db.TenantBaseDO;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -119,6 +121,17 @@ public class DeviceActionDO extends TenantBaseDO {
      * 最大轮询次数，超限判超时；为空走全局默认。
      */
     private Integer pollMaxTimes;
+
+    /**
+     * 结果怎么拿: SYNC_RETURN 直接看响应 / CALLBACK 等设备回调
+     */
+    private String resultMode;
+
+    /**
+     * 等回调的秒数。为空时用设备台账上的默认值，清空也要写回库
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Integer callbackTimeoutSec;
 
     /**
      * 启用状态: 0 启用 / 1 停用

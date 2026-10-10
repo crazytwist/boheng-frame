@@ -10,15 +10,20 @@ import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
 import cn.boheng.frame.module.device.dal.dataobject.paramset.DeviceParamSetDO;
 import cn.boheng.frame.module.device.dal.dataobject.property.DevicePropertyDO;
+import cn.boheng.frame.module.device.dal.dataobject.simulate.DeviceSimulateProfileDO;
 import cn.boheng.frame.module.device.dal.mysql.action.DeviceActionMapper;
+import cn.boheng.frame.module.device.dal.mysql.command.DeviceCommandMapper;
 import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
 import cn.boheng.frame.module.device.dal.mysql.paramset.DeviceParamSetMapper;
 import cn.boheng.frame.module.device.dal.mysql.property.DevicePropertyMapper;
+import cn.boheng.frame.module.device.dal.mysql.simulate.DeviceSimulateProfileMapper;
 import cn.boheng.frame.module.device.service.http.DeviceLoginTokenCache;
+import cn.boheng.frame.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.google.common.annotations.VisibleForTesting;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
@@ -68,6 +73,16 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
     @Resource
     private DeviceLoginTokenCache deviceLoginTokenCache;
     /**
+     * 仿真配置表，设备删除或改编码时同步
+     */
+    @Resource
+    private DeviceSimulateProfileMapper deviceSimulateProfileMapper;
+    /**
+     * 命令表，删除前确认没有执行中的命令
+     */
+    @Resource
+    private DeviceCommandMapper deviceCommandMapper;
+    /**
      * 创建设备台账
      */
 
@@ -86,9 +101,10 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      */
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateDevice(DeviceSaveReqVO updateReqVO) {
         // 校验存在
-        validateDeviceExists(updateReqVO.getId());
+        DeviceInfoDO old = validateDeviceExists(updateReqVO.getId());
         // 校验设备编码唯一性
         validateDeviceCodeUnique(updateReqVO.getId(), updateReqVO.getDeviceCode());
 
@@ -98,18 +114,24 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
             updateObj.setLoginPassword(null);
         }
         deviceInfoMapper.updateById(updateObj);
+        if (!StrUtil.equals(old.getDeviceCode(), updateReqVO.getDeviceCode())) {
+            DeviceSimulateProfileDO profile = new DeviceSimulateProfileDO();
+            profile.setDeviceCode(updateReqVO.getDeviceCode());
+            deviceSimulateProfileMapper.update(profile, new LambdaQueryWrapperX<DeviceSimulateProfileDO>().eq(DeviceSimulateProfileDO::getDeviceId, old.getId()));
+        }
         deviceLoginTokenCache.evict(updateReqVO.getId());
     }
     /**
-     * 删除设备台账，并清掉缓存的登录令牌
+     * 删除设备台账，连带删除它的仿真配置，并清掉缓存的登录令牌。有执行中的命令时不允许删除
      */
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteDevice(Long id) {
-        // 校验存在
-        validateDeviceExists(id);
-        // 删除
+        DeviceInfoDO device = validateDeviceExists(id);
+        validateNoRunningCommand(device);
         deviceInfoMapper.deleteById(id);
+        deviceSimulateProfileMapper.delete(DeviceSimulateProfileDO::getDeviceId, id);
         deviceLoginTokenCache.evict(id);
     }
     /**
@@ -117,12 +139,24 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      */
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteDeviceList(List<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return;
         }
+        deviceInfoMapper.selectList(DeviceInfoDO::getId, ids).forEach(this::validateNoRunningCommand);
         deviceInfoMapper.deleteBatch(DeviceInfoDO::getId, ids);
+        deviceSimulateProfileMapper.deleteBatch(DeviceSimulateProfileDO::getDeviceId, ids);
         ids.forEach(deviceLoginTokenCache::evict);
+    }
+
+    /**
+     * 校验设备上没有执行中的命令
+     */
+    private void validateNoRunningCommand(DeviceInfoDO device) {
+        if (deviceCommandMapper.countRunning(device.getId()) > 0) {
+            throw exception(DEVICE_DELETE_RUNNING, device.getDeviceCode());
+        }
     }
     /**
      * 获得设备台账

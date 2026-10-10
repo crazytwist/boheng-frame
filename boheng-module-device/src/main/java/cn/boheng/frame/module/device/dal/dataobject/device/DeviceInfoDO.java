@@ -1,7 +1,9 @@
 package cn.boheng.frame.module.device.dal.dataobject.device;
 
 import cn.boheng.frame.framework.tenant.core.db.TenantBaseDO;
+import cn.boheng.frame.module.device.framework.mybatis.DeviceSecretTypeHandler;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -17,7 +19,7 @@ import java.time.LocalDateTime;
  *
  * @author yinan
  */
-@TableName("device_info")
+@TableName(value = "device_info", autoResultMap = true)
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
@@ -103,8 +105,9 @@ public class DeviceInfoDO extends TenantBaseDO {
     private String loginUsername;
 
     /**
-     * 登录密码。接口响应里不回传。
+     * 登录密码。库里存密文，接口响应里不回传。
      */
+    @TableField(typeHandler = DeviceSecretTypeHandler.class)
     private String loginPassword;
 
     /**
@@ -146,6 +149,16 @@ public class DeviceInfoDO extends TenantBaseDO {
      * 仪器能否主动推送结果(决定 result_mode 用 CALLBACK 还是 POLL)
      */
     private Boolean callbackEnabled;
+
+    /**
+     * 设备回调平台用的地址。空则用平台默认地址；可写 ${commandNo}、${callbackToken} 占位符
+     */
+    private String callbackUrl;
+
+    /**
+     * 默认等回调的秒数。动作上没填时用它
+     */
+    private Integer callbackTimeoutSec;
 
     /**
      * 默认轮询间隔(秒)，POLL 方式与遥测批量刷新共用

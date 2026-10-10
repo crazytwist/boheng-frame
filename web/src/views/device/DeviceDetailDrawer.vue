@@ -12,11 +12,11 @@
 
     <template v-if="device">
       <section class="cat-block">
-        <div class="cat-kicker">身份</div>
+        <div class="cat-kicker">基本信息</div>
         <dl class="cat-facts">
-          <dt>编码</dt>
+          <dt>设备编码</dt>
           <dd>{{ device.deviceCode }}</dd>
-          <dt>类型</dt>
+          <dt>设备类型</dt>
           <dd>{{ deviceTypeLabel(device.deviceTypeCode) }}</dd>
           <template v-if="device.vendor">
             <dt>厂商</dt>
@@ -28,7 +28,7 @@
           </template>
           <dt>序列号</dt>
           <dd>{{ device.serialNo || '未登记' }}</dd>
-          <dt>驱动</dt>
+          <dt>驱动类型</dt>
           <dd>{{ device.driverType || '未指定' }}</dd>
           <dt>能力来源</dt>
           <dd>{{ sourceLabel(device.capabilitySource) }}</dd>
@@ -36,12 +36,12 @@
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">接入</div>
+        <div class="cat-kicker">接入配置</div>
         <dl class="cat-facts">
-          <dt>方式</dt>
+          <dt>接入方式</dt>
           <dd>{{ connectionLabel(device.connectionType) }}</dd>
           <template v-if="device.connectionType === 'HTTP' || device.connectionType === 'NODE_RED'">
-            <dt>地址</dt>
+            <dt>接入地址</dt>
             <dd>{{ device.endpointUrl || '未填写' }}</dd>
           </template>
           <template v-if="device.connectionType === 'MQTT'">
@@ -49,32 +49,48 @@
             <dd>{{ device.mqttTopicPrefix || '未填写' }}</dd>
           </template>
           <template v-if="device.loginPath">
-            <dt>登录</dt>
+            <dt>登录接口</dt>
             <dd>{{ device.loginMethod || 'POST' }} {{ device.loginPath }}</dd>
-            <dt>账号</dt>
+            <dt>登录账号</dt>
             <dd>{{ device.loginUsername || '未填写' }}</dd>
           </template>
         </dl>
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">占用</div>
+        <div class="cat-kicker">结果获取</div>
         <dl class="cat-facts">
-          <dt>状态</dt>
+          <dt>结果回调</dt>
+          <dd>{{ device.callbackEnabled ? '支持' : '不支持' }}</dd>
+          <template v-if="device.callbackEnabled">
+            <dt>回调地址</dt>
+            <dd>{{ device.callbackUrl || '平台默认地址' }}</dd>
+            <dt>回调超时</dt>
+            <dd>{{ device.callbackTimeoutSec ?? 300 }} 秒</dd>
+          </template>
+          <dt>轮询间隔</dt>
+          <dd>{{ device.pollIntervalSec ?? 5 }} 秒</dd>
+        </dl>
+      </section>
+
+      <section class="cat-block">
+        <div class="cat-kicker">占用状态</div>
+        <dl class="cat-facts">
+          <dt>当前状态</dt>
           <dd>{{ occupancyStatus }}</dd>
           <template v-if="occupied">
             <dt>持有方</dt>
             <dd>{{ device.lockHolder || '未记录' }}</dd>
             <dt>锁类型</dt>
             <dd>{{ lockTypeLabel(device.lockType) || '未标明' }}</dd>
-            <dt>原因</dt>
+            <dt>锁定原因</dt>
             <dd>{{ device.lockReason || '未填写' }}</dd>
           </template>
         </dl>
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">动作</div>
+        <div class="cat-kicker">设备动作</div>
         <dl v-if="portrait?.actions?.length" class="cat-facts">
           <template v-for="item in portrait.actions" :key="item.code">
             <dt :class="{ 'is-off': item.active === false }">{{ item.title }}</dt>
@@ -84,7 +100,7 @@
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">遥测</div>
+        <div class="cat-kicker">设备属性</div>
         <dl v-if="portrait?.properties?.length" class="cat-facts">
           <template v-for="item in portrait.properties" :key="item.code">
             <dt :class="{ 'is-off': item.active === false }">{{ item.title }}</dt>
@@ -92,7 +108,7 @@
           </template>
         </dl>
         <template v-if="telemetry.length">
-          <div class="cat-kicker snapshot-kicker">快照</div>
+          <div class="cat-kicker snapshot-kicker">最新遥测</div>
           <dl class="cat-facts">
             <template v-for="item in telemetry" :key="item.key">
               <dt>{{ item.key }}</dt>

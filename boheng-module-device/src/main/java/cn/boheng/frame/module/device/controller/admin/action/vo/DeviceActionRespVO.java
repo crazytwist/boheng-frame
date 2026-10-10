@@ -68,6 +68,12 @@ public class DeviceActionRespVO {
     @Schema(description = "最大轮询次数", example = "12")
     private Integer pollMaxTimes;
 
+    @Schema(description = "结果怎么拿: SYNC_RETURN 直接看响应/CALLBACK 等设备回调", example = "SYNC_RETURN")
+    private String resultMode;
+
+    @Schema(description = "等回调的秒数，空则用设备默认", example = "120")
+    private Integer callbackTimeoutSec;
+
     @Schema(description = "启用状态: 0 启用/1 停用", example = "0")
     private Integer status;
 

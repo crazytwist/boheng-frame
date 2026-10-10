@@ -20,6 +20,8 @@ export interface DeviceActionVO {
   codecCode?: string
   pollDoneExpr?: string
   pollMaxTimes?: number
+  resultMode?: 'SYNC_RETURN' | 'CALLBACK'
+  callbackTimeoutSec?: number
   status?: number
   createTime?: Date
 }

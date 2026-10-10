@@ -1,5 +1,5 @@
 <template>
-  <CategoryDrawer v-model="visible" :loading="loading" kicker="命令" :title="command?.commandNo" size="560px">
+  <CategoryDrawer v-model="visible" :loading="loading" kicker="命令记录" :title="command?.commandNo" size="560px">
     <template #tags>
       <el-tag v-if="command" :type="commandStatusType(command.status)" size="small">
         {{ commandStatusLabel(command.status) }}
@@ -7,14 +7,24 @@
     </template>
     <template v-if="command">
       <section class="cat-block">
-        <div class="cat-kicker">调用</div>
+        <div class="cat-kicker">基本信息</div>
         <dl class="cat-facts">
-          <dt>设备</dt>
+          <dt>设备编码</dt>
           <dd>{{ command.deviceCode || '—' }}</dd>
-          <dt>动作</dt>
+          <dt>动作编码</dt>
           <dd>{{ command.actionCode || '—' }}</dd>
-          <dt>来源</dt>
+          <dt>命令来源</dt>
           <dd>{{ command.sourceType || '—' }}</dd>
+          <dt>结果获取方式</dt>
+          <dd>{{ resultModeLabel(command.resultMode) }}</dd>
+          <template v-if="command.resultMode === 'CALLBACK'">
+            <dt>下发时间</dt>
+            <dd>{{ formatDate(command.sentAt) || '—' }}</dd>
+            <dt>回调截止时间</dt>
+            <dd>{{ formatDate(command.timeoutAt) || '—' }}</dd>
+            <dt>回调时间</dt>
+            <dd>{{ command.status === 'SUCCEEDED' || command.status === 'FAILED' ? formatDate(command.finishedAt) : '—' }}</dd>
+          </template>
           <dt>解析规则</dt>
           <dd>{{ command.codecCode || '—' }}</dd>
           <dt>操作人</dt>
@@ -22,19 +32,19 @@
         </dl>
       </section>
       <section class="cat-block">
-        <div class="cat-kicker">参数快照</div>
+        <div class="cat-kicker">调用参数</div>
         <pre class="raw">{{ pretty(command.paramsJson) }}</pre>
       </section>
       <section v-if="command.errorMsg" class="cat-block">
-        <div class="cat-kicker">说明</div>
+        <div class="cat-kicker">错误信息</div>
         <pre class="raw">{{ command.errorMsg }}</pre>
       </section>
       <section class="cat-block">
-        <div class="cat-kicker">请求</div>
+        <div class="cat-kicker">{{ command.resultMode === 'CALLBACK' ? '请求报文与受理应答' : '请求报文' }}</div>
         <pre class="raw">{{ pretty(command.requestJson) }}</pre>
       </section>
       <section class="cat-block">
-        <div class="cat-kicker">响应 {{ command.rawFormat || '' }}</div>
+        <div class="cat-kicker">{{ command.resultMode === 'CALLBACK' ? '回调报文' : '响应报文' }} {{ command.rawFormat || '' }}</div>
         <pre class="raw">{{ pretty(command.rawBody || command.responseJson) }}</pre>
       </section>
     </template>
@@ -44,7 +54,8 @@
 <script lang="ts" setup>
 import { DeviceCommandApi, DeviceCommandVO } from '@/api/device/command'
 import CategoryDrawer from '../components/CategoryDrawer.vue'
-import { commandStatusLabel, commandStatusType } from '../labels'
+import { formatDate } from '@/utils/formatTime'
+import { commandStatusLabel, commandStatusType, resultModeLabel } from '../labels'
 
 const visible = ref(false)
 const loading = ref(false)

@@ -16,16 +16,16 @@
 
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
-      <el-table-column label="设备" align="center" prop="deviceCode" :show-overflow-tooltip="true" />
-      <el-table-column label="命令" align="center" prop="commandId" :show-overflow-tooltip="true" />
-      <el-table-column label="模式" align="center" prop="measureMode" :show-overflow-tooltip="true" />
+      <el-table-column label="设备编码" align="center" prop="deviceCode" :show-overflow-tooltip="true" />
+      <el-table-column label="命令编号" align="center" prop="commandId" :show-overflow-tooltip="true" />
+      <el-table-column label="检测模式" align="center" prop="measureMode" :show-overflow-tooltip="true" />
       <el-table-column label="波长" align="center" width="100">
         <template #default="scope">{{ scope.row.wavelengthNm ? `${scope.row.wavelengthNm} nm` : '—' }}</template>
       </el-table-column>
       <el-table-column label="读数时间" align="center" prop="readTime" width="180" :formatter="dateFormatter" />
       <el-table-column label="操作" align="center" width="90" fixed="right">
         <template #default="scope">
-          <el-button link type="primary" @click="openDetail(scope.row.id)">详细</el-button>
+          <el-button link type="primary" @click="openDetail(scope.row.id)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>

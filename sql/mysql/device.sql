@@ -78,6 +78,8 @@ CREATE TABLE `device_info` (
     `token_ttl_sec`       int          NULL COMMENT 'token 缓存秒数，到期后重新登录',
     `mqtt_topic_prefix`   varchar(128) NULL COMMENT 'MQTT 主题前缀(如 device/{code}/)，直连 MQTT 时使用',
     `callback_enabled`    bit(1)       NOT NULL DEFAULT b'0' COMMENT '仪器能否主动推送结果(决定 result_mode 用 CALLBACK 还是 POLL)',
+    `callback_url`        varchar(512) NULL COMMENT '设备回调平台用的地址。空则用平台默认地址；可写 ${commandNo}、${callbackToken}、${deviceCode} 占位符',
+    `callback_timeout_sec` int         NULL COMMENT '默认等回调的秒数(1-600)。动作上没填时用它，都没填按 300',
     `poll_interval_sec`   int          NULL COMMENT '默认轮询间隔(秒)，POLL 方式与遥测批量刷新共用',
     -- ★★ 忙闲校验与并发策略（v4 新增；三类仪器行为不同，必须可配，禁止写死）------
     `busy_check_policy`   varchar(32)  NOT NULL DEFAULT 'AUTO' COMMENT '★忙闲校验总开关: AUTO 按动作 need_busy_check 决定/ALWAYS 下发前强制预检/NEVER 从不预检(仪器不报空闲状态时用此项)',
@@ -136,6 +138,8 @@ CREATE TABLE `device_action` (
     `codec_code`           varchar(64)   NULL COMMENT '响应解析规则编码(device_codec.codec_code；调用成功后把响应解析成测量)',
     `poll_done_expr`       varchar(255)  NULL COMMENT '轮询完成判定表达式(如 $.status == "DONE"；result_mode=POLL 时用)',
     `poll_max_times`       int           NULL COMMENT '最大轮询次数(超限判 TIMED_OUT；为空则走全局默认)',
+    `result_mode`          varchar(16)   NOT NULL DEFAULT 'SYNC_RETURN' COMMENT '结果怎么拿: SYNC_RETURN 直接看响应/CALLBACK 等设备回调',
+    `callback_timeout_sec` int           NULL COMMENT '等回调的秒数(1-600)；为空用设备台账上的默认值',
     `status`               tinyint       NOT NULL DEFAULT 0 COMMENT '启用状态: 0 启用/1 停用',
     -- 框架字段 ----------------------------------------------------------------
     `creator`              varchar(64)   NULL DEFAULT '' COMMENT '创建者',
@@ -430,6 +434,34 @@ CREATE TABLE `device_analysis_result` (
     KEY `idx_measurement` (`measurement_id`),
     KEY `idx_rule` (`rule_code`, `rule_version`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '设备分析结论(L2 analytic；带规则版本可重判)';
+
+-- -----------------------------------------------------------------------------
+-- 11. device_simulate_profile  仿真 HTTP 配置（同步 / 异步等待 / 轮询）
+-- -----------------------------------------------------------------------------
+CREATE TABLE `device_simulate_profile` (
+    `id`               bigint        NOT NULL COMMENT '主键(雪花)',
+    `device_id`        bigint        NOT NULL COMMENT '设备编号(device_info.id)',
+    `device_code`      varchar(64)   NOT NULL COMMENT '设备编码(冗余，仿真 HTTP 按编码找配置)',
+    `action_code`      varchar(64)   NOT NULL COMMENT '动作编码',
+    `return_mode`      varchar(16)   NOT NULL DEFAULT 'SYNC' COMMENT '回收方式: SYNC 同步返回/CALLBACK 受理后由仿真设备回调/POLL 受理后由服务端轮询',
+    `async_wait_ms`    int           NOT NULL DEFAULT 0 COMMENT '等待毫秒。CALLBACK=受理后多久回调，最大 600000；POLL=结果就绪前的时长，最大 120000',
+    `poll_interval_ms` int           NOT NULL DEFAULT 1000 COMMENT 'POLL 两次轮询之间的等待毫秒',
+    `poll_max_times`   int           NOT NULL DEFAULT 30 COMMENT 'POLL 最大轮询次数，超限判超时',
+    `request_template` text          NULL COMMENT '请求报文模板，支持 ${参数名}。空则把调用参数原样发出',
+    `response_body`    text          NULL COMMENT '最终返回报文。支持 ${参数名} 与 ${jobId}',
+    `ack_body`         text          NULL COMMENT 'POLL 首次受理报文。空则 {"status":"ACCEPTED"}',
+    `pending_body`     text          NULL COMMENT 'POLL 未完成报文。空则 {"status":"RUNNING"}',
+    `status`           tinyint       NOT NULL DEFAULT 0 COMMENT '启用状态: 0 启用/1 停用',
+    `creator`          varchar(64)   NULL DEFAULT '' COMMENT '创建者',
+    `create_time`      datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updater`          varchar(64)   NULL DEFAULT '' COMMENT '更新者',
+    `update_time`      datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`          bit(1)        NOT NULL DEFAULT b'0' COMMENT '是否删除',
+    `tenant_id`        bigint        NOT NULL DEFAULT 0 COMMENT '租户编号',
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_device_action` (`device_id`, `action_code`),
+    KEY `idx_device_code` (`device_code`, `action_code`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '仿真 HTTP 配置(请求/响应报文与同步、异步等待、轮询)';
 
 -- =============================================================================
 -- 附：配套 DDL 变更（对既有表，需与 WMS TODO G 区联动；本期一并列出，单独脚本执行）

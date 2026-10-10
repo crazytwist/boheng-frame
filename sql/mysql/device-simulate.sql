@@ -1,0 +1,25 @@
+-- 仿真 HTTP 配置。已有库执行本脚本；全新库用 sql/mysql/device.sql 即可。
+CREATE TABLE IF NOT EXISTS `device_simulate_profile` (
+    `id`               bigint        NOT NULL COMMENT '主键(雪花)',
+    `device_id`        bigint        NOT NULL COMMENT '设备编号(device_info.id)',
+    `device_code`      varchar(64)   NOT NULL COMMENT '设备编码(冗余，仿真 HTTP 按编码找配置)',
+    `action_code`      varchar(64)   NOT NULL COMMENT '动作编码',
+    `return_mode`      varchar(16)   NOT NULL DEFAULT 'SYNC' COMMENT '回收方式: SYNC 同步返回/CALLBACK 受理后由仿真设备回调/POLL 受理后由服务端轮询',
+    `async_wait_ms`    int           NOT NULL DEFAULT 0 COMMENT '等待毫秒。CALLBACK=受理后多久回调，最大 600000；POLL=结果就绪前的时长，最大 120000',
+    `poll_interval_ms` int           NOT NULL DEFAULT 1000 COMMENT 'POLL 两次轮询之间的等待毫秒',
+    `poll_max_times`   int           NOT NULL DEFAULT 30 COMMENT 'POLL 最大轮询次数，超限判超时',
+    `request_template` text          NULL COMMENT '请求报文模板，支持 ${参数名}。空则把调用参数原样发出',
+    `response_body`    text          NULL COMMENT '最终返回报文。支持 ${参数名} 与 ${jobId}',
+    `ack_body`         text          NULL COMMENT 'POLL 首次受理报文。空则 {"status":"ACCEPTED"}',
+    `pending_body`     text          NULL COMMENT 'POLL 未完成报文。空则 {"status":"RUNNING"}',
+    `status`           tinyint       NOT NULL DEFAULT 0 COMMENT '启用状态: 0 启用/1 停用',
+    `creator`          varchar(64)   NULL DEFAULT '' COMMENT '创建者',
+    `create_time`      datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updater`          varchar(64)   NULL DEFAULT '' COMMENT '更新者',
+    `update_time`      datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`          bit(1)        NOT NULL DEFAULT b'0' COMMENT '是否删除',
+    `tenant_id`        bigint        NOT NULL DEFAULT 0 COMMENT '租户编号',
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_device_action` (`device_id`, `action_code`),
+    KEY `idx_device_code` (`device_code`, `action_code`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '仿真 HTTP 配置(请求/响应报文与同步、异步等待、轮询)';

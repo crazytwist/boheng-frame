@@ -16,6 +16,65 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_CODE
 public final class DeviceCodecParser {
 
     /**
+     * 一次正则匹配最多跑多久，防止回溯过深的正则把线程卡死
+     */
+    private static final long REGEX_TIMEOUT_NANOS = 2_000_000_000L;
+
+    /**
+     * 正则匹配超时
+     */
+    private static final class RegexTimeoutException extends RuntimeException {
+
+        /**
+         * 不收集堆栈，超时是预期内的失败
+         */
+        RegexTimeoutException() {
+            super(null, null, false, false);
+        }
+    }
+
+    /**
+     * 带截止时刻的原文。正则引擎每读一个字符都会经过 charAt，过了截止时刻就抛异常中断匹配
+     */
+    private record DeadlineCharSequence(CharSequence delegate, long deadlineNanos) implements CharSequence {
+
+        /**
+         * 原文长度
+         */
+        @Override
+        public int length() {
+            return delegate.length();
+        }
+
+        /**
+         * 读一个字符，超时则中断
+         */
+        @Override
+        public char charAt(int index) {
+            if (System.nanoTime() > deadlineNanos) {
+                throw new RegexTimeoutException();
+            }
+            return delegate.charAt(index);
+        }
+
+        /**
+         * 截取片段，用于取捕获组
+         */
+        @Override
+        public CharSequence subSequence(int start, int end) {
+            return delegate.subSequence(start, end);
+        }
+
+        /**
+         * 原文文本
+         */
+        @Override
+        public String toString() {
+            return delegate.toString();
+        }
+    }
+
+    /**
      * 禁止实例化
      */
     private DeviceCodecParser() {
@@ -89,12 +148,18 @@ public final class DeviceCodecParser {
         }
         Matcher matcher;
         try {
-            matcher = Pattern.compile(regexPattern).matcher(raw);
+            matcher = Pattern.compile(regexPattern).matcher(new DeadlineCharSequence(raw, System.nanoTime() + REGEX_TIMEOUT_NANOS));
         } catch (Exception ex) {
-            throw exception(DEVICE_CODEC_PARSE_FAILED, "正则不合法");
+            throw exception(DEVICE_CODEC_PARSE_FAILED, "正则表达式格式不正确");
         }
-        if (!matcher.find()) {
-            throw exception(DEVICE_CODEC_PARSE_FAILED, "没有匹配到内容");
+        boolean found;
+        try {
+            found = matcher.find();
+        } catch (RegexTimeoutException ex) {
+            throw exception(DEVICE_CODEC_PARSE_FAILED, "正则匹配超时，请简化正则表达式");
+        }
+        if (!found) {
+            throw exception(DEVICE_CODEC_PARSE_FAILED, "未匹配到内容");
         }
         JSONObject out = new JSONObject();
         if (mapping.isEmpty()) {

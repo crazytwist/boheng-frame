@@ -1,5 +1,5 @@
 <template>
-  <CategoryDrawer v-model="visible" :loading="loading" kicker="可观测属性" :title="property?.propertyName">
+  <CategoryDrawer v-model="visible" :loading="loading" kicker="设备属性" :title="property?.propertyName">
     <template #tags>
       <el-tag v-if="property" :type="property.status === 0 ? 'success' : 'info'" size="small">
         {{ property.status === 0 ? '启用' : '停用' }}
@@ -8,13 +8,13 @@
 
     <template v-if="property">
       <section class="cat-block">
-        <div class="cat-kicker">观测对象</div>
+        <div class="cat-kicker">基本信息</div>
         <dl class="cat-facts">
           <dt>设备类型</dt>
           <dd>{{ deviceTypeLabel(property.deviceTypeCode) }}</dd>
-          <dt>编码</dt>
+          <dt>属性编码</dt>
           <dd>{{ property.propertyCode }}</dd>
-          <dt>类型</dt>
+          <dt>数据类型</dt>
           <dd>{{ property.dataType || '—' }}</dd>
           <dt>单位</dt>
           <dd>{{ property.unit || '—' }}</dd>
@@ -22,15 +22,15 @@
       </section>
 
       <section class="cat-block">
-        <div class="cat-kicker">取值</div>
+        <div class="cat-kicker">采集方式</div>
         <dl class="cat-facts">
-          <dt>来源</dt>
+          <dt>能力来源</dt>
           <dd>{{ sourceLabel(property.source) }}</dd>
-          <dt>主动读取</dt>
+          <dt>支持读取</dt>
           <dd>{{ property.readable ? '是' : '否' }}</dd>
-          <dt>推送</dt>
+          <dt>支持订阅</dt>
           <dd>{{ property.subscribable ? '是' : '否' }}</dd>
-          <dt>轮询</dt>
+          <dt>轮询间隔</dt>
           <dd>{{ property.pollIntervalSec ? `${property.pollIntervalSec} 秒` : '—' }}</dd>
         </dl>
       </section>

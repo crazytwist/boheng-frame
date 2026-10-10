@@ -155,6 +155,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
             reqVO.setBodyFormat(reqVO.getBodyFormat().trim().toUpperCase());
         }
         reqVO.setCodecCode(StrUtil.trimToNull(reqVO.getCodecCode()));
+        reqVO.setResultMode(StrUtil.blankToDefault(reqVO.getResultMode(), "SYNC_RETURN"));
         if (StrUtil.isBlank(reqVO.getRequestPath())) {
             reqVO.setRequestPath(null);
             return;

@@ -3,6 +3,7 @@ package cn.boheng.frame.module.device.controller.admin.device.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
@@ -21,9 +22,11 @@ public class DeviceInvokeReqVO {
     private String actionCode;
 
     @Schema(description = "参数 JSON，对应动作的请求模板占位符")
+    @Size(max = 65535, message = "参数 JSON 长度不能超过 65535 个字符")
     private String paramsJson;
 
     @Schema(description = "解析规则编码。空则用动作上配置的规则")
+    @Size(max = 64, message = "解析规则编码长度不能超过 64 个字符")
     private String codecCode;
 
 }

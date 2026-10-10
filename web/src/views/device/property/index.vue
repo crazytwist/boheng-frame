@@ -1,9 +1,9 @@
 <template>
-  <ContentWrap title="设备属性（遥测）">
+  <ContentWrap title="设备属性">
     <!-- 搜索 -->
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
       <el-form-item label="设备类型" prop="deviceTypeCode">
-        <el-select v-model="queryParams.deviceTypeCode" placeholder="全部" clearable class="!w-180px">
+        <el-select v-model="queryParams.deviceTypeCode" placeholder="请选择设备类型" clearable class="!w-180px">
           <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
@@ -35,12 +35,12 @@
         <template #default="scope">{{ scope.row.dataType || '—' }}</template>
       </el-table-column>
       <el-table-column label="单位" align="center" prop="unit" width="90" />
-      <el-table-column label="可读" align="center" width="80">
+      <el-table-column label="支持读取" align="center" width="80">
         <template #default="scope">
           <el-tag :type="scope.row.readable ? 'success' : 'info'">{{ scope.row.readable ? '是' : '否' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="可订阅" align="center" width="90">
+      <el-table-column label="支持订阅" align="center" width="90">
         <template #default="scope">
           <el-tag :type="scope.row.subscribable ? 'success' : 'info'">{{ scope.row.subscribable ? '是' : '否' }}</el-tag>
         </template>
@@ -56,7 +56,7 @@
       <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
           <el-button v-hasPermi="['device:property:query']" link type="primary" @click="openDetail(scope.row.id)">
-            详细
+            详情
           </el-button>
           <el-button v-hasPermi="['device:property:update']" link type="primary" @click="openForm('update', scope.row.id)">
             编辑

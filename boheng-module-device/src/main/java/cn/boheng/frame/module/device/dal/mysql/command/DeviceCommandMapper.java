@@ -5,7 +5,10 @@ import cn.boheng.frame.framework.mybatis.core.mapper.BaseMapperX;
 import cn.boheng.frame.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandPageReqVO;
 import cn.boheng.frame.module.device.dal.dataobject.command.DeviceCommandDO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
+
+import java.time.LocalDateTime;
 /**
  * 命令记录 Mapper
  */
@@ -21,6 +24,54 @@ public interface DeviceCommandMapper extends BaseMapperX<DeviceCommandDO> {
                 .eqIfPresent(DeviceCommandDO::getActionCode, reqVO.getActionCode())
                 .eqIfPresent(DeviceCommandDO::getStatus, reqVO.getStatus())
                 .orderByDesc(DeviceCommandDO::getId));
+    }
+
+    /** 按对外命令号查命令 */
+    default DeviceCommandDO selectByCommandNo(String commandNo) {
+        return selectOne(DeviceCommandDO::getCommandNo, commandNo);
+    }
+
+    /** 这台设备上还没结束的命令数 */
+    default long countRunning(Long deviceId) {
+        return selectCount(new LambdaQueryWrapperX<DeviceCommandDO>()
+                .eq(DeviceCommandDO::getDeviceId, deviceId)
+                .in(DeviceCommandDO::getStatus, "ACQUIRED", "SENT", "WAITING"));
+    }
+
+    /**
+     * 等回调早已过了截止时刻的命令标成超时。等待线程随服务重启丢失时靠它收尾。
+     */
+    default int timeoutExpiredWaiting(LocalDateTime before) {
+        return update(null, new LambdaUpdateWrapper<DeviceCommandDO>()
+                .set(DeviceCommandDO::getStatus, "TIMED_OUT")
+                .set(DeviceCommandDO::getWaitingFor, "")
+                .set(DeviceCommandDO::getFinishedAt, LocalDateTime.now())
+                .set(DeviceCommandDO::getErrorMsg, "超过回调截止时间仍未收到回调")
+                .eq(DeviceCommandDO::getStatus, "WAITING")
+                .lt(DeviceCommandDO::getTimeoutAt, before));
+    }
+
+    /**
+     * 长时间没有结果、也没有截止时刻的命令标成失败（已占用、已下发、轮询中），通常是调用中途服务重启
+     */
+    default int failStaleAcquired(LocalDateTime before) {
+        return update(null, new LambdaUpdateWrapper<DeviceCommandDO>()
+                .set(DeviceCommandDO::getStatus, "FAILED")
+                .set(DeviceCommandDO::getWaitingFor, "")
+                .set(DeviceCommandDO::getFinishedAt, LocalDateTime.now())
+                .set(DeviceCommandDO::getErrorMsg, "调用中断，未拿到结果")
+                .and(w -> w.in(DeviceCommandDO::getStatus, "ACQUIRED", "SENT")
+                        .or(o -> o.eq(DeviceCommandDO::getStatus, "WAITING").isNull(DeviceCommandDO::getTimeoutAt)))
+                .lt(DeviceCommandDO::getAcquiredAt, before));
+    }
+
+    /**
+     * 只在命令还停在指定状态时改成新状态，返回是否改成功。回调和超时同时到达时靠它只认先到的那个。
+     */
+    default boolean updateIfStatus(DeviceCommandDO update, String expectStatus) {
+        return update(update, new LambdaQueryWrapperX<DeviceCommandDO>()
+                .eq(DeviceCommandDO::getId, update.getId())
+                .eq(DeviceCommandDO::getStatus, expectStatus)) > 0;
     }
 
 }

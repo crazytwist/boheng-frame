@@ -29,4 +29,21 @@ public interface DeviceApi {
      */
     List<DeviceSummaryDTO> selectDevices(DeviceSelectReqDTO reqVO);
 
+    /**
+     * 按编码取一台设备。流程发布时用来确认步骤指向的设备还在台账里。
+     *
+     * @param deviceCode 设备编码
+     * @return 设备摘要；编码为空或台账没有这台设备时返回 null
+     */
+    DeviceSummaryDTO getDeviceByCode(String deviceCode);
+
+    /**
+     * 该设备类型下是否有一条启用的动作。流程发布时用来确认这一步还能下发。
+     *
+     * @param deviceTypeCode 设备类型编码，取台账上的类型，不取前端另传的类型
+     * @param actionCode 动作编码
+     * @return 动作存在且未停用时为 true
+     */
+    boolean hasEnabledAction(String deviceTypeCode, String actionCode);
+
 }
