@@ -135,6 +135,13 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- 实验室自动执行：流程定义与后续运行 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-flow</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- HRM 人力资源管理模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->
 <!--            <groupId>cn.boheng</groupId>-->
