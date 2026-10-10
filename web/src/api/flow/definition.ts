@@ -21,6 +21,7 @@ export interface FlowNodeVO {
   joinPolicy?: string
   joinFailurePolicy?: string
   branches?: Record<string, string[]>
+  outputMapping?: string
   timeoutSec?: number
   maxAttempts?: number
   failStrategy?: string

@@ -347,6 +347,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         resp.setJoinPolicy(draft.getJoinPolicy());
         resp.setJoinFailurePolicy(draft.getJoinFailurePolicy());
         resp.setBranches(draft.getBranches());
+        resp.setOutputMapping(row.getOutputMapping());
         resp.setTimeoutSec(draft.getTimeoutMs() == null ? null : (int) (draft.getTimeoutMs() / 1000));
         resp.setMaxAttempts(draft.getMaxAttempts());
         resp.setFailStrategy(draft.getFailStrategy());

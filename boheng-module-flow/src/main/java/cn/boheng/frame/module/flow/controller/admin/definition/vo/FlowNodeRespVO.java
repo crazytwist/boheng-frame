@@ -50,6 +50,9 @@ public class FlowNodeRespVO {
     @Schema(description = "出口映射（route 专用）")
     private Map<String, List<String>> branches;
 
+    @Schema(description = "输出映射 JSON：{输出字段: 上下文键}")
+    private String outputMapping;
+
     @Schema(description = "等待秒数（生效值）")
     private Integer timeoutSec;
 

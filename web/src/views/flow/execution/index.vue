@@ -99,8 +99,8 @@
     </template>
   </Dialog>
 
-  <!-- 运行详情：时间线 + 分支决策 -->
-  <Dialog v-model="detailVisible" title="运行详情" width="900px">
+  <!-- 运行详情：流程图（状态流转）+ 时间线 + 分支决策 -->
+  <Dialog v-model="detailVisible" title="运行详情" width="1100px">
     <div v-loading="detailLoading">
       <template v-if="detail">
         <el-descriptions :column="3" border size="small" class="mb-10px">
@@ -114,8 +114,22 @@
           <el-descriptions-item label="失败说明" :span="3">{{ detail.errorMessage || '—' }}</el-descriptions-item>
         </el-descriptions>
 
-        <div class="mb-5px font-bold">节点时间线</div>
-        <el-table :data="detail.steps || []" border size="small" max-height="360">
+        <el-alert
+          v-if="detail.status === 'RUNNING'"
+          title="运行进行中，流程图每 3 秒自动刷新"
+          type="info"
+          :closable="false"
+          class="mb-10px"
+        />
+
+        <el-tabs v-model="detailTab">
+          <el-tab-pane label="流程图" name="graph">
+            <FlowDag v-if="detailNodes.length" :nodes="detailNodes" :runtime="detail.steps || []" />
+            <el-empty v-else description="流程定义加载中…" :image-size="60" />
+          </el-tab-pane>
+
+          <el-tab-pane :label="`节点时间线（${(detail.steps || []).length}）`" name="timeline">
+            <el-table :data="detail.steps || []" border size="small" max-height="360">
           <el-table-column label="节点" prop="nodeId" min-width="100" />
           <el-table-column label="类型" min-width="90" align="center">
             <template #default="scope">{{ typeLabel(scope.row.stepType) }}</template>
@@ -154,14 +168,16 @@
           </el-table-column>
         </el-table>
 
-        <div v-if="(detail.branchDecisions || []).length" class="mt-10px mb-5px font-bold">分支决策</div>
-        <el-table v-if="(detail.branchDecisions || []).length" :data="detail.branchDecisions" border size="small">
-          <el-table-column label="路由节点" prop="routeNodeId" min-width="100" />
-          <el-table-column label="轮次" prop="iterationNo" width="60" align="center" />
-          <el-table-column label="选中出口" prop="selectedBranch" width="90" align="center" />
-          <el-table-column label="激活目标" prop="activatedTargets" min-width="140" :show-overflow-tooltip="true" />
-          <el-table-column label="决策快照" prop="decisionData" min-width="180" :show-overflow-tooltip="true" />
-        </el-table>
+            <div v-if="(detail.branchDecisions || []).length" class="mt-10px mb-5px font-bold">分支决策</div>
+            <el-table v-if="(detail.branchDecisions || []).length" :data="detail.branchDecisions" border size="small">
+              <el-table-column label="路由节点" prop="routeNodeId" min-width="100" />
+              <el-table-column label="轮次" prop="iterationNo" width="60" align="center" />
+              <el-table-column label="选中出口" prop="selectedBranch" width="90" align="center" />
+              <el-table-column label="激活目标" prop="activatedTargets" min-width="140" :show-overflow-tooltip="true" />
+              <el-table-column label="决策快照" prop="decisionData" min-width="180" :show-overflow-tooltip="true" />
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
       </template>
     </div>
     <template #footer>
@@ -182,8 +198,9 @@
 </template>
 
 <script lang="ts" setup>
-import { FlowDefinitionApi, FlowDefinitionVO } from '@/api/flow/definition'
+import { FlowDefinitionApi, FlowDefinitionVO, FlowNodeVO } from '@/api/flow/definition'
 import { FlowExecutionApi, FlowExecutionVO, FlowStepExecutionVO } from '@/api/flow/execution'
+import FlowDag from '@/views/flow/preview/FlowDag.vue'
 import { STEP_TYPES } from '@/api/flow/step'
 import { dateFormatter } from '@/utils/formatTime'
 
@@ -320,17 +337,52 @@ const submitStart = async () => {
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<FlowExecutionVO>()
+const detailTab = ref('graph')
+const detailNodes = ref<FlowNodeVO[]>([])
+let pollTimer: number | undefined
 
 const openDetail = async (id: number) => {
   detailVisible.value = true
   detailLoading.value = true
   detail.value = undefined
+  detailNodes.value = []
+  detailTab.value = 'graph'
   try {
-    detail.value = await FlowExecutionApi.get(id)
+    const fresh = await FlowExecutionApi.get(id)
+    detail.value = fresh
+    if (fresh.definitionId) {
+      const def = await FlowDefinitionApi.get(fresh.definitionId)
+      detailNodes.value = def.nodes || []
+    }
+    startPolling(id)
   } finally {
     detailLoading.value = false
   }
 }
+
+/** RUNNING 时静默轮询（不转 loading），终态自动停 */
+const startPolling = (id: number) => {
+  stopPolling()
+  pollTimer = window.setInterval(async () => {
+    if (!detailVisible.value) return
+    const fresh = await FlowExecutionApi.get(id)
+    detail.value = fresh
+    if (fresh.status !== 'RUNNING') stopPolling()
+  }, 3000)
+}
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = undefined
+  }
+}
+
+watch(detailVisible, (visible) => {
+  if (!visible) stopPolling()
+})
+
+onUnmounted(stopPolling)
 
 const confirmVisible = ref(false)
 const confirming = ref(false)
