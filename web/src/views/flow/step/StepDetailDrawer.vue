@@ -10,10 +10,12 @@
       <dl class="cat-facts">
         <dt>步骤编码</dt>
         <dd>{{ step.stepKey }}</dd>
-        <dt>设备</dt>
-        <dd>{{ step.deviceCode }}</dd>
-        <dt>动作</dt>
-        <dd>{{ step.actionCode }}</dd>
+        <dt>步骤类型</dt>
+        <dd>{{ stepTypeLabel(step.stepType) }}</dd>
+        <dt>类型配置</dt>
+        <dd class="font-mono text-xs break-all">{{ step.typeConfig || '—' }}</dd>
+        <dt>默认输入</dt>
+        <dd class="font-mono text-xs break-all">{{ step.defaultParams || '—' }}</dd>
         <dt>等待</dt>
         <dd>{{ step.timeoutSec }} 秒</dd>
         <dt>尝试次数</dt>
@@ -26,7 +28,7 @@
 </template>
 
 <script lang="ts" setup>
-import { FlowStepApi, FlowStepVO } from '@/api/flow/step'
+import { FlowStepApi, FlowStepVO, STEP_TYPES } from '@/api/flow/step'
 import CategoryDrawer from '@/views/device/components/CategoryDrawer.vue'
 
 defineOptions({ name: 'FlowStepDetailDrawer' })
@@ -34,6 +36,9 @@ defineOptions({ name: 'FlowStepDetailDrawer' })
 const visible = ref(false)
 const loading = ref(false)
 const step = ref<FlowStepVO>()
+
+const stepTypeLabel = (type?: string) =>
+  STEP_TYPES.find((item) => item.value === type)?.label ?? type ?? '—'
 
 const open = async (id: number) => {
   visible.value = true

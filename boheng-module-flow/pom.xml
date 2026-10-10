@@ -16,8 +16,10 @@
     <description>
         flow 模块，实验室自动执行。
 
-        这一步只做流程定义：草稿、直线节点、发布后锁定。
-        运行、设备回调、对账不在本模块的当前代码里。
+        三层结构：
+        1. 定义层：可复用步骤（能力目录 = step_type + type_config）、流程版本、节点编排（DAG + 汇合策略 + 分支出口）；
+        2. 类型系统：StepTypeRegistry 开放注册步骤类型（设备 / Bean / 脚本 / 人工 / 通知 / 路由 / 循环 / 子流程 / 定时）；
+        3. 运行层：执行引擎（CAS 认领 + DAG 调度 + 分支裁剪 + 循环展开 + 子流程扇出）、信号收件箱、执行上下文。
         只依赖 device-api，不依赖设备实现模块。
     </description>
 
@@ -43,6 +45,12 @@
         <dependency>
             <groupId>cn.boheng</groupId>
             <artifactId>boheng-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+
+        <!-- 表达式求值：路由决策、循环条件、script.run、通知占位共用 -->
+        <dependency>
+            <groupId>com.googlecode.aviator</groupId>
+            <artifactId>aviator</artifactId>
         </dependency>
 
         <dependency>

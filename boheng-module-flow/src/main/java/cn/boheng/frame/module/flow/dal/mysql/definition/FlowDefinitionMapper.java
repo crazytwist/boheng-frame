@@ -65,4 +65,25 @@ public interface FlowDefinitionMapper extends BaseMapperX<FlowDefinitionDO> {
         return latest == null || latest.getVersion() == null ? 0 : latest.getVersion();
     }
 
+    /**
+     * 某编码当前已发布的最新版。子流程引用不写版本号时用它
+     */
+    default FlowDefinitionDO selectPublishedLatest(String pipelineKey) {
+        return selectOne(new LambdaQueryWrapperX<FlowDefinitionDO>()
+                .eq(FlowDefinitionDO::getPipelineKey, pipelineKey)
+                .eq(FlowDefinitionDO::getStatus, FlowConstants.STATUS_PUBLISHED)
+                .orderByDesc(FlowDefinitionDO::getVersion)
+                .last("LIMIT 1"));
+    }
+
+    /**
+     * 按编码和版本取一条。子流程固定版本引用时用它
+     */
+    default FlowDefinitionDO selectByKeyAndVersion(String pipelineKey, Integer version) {
+        return selectOne(new LambdaQueryWrapperX<FlowDefinitionDO>()
+                .eq(FlowDefinitionDO::getPipelineKey, pipelineKey)
+                .eq(FlowDefinitionDO::getVersion, version)
+                .last("LIMIT 1"));
+    }
+
 }

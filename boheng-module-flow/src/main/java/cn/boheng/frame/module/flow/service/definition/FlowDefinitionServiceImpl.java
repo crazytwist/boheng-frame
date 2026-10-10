@@ -16,13 +16,13 @@ import cn.boheng.frame.module.flow.dal.dataobject.step.FlowStepDO;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowDefinitionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowNodeMapper;
 import cn.boheng.frame.module.flow.dal.mysql.step.FlowStepMapper;
+import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
 import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.boheng.frame.module.flow.service.definition.model.FlowMapping;
 import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +30,6 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,8 @@ import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEFINITI
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEFINITION_REVISE_STATUS;
 
 /**
- * 流程定义的草稿、发布和修订。步骤在自己的表里，通过关联挂到版本上。
+ * 流程定义的草稿、发布和修订。节点在自己的表里，通过关联挂到版本上。
+ * 发布校验走 FlowGraphChecker 四段式：结构 + 类型配置 + 图关系 + 外部引用（设备台账、子流程）。
  */
 @Service
 @Validated
@@ -59,13 +59,13 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     private FlowDefinitionMapper flowDefinitionMapper;
 
     /**
-     * 流程节点表。一条记录是流程对步骤的一次引用
+     * 流程节点表。一条记录是流程对能力的一次引用，或一个控制类节点
      */
     @Resource
     private FlowNodeMapper flowNodeMapper;
 
     /**
-     * 步骤表。发布时从这里取设备和动作
+     * 步骤表。发布时从这里取生效类型与配置
      */
     @Resource
     private FlowStepMapper flowStepMapper;
@@ -75,6 +75,18 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
      */
     @Resource
     private DeviceApi deviceApi;
+
+    /**
+     * 步骤类型注册表。发布时做 type_config 的类型校验
+     */
+    @Resource
+    private StepTypeRegistry stepTypeRegistry;
+
+    /**
+     * 草稿装配器。校验与展示共用同一套类型生效规则
+     */
+    @Resource
+    private FlowDraftAssembler draftAssembler;
 
     /**
      * 创建第 1 版草稿。编码一旦有过版本就不能再用。
@@ -98,7 +110,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 只改草稿的名称和说明。步骤关联不从这里提交。
+     * 只改草稿的名称和说明。节点编排不从这里提交。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -110,7 +122,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 连步骤一起删。已发布的版本是历史，不能删。
+     * 连节点一起删。已发布的版本是历史，不能删。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -124,7 +136,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 详情。步骤按保存时的顺序返回。
+     * 详情。节点按保存时的顺序返回，字段为装配后的生效值。
      */
     @Override
     public FlowDefinitionRespVO getDefinition(Long id) {
@@ -132,12 +144,13 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         FlowDefinitionRespVO resp = toResp(definition);
         List<FlowNodeDO> nodes = flowNodeMapper.selectByDefinitionId(id);
         resp.setNodeCount(nodes.size());
-        resp.setNodes(nodes.stream().map(node -> toNodeResp(node, flowStepMapper.selectById(node.getStepId()))).toList());
+        resp.setNodes(nodes.stream().map(node -> toNodeResp(node,
+                node.getStepId() == null ? null : flowStepMapper.selectById(node.getStepId()))).toList());
         return resp;
     }
 
     /**
-     * 分页，并补上每条版本的步骤数。
+     * 分页，并补上每条版本的节点数。
      */
     @Override
     public PageResult<FlowDefinitionRespVO> getDefinitionPage(FlowDefinitionPageReqVO reqVO) {
@@ -160,7 +173,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 关联页下拉。不带步骤正文。
+     * 关联页下拉。不带节点正文。
      */
     @Override
     public List<FlowDefinitionRespVO> getDefinitionSimpleList() {
@@ -168,7 +181,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 用已经关联好的步骤做发布检查。不写库。
+     * 用已经编排好的节点做发布检查。不写库。
      */
     @Override
     public List<FlowIssueRespVO> validateDefinition(Long id) {
@@ -267,7 +280,8 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 把已关联的步骤收成检查对象。步骤不存在或已停用单独记一条。
+     * 收集发布校验的全部问题：能力引用断了单独记一条，
+     * 其余交给 FlowGraphChecker 四段式（结构 / 类型配置 / 图关系 / 外部引用）。
      */
     private List<FlowIssue> issuesOf(Long definitionId, boolean publish) {
         List<FlowNodeDO> rows = flowNodeMapper.selectByDefinitionId(definitionId);
@@ -282,71 +296,56 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
             if (step.getStatus() != null && step.getStatus() != 0) {
                 issues.add(new FlowIssue(row.getNodeId(), "步骤【" + step.getStepKey() + "】已停用"));
             }
-            drafts.add(toDraft(row, step));
+            drafts.add(draftAssembler.toDraft(row, step));
         }
-        issues.addAll(publish ? FlowGraphChecker.checkPublish(drafts, deviceLookup()) : FlowGraphChecker.checkStructure(drafts));
+        if (publish) {
+            issues.addAll(FlowGraphChecker.checkPublish(drafts, deviceLookup(), stepTypeRegistry, subflowLookup()));
+        } else {
+            issues.addAll(FlowGraphChecker.checkStructure(drafts));
+        }
         return issues;
     }
 
     /**
-     * 发布指纹只认库里的关联和步骤。
+     * 发布指纹只认库里的节点和步骤。
      */
     private List<FlowNodeDraft> draftsOf(Long definitionId) {
         List<FlowNodeDraft> drafts = new ArrayList<>();
         for (FlowNodeDO row : flowNodeMapper.selectByDefinitionId(definitionId)) {
             FlowStepDO step = row.getStepId() == null ? null : flowStepMapper.selectById(row.getStepId());
-            if (step != null) {
-                drafts.add(toDraft(row, step));
-            }
+            drafts.add(draftAssembler.toDraft(row, step));
         }
         return drafts;
     }
 
     /**
-     * 关联提供节点编码和参数映射，步骤提供名称、设备和等待。
-     */
-    private FlowNodeDraft toDraft(FlowNodeDO row, FlowStepDO step) {
-        FlowNodeDraft draft = new FlowNodeDraft();
-        draft.setNodeId(row.getNodeId());
-        draft.setName(step.getName());
-        draft.setStepType(FlowConstants.STEP_DEVICE_COMMAND);
-        draft.setDeviceCode(StrUtil.trimToNull(step.getDeviceCode()));
-        draft.setActionCode(StrUtil.trimToNull(step.getActionCode()));
-        draft.setTimeoutMs(step.getTimeoutMs());
-        draft.setMaxAttempts(step.getMaxAttempts());
-        draft.setFailStrategy(FlowConstants.FAIL_FAST);
-        draft.setMappings(parseMappings(row.getInputMapping()));
-        return draft;
-    }
-
-    /**
-     * 版本行转成接口对象，不含步骤。
+     * 版本行转成接口对象，不含节点。
      */
     private FlowDefinitionRespVO toResp(FlowDefinitionDO row) {
         return BeanUtils.toBean(row, FlowDefinitionRespVO.class);
     }
 
     /**
-     * 关联行加上步骤上的设备和动作。步骤不在时名称留空。
+     * 节点行转成接口对象。生效值经装配器解析，与发布校验看到的是同一张图。
      */
     private FlowNodeRespVO toNodeResp(FlowNodeDO row, FlowStepDO step) {
+        FlowNodeDraft draft = draftAssembler.toDraft(row, step);
         FlowNodeRespVO resp = new FlowNodeRespVO();
         resp.setId(row.getId());
         resp.setStepId(row.getStepId());
         resp.setNodeId(row.getNodeId());
         resp.setSortNo(row.getSortNo());
-        resp.setStepType(FlowConstants.STEP_DEVICE_COMMAND);
-        resp.setDependsOn(parseDependsOn(row.getDependsOn()));
-        resp.setFailStrategy(FlowConstants.FAIL_FAST);
-        if (step != null) {
-            resp.setStepKey(step.getStepKey());
-            resp.setName(step.getName());
-            resp.setDeviceCode(step.getDeviceCode());
-            resp.setActionCode(step.getActionCode());
-            resp.setTimeoutSec(step.getTimeoutMs() == null ? null : (int) (step.getTimeoutMs() / 1000));
-            resp.setMaxAttempts(step.getMaxAttempts());
-        }
-        resp.setMappings(parseMappings(row.getInputMapping()).stream().map(mapping -> {
+        resp.setName(draft.getName());
+        resp.setStepType(draft.getStepType());
+        resp.setTypeConfig(draft.getTypeConfig());
+        resp.setDependsOn(draft.getDependsOn());
+        resp.setJoinPolicy(draft.getJoinPolicy());
+        resp.setJoinFailurePolicy(draft.getJoinFailurePolicy());
+        resp.setBranches(draft.getBranches());
+        resp.setTimeoutSec(draft.getTimeoutMs() == null ? null : (int) (draft.getTimeoutMs() / 1000));
+        resp.setMaxAttempts(draft.getMaxAttempts());
+        resp.setFailStrategy(draft.getFailStrategy());
+        resp.setMappings(draft.getMappings().stream().map(mapping -> {
             FlowMappingReqVO req = new FlowMappingReqVO();
             req.setParam(mapping.getParam());
             req.setSource(mapping.getSource());
@@ -355,27 +354,10 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
             req.setValue(mapping.getValue());
             return req;
         }).toList());
+        if (step != null) {
+            resp.setStepKey(step.getStepKey());
+        }
         return resp;
-    }
-
-    /**
-     * 读依赖数组。空或坏数据当成没有前置，避免详情页打不开。
-     */
-    private List<String> parseDependsOn(String json) {
-        if (StrUtil.isBlank(json)) {
-            return List.of();
-        }
-        return JSONUtil.toList(json, String.class);
-    }
-
-    /**
-     * 读参数映射。没有映射时返回空列表。
-     */
-    private List<FlowMapping> parseMappings(String json) {
-        if (StrUtil.isBlank(json)) {
-            return Collections.emptyList();
-        }
-        return JSONUtil.toList(json, FlowMapping.class);
     }
 
     /**
@@ -399,6 +381,18 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
             public boolean hasEnabledAction(String deviceTypeCode, String actionCode) {
                 return deviceApi.hasEnabledAction(deviceTypeCode, actionCode);
             }
+        };
+    }
+
+    /**
+     * 子流程引用检查：目标编码（或固定版本）必须处于已发布状态。
+     */
+    private FlowGraphChecker.SubflowLookup subflowLookup() {
+        return (pipelineKey, version) -> {
+            FlowDefinitionDO target = version == null
+                    ? flowDefinitionMapper.selectPublishedLatest(pipelineKey)
+                    : flowDefinitionMapper.selectByKeyAndVersion(pipelineKey, version);
+            return target != null && FlowConstants.STATUS_PUBLISHED.equals(target.getStatus());
         };
     }
 

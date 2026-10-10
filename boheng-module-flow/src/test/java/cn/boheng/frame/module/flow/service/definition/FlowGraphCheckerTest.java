@@ -1,99 +1,223 @@
 package cn.boheng.frame.module.flow.service.definition;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
+import cn.boheng.frame.module.flow.engine.expression.ExpressionEvaluator;
+import cn.boheng.frame.module.flow.engine.route.FlowRouteRegistry;
+import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
+import cn.boheng.frame.module.flow.engine.type.builtin.LoopStepType;
+import cn.boheng.frame.module.flow.engine.type.builtin.RouteStepType;
+import cn.boheng.frame.module.flow.engine.type.device.DeviceCommandStepType;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
 import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.boheng.frame.module.flow.service.definition.model.FlowMapping;
 import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 直线流程的结构、设备和发布指纹。不启动 Spring。
+ * 图校验器 v3：结构（无环 / 前置存在 / join 一致）、类型配置、
+ * 路由出口、循环区间、发布指纹。不启动 Spring，注册表用反射手工装配。
  */
 class FlowGraphCheckerTest {
 
     /**
-     * 两步直线、上一步取值、设备和动作都在时，发布检查应为空。
+     * 设备在台账、动作启用的回调
+     */
+    private final FlowGraphChecker.DeviceLookup lookup = new FlowGraphChecker.DeviceLookup() {
+
+        @Override
+        public DeviceSummaryDTO getByCode(String deviceCode) {
+            if ("GONE".equals(deviceCode)) {
+                return null;
+            }
+            DeviceSummaryDTO device = new DeviceSummaryDTO();
+            device.setDeviceCode(deviceCode);
+            device.setDeviceName("测试设备");
+            device.setDeviceTypeCode("CENTRIFUGE");
+            return device;
+        }
+
+        @Override
+        public boolean hasEnabledAction(String deviceTypeCode, String actionCode) {
+            return !"STOP".equals(actionCode);
+        }
+    };
+
+    /**
+     * 子流程引用：elisa-assay 已发布，其余没有
+     */
+    private final FlowGraphChecker.SubflowLookup subflowRef =
+            (pipelineKey, version) -> "elisa-assay".equals(pipelineKey);
+
+    /**
+     * 两步直线设备流程 + 参数映射取上一步输出，发布检查应为空
      */
     @Test
     void publishAcceptsLinearDeviceSteps() {
-        List<FlowIssue> issues = FlowGraphChecker.checkPublish(List.of(step("spin", "离心", "DEV-1", "SPIN"),
-                step("read", "读板", "DEV-2", "READ_PLATE", mapping("od", "spin", "od"))), lookup(true));
-        assertTrue(issues.isEmpty());
+        FlowNodeDraft read = deviceStep("read", "读板", "DEV-2", "READ_PLATE", mapping("od", "spin", "od"));
+        read.setDependsOn(List.of("spin"));
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(
+                List.of(deviceStep("spin", "离心", "DEV-1", "SPIN"), read),
+                lookup, registry(), subflowRef);
+        assertTrue(issues.isEmpty(), issues.toString());
     }
 
     /**
-     * 同一步参数不能重复，也不能越过上一步去取值。
+     * 参数映射只能取直接前置；不是前置要报错
      */
     @Test
-    void rejectsDuplicateParamAndSkippedPredecessor() {
-        FlowNodeDraft third = step("archive", "归档", "DEV-1", "SPIN", mapping("od", "spin", "od"));
+    void rejectsMappingFromNonPredecessor() {
+        FlowNodeDraft third = deviceStep("archive", "归档", "DEV-1", "SPIN", mapping("od", "spin", "od"));
+        third.setDependsOn(List.of("read"));
         List<FlowIssue> issues = FlowGraphChecker.checkStructure(List.of(
-                step("spin", "离心", "DEV-1", "SPIN"),
-                step("read", "读板", "DEV-2", "READ_PLATE", mapping("a", "spin", "x"), mapping("a", "spin", "y")),
+                deviceStep("spin", "离心", "DEV-1", "SPIN"),
+                deviceStep("read", "读板", "DEV-2", "READ_PLATE"),
                 third));
-        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("重复")));
-        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("只能取上一步")));
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("不是前置")));
     }
 
     /**
-     * 设备不存在、动作停用、一步都没有，都要在发布时说清楚。
+     * 依赖成环必须拦下
+     */
+    @Test
+    void rejectsCycle() {
+        FlowNodeDraft a = deviceStep("spin", "离心", "DEV-1", "SPIN");
+        FlowNodeDraft b = deviceStep("read", "读板", "DEV-2", "READ_PLATE");
+        a.setDependsOn(List.of("read"));
+        b.setDependsOn(List.of("spin"));
+        List<FlowIssue> issues = FlowGraphChecker.checkStructure(List.of(a, b));
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("环")));
+    }
+
+    /**
+     * 单前置不能用 ANY_SUCCESS
+     */
+    @Test
+    void rejectsAnySuccessWithSingleDependency() {
+        FlowNodeDraft second = deviceStep("read", "读板", "DEV-2", "READ_PLATE");
+        second.setDependsOn(List.of("spin"));
+        second.setJoinPolicy("ANY_SUCCESS");
+        List<FlowIssue> issues = FlowGraphChecker.checkStructure(List.of(
+                deviceStep("spin", "离心", "DEV-1", "SPIN"), second));
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("ANY_SUCCESS")));
+    }
+
+    /**
+     * 设备不存在、动作停用，发布期都要说清楚
      */
     @Test
     void publishNamesMissingDeviceAndDisabledAction() {
-        List<FlowIssue> empty = FlowGraphChecker.checkPublish(List.of(), lookup(true));
-        assertEquals("至少添加一步设备动作", empty.get(0).getMessage());
+        List<FlowIssue> empty = FlowGraphChecker.checkPublish(List.of(), lookup, registry(), subflowRef);
+        assertEquals("至少添加一个节点", empty.get(0).getMessage());
 
         List<FlowIssue> missing = FlowGraphChecker.checkPublish(
-                List.of(step("spin", "离心", "GONE", "SPIN")), lookup(false));
-        assertTrue(missing.get(0).getMessage().contains("GONE"));
+                List.of(deviceStep("spin", "离心", "GONE", "SPIN")), lookup, registry(), subflowRef);
+        assertTrue(missing.stream().anyMatch(issue -> issue.getMessage().contains("GONE")));
 
         List<FlowIssue> disabled = FlowGraphChecker.checkPublish(
-                List.of(step("spin", "离心", "DEV-1", "SPIN")), new FlowGraphChecker.DeviceLookup() {
-                    @Override
-                    public DeviceSummaryDTO getByCode(String deviceCode) {
-                        DeviceSummaryDTO device = new DeviceSummaryDTO();
-                        device.setDeviceCode(deviceCode);
-                        device.setDeviceName("离心机");
-                        device.setDeviceTypeCode("CENTRIFUGE");
-                        return device;
-                    }
-
-                    @Override
-                    public boolean hasEnabledAction(String deviceTypeCode, String actionCode) {
-                        return false;
-                    }
-                });
+                List.of(deviceStep("spin", "离心", "DEV-1", "STOP")), lookup, registry(), subflowRef);
         assertTrue(disabled.stream().anyMatch(issue -> issue.getMessage().contains("没有启用的动作")));
     }
 
     /**
-     * 同一张图的指纹稳定。改动作后指纹必须变。
+     * 路由节点：default 出口必须有；出口指向不存在的节点要报错
      */
     @Test
-    void checksumChangesWhenActionChanges() {
-        List<FlowNodeDraft> nodes = List.of(step("spin", "离心", "DEV-1", "SPIN"));
-        String first = FlowGraphChecker.checksum(nodes);
-        assertEquals(first, FlowGraphChecker.checksum(nodes));
-        nodes.get(0).setActionCode("STOP");
-        assertTrue(!first.equals(FlowGraphChecker.checksum(nodes)));
+    void validatesRouteBranches() {
+        FlowNodeDraft route = new FlowNodeDraft();
+        route.setNodeId("route_od");
+        route.setName("按 OD 路由");
+        route.setStepType(FlowConstants.STEP_ROUTE);
+        route.setTypeConfig("{\"router\":{\"kind\":\"expression\",\"expression\":\"od > 1.0 ? 'high' : 'default'\"},"
+                + "\"branches\":{\"high\":[\"alarm\"],\"default\":[\"read\"]}}");
+        route.setDependsOn(List.of("read"));
+        route.setBranches(Map.of("high", List.of("alarm"), "default", List.of("read")));
+        // 没有 alarm 节点：出口目标不存在
+        List<FlowIssue> issues = FlowGraphChecker.checkStructure(List.of(
+                deviceStep("read", "读板", "DEV-2", "READ_PLATE"), route));
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("不存在")));
+
+        // 缺 default 出口：类型校验拦下
+        FlowNodeDraft noDefault = new FlowNodeDraft();
+        noDefault.setNodeId("route_bad");
+        noDefault.setName("没有兜底");
+        noDefault.setStepType(FlowConstants.STEP_ROUTE);
+        noDefault.setTypeConfig("{\"router\":{\"kind\":\"expression\",\"expression\":\"'high'\"},"
+                + "\"branches\":{\"high\":[\"read\"]}}");
+        noDefault.setDependsOn(List.of());
+        List<FlowIssue> publishIssues = FlowGraphChecker.checkPublish(
+                List.of(deviceStep("read", "读板", "DEV-2", "READ_PLATE"), noDefault),
+                lookup, registry(), subflowRef);
+        assertTrue(publishIssues.stream().anyMatch(issue -> issue.getMessage().contains("default")));
     }
 
     /**
-     * 造一步设备动作。mapping 为空表示没有额外参数。
+     * 循环节点：区间端点不存在要报错
      */
-    private static FlowNodeDraft step(String nodeId, String name, String deviceCode, String actionCode, FlowMapping... mappings) {
+    @Test
+    void validatesLoopRange() {
+        FlowNodeDraft loop = new FlowNodeDraft();
+        loop.setNodeId("loop_read");
+        loop.setName("循环读板");
+        loop.setStepType(FlowConstants.STEP_LOOP);
+        loop.setTypeConfig("{\"bodyEntryNodeId\":\"read\",\"bodyExitNodeId\":\"ghost\","
+                + "\"maxIterations\":5,\"whileExpression\":\"sys.needMore == true\"}");
+        loop.setLoopBodyEntry("read");
+        loop.setLoopBodyExit("ghost");
+        loop.setDependsOn(List.of());
+        List<FlowIssue> issues = FlowGraphChecker.checkStructure(List.of(
+                deviceStep("read", "读板", "DEV-2", "READ_PLATE"), loop));
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("循环体入口或出口不存在")));
+    }
+
+    /**
+     * 控制类节点不能挂能力目录
+     */
+    @Test
+    void rejectsControlNodeWithStepId() {
+        FlowNodeDraft route = new FlowNodeDraft();
+        route.setNodeId("route_x");
+        route.setName("路由");
+        route.setStepType(FlowConstants.STEP_ROUTE);
+        route.setStepId(123L);
+        route.setDependsOn(List.of());
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(List.of(route), lookup, registry(), subflowRef);
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("控制类节点")));
+    }
+
+    /**
+     * 同一张图指纹稳定；改类型配置后指纹必须变
+     */
+    @Test
+    void checksumChangesWhenConfigChanges() {
+        List<FlowNodeDraft> nodes = List.of(deviceStep("spin", "离心", "DEV-1", "SPIN"));
+        String first = FlowGraphChecker.checksum(nodes);
+        assertEquals(first, FlowGraphChecker.checksum(nodes));
+        nodes.get(0).setTypeConfig("{\"deviceCode\":\"DEV-1\",\"actionCode\":\"STOP\"}");
+        assertFalse(first.equals(FlowGraphChecker.checksum(nodes)));
+    }
+
+    // ==================== 测试工具 ====================
+
+    /**
+     * 造一个设备动作节点。dependsOn 由调用方补
+     */
+    private static FlowNodeDraft deviceStep(String nodeId, String name, String deviceCode,
+                                            String actionCode, FlowMapping... mappings) {
         FlowNodeDraft draft = new FlowNodeDraft();
         draft.setNodeId(nodeId);
         draft.setName(name);
         draft.setStepType(FlowConstants.STEP_DEVICE_COMMAND);
-        draft.setDeviceCode(deviceCode);
-        draft.setActionCode(actionCode);
+        draft.setTypeConfig("{\"deviceCode\":\"" + deviceCode + "\",\"actionCode\":\"" + actionCode + "\"}");
+        draft.setDependsOn(List.of());
         draft.setTimeoutMs(FlowConstants.DEFAULT_TIMEOUT_MS);
         draft.setMaxAttempts(1);
         draft.setFailStrategy(FlowConstants.FAIL_FAST);
@@ -104,7 +228,7 @@ class FlowGraphCheckerTest {
     }
 
     /**
-     * 从上一步取一个字段。
+     * 从某节点取一个字段的映射
      */
     private static FlowMapping mapping(String param, String nodeId, String field) {
         FlowMapping mapping = new FlowMapping();
@@ -116,27 +240,37 @@ class FlowGraphCheckerTest {
     }
 
     /**
-     * 测试用设备。found 为 false 时编码一律找不到。
+     * 手工装配类型注册表：设备 / 路由 / 循环 三个内置类型。
+     * RouteStepType 需要的决策器白名单为空表——本组测试不走 Bean 决策。
      */
-    private static FlowGraphChecker.DeviceLookup lookup(boolean found) {
-        return new FlowGraphChecker.DeviceLookup() {
-            @Override
-            public DeviceSummaryDTO getByCode(String deviceCode) {
-                if (!found || "GONE".equals(deviceCode)) {
-                    return null;
-                }
-                DeviceSummaryDTO device = new DeviceSummaryDTO();
-                device.setDeviceCode(deviceCode);
-                device.setDeviceName("测试设备");
-                device.setDeviceTypeCode("CENTRIFUGE");
-                return device;
-            }
+    private static StepTypeRegistry registry() {
+        ExpressionEvaluator evaluator = new ExpressionEvaluator();
+        FlowRouteRegistry routeRegistry = new FlowRouteRegistry();
+        inject(routeRegistry, "actions", List.of());
+        routeRegistry.init();
+        StepTypeRegistry registry = new StepTypeRegistry();
+        inject(registry, "descriptors", List.of(
+                new DeviceCommandStepType(null),
+                new RouteStepType(evaluator, routeRegistry),
+                new LoopStepType(evaluator)));
+        inject(registry, "executors", List.of(
+                new DeviceCommandStepType(null),
+                new RouteStepType(evaluator, routeRegistry)));
+        registry.init();
+        return registry;
+    }
 
-            @Override
-            public boolean hasEnabledAction(String deviceTypeCode, String actionCode) {
-                return found;
-            }
-        };
+    /**
+     * 反射注入 @Resource 字段。仅测试用
+     */
+    private static void inject(Object target, String fieldName, Object value) {
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("测试装配失败: " + fieldName, ex);
+        }
     }
 
 }

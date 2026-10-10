@@ -8,9 +8,9 @@
       <el-form-item label="步骤名称" prop="name">
         <el-input v-model="queryParams.name" placeholder="请输入步骤名称" clearable @keyup.enter="handleQuery" class="!w-200px" />
       </el-form-item>
-      <el-form-item label="设备" prop="deviceCode">
-        <el-select v-model="queryParams.deviceCode" placeholder="请选择设备" clearable filterable class="!w-220px">
-          <el-option v-for="item in devices" :key="item.deviceCode" :label="`${item.deviceName}（${item.deviceCode}）`" :value="item.deviceCode!" />
+      <el-form-item label="步骤类型" prop="stepType">
+        <el-select v-model="queryParams.stepType" placeholder="请选择类型" clearable class="!w-160px">
+          <el-option v-for="item in STEP_TYPES" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="状态" prop="status">
@@ -34,8 +34,14 @@
     <el-table v-loading="loading" :data="list">
       <el-table-column label="步骤编码" align="center" prop="stepKey" min-width="120" :show-overflow-tooltip="true" />
       <el-table-column label="步骤名称" align="center" prop="name" min-width="140" :show-overflow-tooltip="true" />
-      <el-table-column label="设备" align="center" prop="deviceCode" min-width="140" :show-overflow-tooltip="true" />
-      <el-table-column label="动作" align="center" prop="actionCode" min-width="140" :show-overflow-tooltip="true" />
+      <el-table-column label="步骤类型" align="center" min-width="110">
+        <template #default="scope">
+          <el-tag>{{ stepTypeLabel(scope.row.stepType) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="类型配置" align="center" prop="typeConfig" min-width="200" :show-overflow-tooltip="true">
+        <template #default="scope">{{ scope.row.typeConfig || '—' }}</template>
+      </el-table-column>
       <el-table-column label="等待(秒)" align="center" prop="timeoutSec" width="100" />
       <el-table-column label="尝试次数" align="center" prop="maxAttempts" width="100" />
       <el-table-column label="状态" align="center" width="90">
@@ -59,8 +65,7 @@
 </template>
 
 <script lang="ts" setup>
-import { DeviceInfoApi, DeviceVO } from '@/api/device'
-import { FlowStepApi, FlowStepVO } from '@/api/flow/step'
+import { FlowStepApi, FlowStepVO, STEP_TYPES } from '@/api/flow/step'
 import StepForm from './StepForm.vue'
 import StepDetailDrawer from './StepDetailDrawer.vue'
 
@@ -70,16 +75,18 @@ const message = useMessage()
 const loading = ref(false)
 const list = ref<FlowStepVO[]>([])
 const total = ref(0)
-const devices = ref<DeviceVO[]>([])
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 10,
   stepKey: undefined,
   name: undefined,
-  deviceCode: undefined,
+  stepType: undefined,
   status: undefined
 })
 const queryFormRef = ref()
+
+const stepTypeLabel = (type?: string) =>
+  STEP_TYPES.find((item) => item.value === type)?.label ?? type ?? '—'
 
 const getList = async () => {
   loading.value = true
@@ -119,8 +126,5 @@ const handleDelete = async (id: number) => {
   getList()
 }
 
-onMounted(async () => {
-  devices.value = (await DeviceInfoApi.getDeviceList()) || []
-  getList()
-})
+onMounted(getList)
 </script>

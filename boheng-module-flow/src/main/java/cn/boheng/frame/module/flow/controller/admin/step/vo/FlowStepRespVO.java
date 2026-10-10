@@ -6,7 +6,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 返回给步骤列表的一行。
+ * 返回给步骤列表的一行。类型配置按原样 JSON 返回，由前端按类型渲染。
  */
 @Schema(description = "管理后台 - 实验步骤 Response VO")
 @Data
@@ -21,11 +21,14 @@ public class FlowStepRespVO {
     @Schema(description = "步骤名称")
     private String name;
 
-    @Schema(description = "设备编码")
-    private String deviceCode;
+    @Schema(description = "步骤类型", example = "device.command")
+    private String stepType;
 
-    @Schema(description = "动作编码")
-    private String actionCode;
+    @Schema(description = "类型配置 JSON")
+    private String typeConfig;
+
+    @Schema(description = "默认输入 JSON")
+    private String defaultParams;
 
     @Schema(description = "等待秒数")
     private Integer timeoutSec;

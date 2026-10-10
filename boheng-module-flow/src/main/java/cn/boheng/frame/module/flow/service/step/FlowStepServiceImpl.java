@@ -10,7 +10,9 @@ import cn.boheng.frame.module.flow.dal.dataobject.step.FlowStepDO;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowDefinitionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowNodeMapper;
 import cn.boheng.frame.module.flow.dal.mysql.step.FlowStepMapper;
+import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
+import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -19,13 +21,17 @@ import org.springframework.validation.annotation.Validated;
 import java.util.List;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_CONTROL_TYPE;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_DELETE_USED;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_KEY_DUPLICATE;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_LOCKED;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_NOT_EXISTS;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_TYPE_CONFIG_INVALID;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_TYPE_NOT_REGISTERED;
 
 /**
- * 步骤先独立保存。被已发布的流程引用后不能再改，避免已发布版本的设备动作跟着变。
+ * 步骤先独立保存。被已发布的流程引用后不能再改，避免已发布版本的执行语义跟着变。
+ * 保存时用 StepTypeRegistry 校验类型已注册、type_config 能被对应类型的配置模型解析。
  */
 @Service
 @Validated
@@ -50,6 +56,12 @@ public class FlowStepServiceImpl implements FlowStepService {
     private FlowDefinitionMapper flowDefinitionMapper;
 
     /**
+     * 步骤类型注册表。校验 step_type 和 type_config
+     */
+    @Resource
+    private StepTypeRegistry stepTypeRegistry;
+
+    /**
      * 新建。编码在租户内唯一。
      */
     @Override
@@ -58,18 +70,20 @@ public class FlowStepServiceImpl implements FlowStepService {
         if (flowStepMapper.selectByStepKey(key) != null) {
             throw exception(FLOW_STEP_KEY_DUPLICATE, key);
         }
+        validateType(reqVO);
         FlowStepDO row = toRow(reqVO, key);
         flowStepMapper.insert(row);
         return row.getId();
     }
 
     /**
-     * 修改名称、设备和等待。编码保持创建时的值。已被定稿流程引用时整条拒绝。
+     * 修改名称、类型和配置。编码保持创建时的值。已被定稿流程引用时整条拒绝。
      */
     @Override
     public void updateStep(FlowStepSaveReqVO reqVO) {
         FlowStepDO existing = requireStep(reqVO.getId());
         assertNotLocked(existing.getId(), existing.getStepKey());
+        validateType(reqVO);
         FlowStepDO row = toRow(reqVO, existing.getStepKey());
         row.setId(existing.getId());
         flowStepMapper.updateById(row);
@@ -136,14 +150,50 @@ public class FlowStepServiceImpl implements FlowStepService {
     }
 
     /**
+     * 类型必须已注册，type_config 必须能解析成该类型的配置模型并通过类型校验。
+     * 步骤目录是能力复用的源头，坏配置在这里拦住，不等到发布。
+     */
+    private void validateType(FlowStepSaveReqVO reqVO) {
+        String stepType = reqVO.getStepType().trim();
+        if (!stepTypeRegistry.isRegistered(stepType)) {
+            throw exception(FLOW_STEP_TYPE_NOT_REGISTERED, stepType);
+        }
+        // 控制类类型（route/loop/subflow…）描述的是编排形态，不属于能力目录
+        if (StepTypeRegistry.isControlType(stepType)) {
+            throw exception(FLOW_STEP_CONTROL_TYPE, stepType);
+        }
+        Object config = stepTypeRegistry.parseConfig(stepType, reqVO.getTypeConfig());
+        List<FlowIssue> issues = new java.util.ArrayList<>();
+        stepTypeRegistry.getDescriptor(stepType).validate(config, reqVO.getStepKey(), issues);
+        if (!issues.isEmpty()) {
+            throw exception(FLOW_STEP_TYPE_CONFIG_INVALID, reqVO.getStepKey(), join(issues));
+        }
+    }
+
+    /**
+     * 多条校验问题拼成一句
+     */
+    private String join(List<FlowIssue> issues) {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < issues.size(); i++) {
+            if (i > 0) {
+                text.append('；');
+            }
+            text.append(issues.get(i).getMessage());
+        }
+        return text.toString();
+    }
+
+    /**
      * 请求收成表行。编码由调用方决定，更新时不采用请求里的新编码。
      */
     private FlowStepDO toRow(FlowStepSaveReqVO reqVO, String stepKey) {
         return FlowStepDO.builder()
                 .stepKey(stepKey)
                 .name(reqVO.getName().trim())
-                .deviceCode(reqVO.getDeviceCode().trim())
-                .actionCode(reqVO.getActionCode().trim())
+                .stepType(reqVO.getStepType().trim())
+                .typeConfig(StrUtil.trimToNull(reqVO.getTypeConfig()))
+                .defaultParams(StrUtil.trimToNull(reqVO.getDefaultParams()))
                 .timeoutMs(reqVO.getTimeoutSec() * 1000L)
                 .maxAttempts(reqVO.getMaxAttempts())
                 .remark(StrUtil.trimToNull(reqVO.getRemark()))
@@ -159,8 +209,9 @@ public class FlowStepServiceImpl implements FlowStepService {
         resp.setId(row.getId());
         resp.setStepKey(row.getStepKey());
         resp.setName(row.getName());
-        resp.setDeviceCode(row.getDeviceCode());
-        resp.setActionCode(row.getActionCode());
+        resp.setStepType(row.getStepType());
+        resp.setTypeConfig(row.getTypeConfig());
+        resp.setDefaultParams(row.getDefaultParams());
         resp.setTimeoutSec(row.getTimeoutMs() == null ? null : (int) (row.getTimeoutMs() / 1000));
         resp.setMaxAttempts(row.getMaxAttempts());
         resp.setRemark(row.getRemark());

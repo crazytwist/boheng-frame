@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import { DeviceInfoApi, DeviceVO } from '@/api/device'
-import { FlowStepApi, FlowStepVO } from '@/api/flow/step'
+import { FlowStepApi, FlowStepVO, STEP_TYPES } from '@/api/flow/step'
 
 defineOptions({ name: 'FlowStepForm' })
 
@@ -15,12 +15,16 @@ const formType = ref('')
 const devices = ref<DeviceVO[]>([])
 const actions = ref<DeviceActionVO[]>([])
 
+/** 设备动作专属配置：从 typeConfig JSON 拆出的两个选择框 */
+const deviceConfig = reactive<{ deviceCode: string; actionCode: string }>({ deviceCode: '', actionCode: '' })
+
 const createEmpty = (): FlowStepVO => ({
   id: undefined,
   stepKey: '',
   name: '',
-  deviceCode: '',
-  actionCode: '',
+  stepType: 'device.command',
+  typeConfig: '',
+  defaultParams: '',
   timeoutSec: 300,
   maxAttempts: 1,
   remark: '',
@@ -34,12 +38,13 @@ const formRules = reactive({
     { pattern: /^[a-z][a-z0-9_]{0,31}$/, message: '小写字母开头，只含小写、数字和下划线', trigger: 'blur' }
   ],
   name: [{ required: true, message: '步骤名称不能为空', trigger: 'blur' }],
-  deviceCode: [{ required: true, message: '设备不能为空', trigger: 'change' }],
-  actionCode: [{ required: true, message: '动作不能为空', trigger: 'change' }],
+  stepType: [{ required: true, message: '步骤类型不能为空', trigger: 'change' }],
   timeoutSec: [{ required: true, message: '等待时间不能为空', trigger: 'change' }],
   maxAttempts: [{ required: true, message: '尝试次数不能为空', trigger: 'change' }]
 })
 const formRef = ref()
+
+const isDeviceType = computed(() => formData.value.stepType === 'device.command')
 
 const loadActions = async (deviceCode?: string) => {
   actions.value = []
@@ -50,8 +55,28 @@ const loadActions = async (deviceCode?: string) => {
 }
 
 const onDeviceChange = async () => {
-  formData.value.actionCode = ''
-  await loadActions(formData.value.deviceCode)
+  deviceConfig.actionCode = ''
+  await loadActions(deviceConfig.deviceCode)
+}
+
+/** 切换类型时清掉旧配置 */
+const onTypeChange = () => {
+  formData.value.typeConfig = ''
+  deviceConfig.deviceCode = ''
+  deviceConfig.actionCode = ''
+  actions.value = []
+}
+
+/** 从 typeConfig 里解析设备动作配置给选择框 */
+const parseDeviceConfig = (typeConfig?: string) => {
+  try {
+    const config = typeConfig ? JSON.parse(typeConfig) : {}
+    deviceConfig.deviceCode = config.deviceCode || ''
+    deviceConfig.actionCode = config.actionCode || ''
+  } catch {
+    deviceConfig.deviceCode = ''
+    deviceConfig.actionCode = ''
+  }
 }
 
 const open = async (type: string, id?: number) => {
@@ -59,6 +84,8 @@ const open = async (type: string, id?: number) => {
   dialogTitle.value = t('action.' + type)
   formType.value = type
   formData.value = createEmpty()
+  deviceConfig.deviceCode = ''
+  deviceConfig.actionCode = ''
   actions.value = []
   formRef.value?.clearValidate()
   devices.value = (await DeviceInfoApi.getDeviceList()) || []
@@ -66,24 +93,42 @@ const open = async (type: string, id?: number) => {
   formLoading.value = true
   try {
     formData.value = await FlowStepApi.get(id)
-    await loadActions(formData.value.deviceCode)
+    if (formData.value.stepType === 'device.command') {
+      parseDeviceConfig(formData.value.typeConfig)
+      await loadActions(deviceConfig.deviceCode)
+    }
   } finally {
     formLoading.value = false
   }
 }
 
+/** 提交前把设备选择框收进 typeConfig */
+const buildPayload = (): FlowStepVO => {
+  const payload = { ...formData.value }
+  if (payload.stepType === 'device.command') {
+    payload.typeConfig = JSON.stringify({
+      deviceCode: deviceConfig.deviceCode,
+      actionCode: deviceConfig.actionCode
+    })
+  } else {
+    payload.typeConfig = payload.typeConfig?.trim() || undefined
+  }
+  payload.defaultParams = payload.defaultParams?.trim() || undefined
+  payload.stepKey = payload.stepKey?.trim()
+  payload.name = payload.name?.trim()
+  return payload
+}
+
 const submitForm = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
+  if (formData.value.stepType === 'device.command' && (!deviceConfig.deviceCode || !deviceConfig.actionCode)) {
+    message.error('设备动作步骤要选择设备和动作')
+    return
+  }
   formLoading.value = true
   try {
-    const payload = {
-      ...formData.value,
-      stepKey: formData.value.stepKey?.trim(),
-      name: formData.value.name?.trim(),
-      deviceCode: formData.value.deviceCode?.trim(),
-      actionCode: formData.value.actionCode?.trim()
-    }
+    const payload = buildPayload()
     if (formType.value === 'create') {
       await FlowStepApi.create(payload)
       message.success(t('common.createSuccess'))
@@ -111,15 +156,32 @@ const emit = defineEmits<{ success: [] }>()
       <el-form-item label="步骤名称" prop="name">
         <el-input v-model="formData.name" maxlength="128" placeholder="请输入步骤名称，如 离心" />
       </el-form-item>
-      <el-form-item label="设备" prop="deviceCode">
-        <el-select v-model="formData.deviceCode" filterable placeholder="请选择设备" class="!w-1/1" @change="onDeviceChange">
-          <el-option v-for="item in devices" :key="item.deviceCode" :label="`${item.deviceName}（${item.deviceCode}）`" :value="item.deviceCode!" />
+      <el-form-item label="步骤类型" prop="stepType">
+        <el-select v-model="formData.stepType" placeholder="请选择步骤类型" class="!w-1/1" :disabled="formType !== 'create'" @change="onTypeChange">
+          <el-option v-for="item in STEP_TYPES" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="动作" prop="actionCode">
-        <el-select v-model="formData.actionCode" filterable placeholder="请选择动作" class="!w-1/1" :disabled="!formData.deviceCode">
-          <el-option v-for="item in actions" :key="item.actionCode" :label="`${item.actionName}（${item.actionCode}）`" :value="item.actionCode!" />
-        </el-select>
+      <!-- 设备动作：设备 + 动作选择框，收进 typeConfig -->
+      <template v-if="isDeviceType">
+        <el-form-item label="设备" required>
+          <el-select v-model="deviceConfig.deviceCode" filterable placeholder="请选择设备" class="!w-1/1" @change="onDeviceChange">
+            <el-option v-for="item in devices" :key="item.deviceCode" :label="`${item.deviceName}（${item.deviceCode}）`" :value="item.deviceCode!" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="动作" required>
+          <el-select v-model="deviceConfig.actionCode" filterable placeholder="请选择动作" class="!w-1/1" :disabled="!deviceConfig.deviceCode">
+            <el-option v-for="item in actions" :key="item.actionCode" :label="`${item.actionName}（${item.actionCode}）`" :value="item.actionCode!" />
+          </el-select>
+        </el-form-item>
+      </template>
+      <!-- 其它类型：JSON 配置 -->
+      <el-form-item v-else label="类型配置">
+        <el-input v-model="formData.typeConfig" type="textarea" :rows="4" maxlength="4096"
+          placeholder='类型专属配置 JSON，如 {"beanName":"demoAction","argsJson":"{}"}' />
+      </el-form-item>
+      <el-form-item label="默认输入">
+        <el-input v-model="formData.defaultParams" type="textarea" :rows="2" maxlength="4096"
+          placeholder='选填。默认输入 JSON，如 {"speed":3000}' />
       </el-form-item>
       <el-row :gutter="20">
         <el-col :span="12">

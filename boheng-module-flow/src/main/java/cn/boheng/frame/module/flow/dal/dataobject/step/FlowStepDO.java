@@ -12,7 +12,9 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 /**
- * 可复用的实验步骤。一条步骤是一次设备动作，流程通过关联表引用它。
+ * 可复用的实验步骤（能力目录的一行）。一种能力 = step_type + type_config：
+ * 设备动作的设备编码和动作码收在 type_config 里，新增类型零改表。
+ * 流程通过 flow_node 引用它。
  */
 @TableName("flow_step")
 @Data
@@ -40,14 +42,19 @@ public class FlowStepDO extends TenantBaseDO {
     private String name;
 
     /**
-     * 台账上的设备编码
+     * 步骤类型 key。见 FlowConstants.STEP_*，必须在 StepTypeRegistry 里注册过
      */
-    private String deviceCode;
+    private String stepType;
 
     /**
-     * 该设备类型下的动作编码
+     * 类型专属配置 JSON。device.command 存 {"deviceCode":..,"actionCode":..}
      */
-    private String actionCode;
+    private String typeConfig;
+
+    /**
+     * 通用默认输入 JSON。节点引用时可覆盖
+     */
+    private String defaultParams;
 
     /**
      * 最多等待的毫秒数

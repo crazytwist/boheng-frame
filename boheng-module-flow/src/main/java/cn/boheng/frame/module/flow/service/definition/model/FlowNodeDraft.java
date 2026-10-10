@@ -4,56 +4,93 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 校验和保存时用的一步。顺序就是列表顺序，不信任调用方传来的依赖数组。
+ * 校验和保存时用的一步。图形态字段（依赖、汇合、分支）从这里进
+ * FlowGraphChecker 做发布校验；能力字段由步骤表或节点配置解析而来。
  */
 @Data
 public class FlowNodeDraft {
 
     /**
-     * 版本内步骤编码
+     * 版本内节点编码
      */
     private String nodeId;
 
     /**
-     * 步骤名称
+     * 节点名称。引用能力时取步骤名称，控制节点单独填
      */
     private String name;
 
     /**
-     * 步骤类型。当前只能是 device.command
+     * 生效的步骤类型 key
      */
     private String stepType;
 
     /**
-     * 台账上的设备编码
+     * 生效的类型配置 JSON。设备编码和动作码收在这里
      */
-    private String deviceCode;
+    private String typeConfig;
 
     /**
-     * 该设备类型下的动作编码
+     * 前置节点编码。空 = 无前置（起点）
      */
-    private String actionCode;
+    private List<String> dependsOn = new ArrayList<>();
 
     /**
-     * 最多等待的毫秒数
+     * 汇合策略：ALL_SUCCESS / ANY_SUCCESS / ALL_DONE
+     */
+    private String joinPolicy;
+
+    /**
+     * 前置失败策略：FAIL / SKIP
+     */
+    private String joinFailurePolicy;
+
+    /**
+     * 出口映射（route 专用）：出口名 -> 目标节点编码列表
+     */
+    private Map<String, List<String>> branches;
+
+    /**
+     * 参数映射
+     */
+    private List<FlowMapping> mappings = new ArrayList<>();
+
+    /**
+     * 循环体入口节点（loop 专用，图校验用）
+     */
+    private String loopBodyEntry;
+
+    /**
+     * 循环体出口节点（loop 专用，图校验用）
+     */
+    private String loopBodyExit;
+
+    /**
+     * 子流程目标编码（subflow 专用，图校验用）
+     */
+    private String subflowTargetKey;
+
+    /**
+     * 等待毫秒数（生效值）
      */
     private Long timeoutMs;
 
     /**
-     * 含首次的尝试次数
+     * 尝试次数上限（生效值）
      */
     private Integer maxAttempts;
 
     /**
-     * 失败策略。当前只能是 FAIL_FAST
+     * 失败策略：FAIL_FAST / FAIL_SKIP
      */
     private String failStrategy;
 
     /**
-     * 参数映射。可以为空，表示这一步只按动作自己的默认参数下发
+     * 关联的能力编号。控制类节点为空
      */
-    private List<FlowMapping> mappings = new ArrayList<>();
+    private Long stepId;
 
 }

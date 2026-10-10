@@ -5,6 +5,7 @@ import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationPageReqVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationRespVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationSaveReqVO;
+import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationUpdateReqVO;
 import cn.boheng.frame.module.flow.service.relation.FlowRelationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -24,25 +26,33 @@ import org.springframework.web.bind.annotation.RestController;
 import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
 
 /**
- * 流程和步骤的关联。步骤本身在步骤接口里维护。
+ * 流程版本里的节点编排。挂能力、建控制类节点、改依赖与分支都在这里。
  */
-@Tag(name = "管理后台 - 流程步骤关联")
+@Tag(name = "管理后台 - 流程节点编排")
 @RestController
 @RequestMapping("/flow/relation")
 @Validated
 public class FlowRelationController {
 
     /**
-     * 关联服务
+     * 节点编排服务
      */
     @Resource
     private FlowRelationService flowRelationService;
 
     @PostMapping("/create")
-    @Operation(summary = "把步骤关联到流程")
+    @Operation(summary = "添加节点（挂能力或控制类节点）")
     @PreAuthorize("@ss.hasPermission('flow:relation:create')")
     public CommonResult<Long> createRelation(@Valid @RequestBody FlowRelationSaveReqVO reqVO) {
         return success(flowRelationService.createRelation(reqVO));
+    }
+
+    @PutMapping("/update")
+    @Operation(summary = "更新节点的编排形态")
+    @PreAuthorize("@ss.hasPermission('flow:relation:update')")
+    public CommonResult<Boolean> updateRelation(@Valid @RequestBody FlowRelationUpdateReqVO reqVO) {
+        flowRelationService.updateRelation(reqVO);
+        return success(true);
     }
 
     @DeleteMapping("/delete")

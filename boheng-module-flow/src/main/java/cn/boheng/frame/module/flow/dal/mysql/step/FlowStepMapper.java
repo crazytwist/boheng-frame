@@ -16,13 +16,13 @@ import java.util.List;
 public interface FlowStepMapper extends BaseMapperX<FlowStepDO> {
 
     /**
-     * 按编码、名称、设备、状态分页。
+     * 按编码、名称、类型、状态分页。
      */
     default PageResult<FlowStepDO> selectPage(FlowStepPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<FlowStepDO>()
                 .likeIfPresent(FlowStepDO::getStepKey, reqVO.getStepKey())
                 .likeIfPresent(FlowStepDO::getName, reqVO.getName())
-                .eqIfPresent(FlowStepDO::getDeviceCode, reqVO.getDeviceCode())
+                .eqIfPresent(FlowStepDO::getStepType, reqVO.getStepType())
                 .eqIfPresent(FlowStepDO::getStatus, reqVO.getStatus())
                 .orderByDesc(FlowStepDO::getId));
     }

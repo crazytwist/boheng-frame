@@ -11,6 +11,7 @@ import lombok.Data;
 
 /**
  * 新建或修改一条步骤。编码只在新建时生效。
+ * 步骤类型 + 类型配置决定这一步「怎么执行」，见 engine/type/builtin。
  */
 @Schema(description = "管理后台 - 实验步骤保存 Request VO")
 @Data
@@ -29,15 +30,18 @@ public class FlowStepSaveReqVO {
     @Size(max = 128, message = "步骤名称长度不能超过 128 个字符")
     private String name;
 
-    @Schema(description = "设备编码", requiredMode = Schema.RequiredMode.REQUIRED, example = "DEV-001")
-    @NotEmpty(message = "设备不能为空")
-    @Size(max = 64, message = "设备编码长度不能超过 64 个字符")
-    private String deviceCode;
+    @Schema(description = "步骤类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "device.command")
+    @NotEmpty(message = "步骤类型不能为空")
+    @Size(max = 64, message = "步骤类型长度不能超过 64 个字符")
+    private String stepType;
 
-    @Schema(description = "动作编码", requiredMode = Schema.RequiredMode.REQUIRED, example = "READ_PLATE")
-    @NotEmpty(message = "动作不能为空")
-    @Size(max = 64, message = "动作编码长度不能超过 64 个字符")
-    private String actionCode;
+    @Schema(description = "类型配置 JSON，结构由步骤类型决定", example = "{\"deviceCode\":\"DEV-001\",\"actionCode\":\"READ_PLATE\"}")
+    @Size(max = 4096, message = "类型配置长度不能超过 4096 个字符")
+    private String typeConfig;
+
+    @Schema(description = "默认输入 JSON。节点引用时可覆盖", example = "{\"speed\":3000}")
+    @Size(max = 4096, message = "默认输入长度不能超过 4096 个字符")
+    private String defaultParams;
 
     @Schema(description = "等待秒数", example = "300")
     @NotNull(message = "等待时间不能为空")

@@ -4,13 +4,19 @@ import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationPageReqVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationRespVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationSaveReqVO;
+import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationUpdateReqVO;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowDefinitionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowNodeDO;
 import cn.boheng.frame.module.flow.dal.dataobject.step.FlowStepDO;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowDefinitionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowNodeMapper;
 import cn.boheng.frame.module.flow.dal.mysql.step.FlowStepMapper;
+import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
+import cn.boheng.frame.module.flow.service.definition.FlowDraftAssembler;
+import cn.boheng.frame.module.flow.service.definition.FlowGraphChecker;
+import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
+import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
@@ -26,6 +32,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEFINITION_INVALID;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEFINITION_LOCKED;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEFINITION_NOT_EXISTS;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_RELATION_LIMIT;
@@ -33,10 +40,15 @@ import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_RELATION
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_RELATION_NODE_INVALID;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_RELATION_NOT_EXISTS;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_RELATION_STEP_DISABLED;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_CONTROL_TYPE;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_NOT_EXISTS;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_TYPE_CONFIG_INVALID;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_STEP_TYPE_NOT_REGISTERED;
 
 /**
- * 关联只改草稿。顺序变化后，每一步的前置都按新的相邻关系重写。
+ * 流程版本里的节点编排。v3 放开 depends_on 自由连线后，
+ * 「画得出跑不了」的防线是每次变更后立刻做结构校验（前置存在、无环、join 一致），
+ * 草稿在任何时刻都保持结构合法。sortNo 只管展示顺序，不再是依赖的真相源。
  */
 @Service
 @Validated
@@ -66,45 +78,128 @@ public class FlowRelationServiceImpl implements FlowRelationService {
     private FlowStepMapper flowStepMapper;
 
     /**
-     * 挂到草稿末尾。节点编码空着时用步骤编码。
+     * 步骤类型注册表。控制类节点创建与配置更新时校验
+     */
+    @Resource
+    private StepTypeRegistry stepTypeRegistry;
+
+    /**
+     * 草稿装配器。结构校验和列表展示共用同一套生效规则
+     */
+    @Resource
+    private FlowDraftAssembler draftAssembler;
+
+    /**
+     * 加节点。挂能力走步骤表取类型配置；控制类节点直接带类型和配置。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createRelation(FlowRelationSaveReqVO reqVO) {
         FlowDefinitionDO definition = requireDraft(reqVO.getDefinitionId());
-        FlowStepDO step = flowStepMapper.selectById(reqVO.getStepId());
-        if (step == null) {
-            throw exception(FLOW_STEP_NOT_EXISTS);
-        }
-        if (step.getStatus() != null && step.getStatus() != 0) {
-            throw exception(FLOW_RELATION_STEP_DISABLED, step.getStepKey());
-        }
         List<FlowNodeDO> nodes = new ArrayList<>(flowNodeMapper.selectByDefinitionId(definition.getId()));
         if (nodes.size() >= FlowConstants.MAX_NODES) {
             throw exception(FLOW_RELATION_LIMIT, FlowConstants.MAX_NODES);
         }
-        String nodeId = StrUtil.blankToDefault(StrUtil.trim(reqVO.getNodeId()), step.getStepKey());
-        if (!NODE_ID.matcher(nodeId).matches()) {
-            throw exception(FLOW_RELATION_NODE_INVALID);
+        FlowNodeDO.FlowNodeDOBuilder builder;
+        if (reqVO.getStepId() != null) {
+            // 挂能力：类型与配置取自步骤表
+            FlowStepDO step = flowStepMapper.selectById(reqVO.getStepId());
+            if (step == null) {
+                throw exception(FLOW_STEP_NOT_EXISTS);
+            }
+            if (step.getStatus() != null && step.getStatus() != 0) {
+                throw exception(FLOW_RELATION_STEP_DISABLED, step.getStepKey());
+            }
+            String nodeId = StrUtil.blankToDefault(StrUtil.trim(reqVO.getNodeId()), step.getStepKey());
+            builder = prepareInsert(definition, nodes, nodeId)
+                    .stepId(step.getId());
+        } else {
+            // 控制类节点：类型 + 配置 + 名称都由请求给出
+            String stepType = StrUtil.trimToEmpty(reqVO.getStepType());
+            if (StrUtil.isBlank(stepType) || !stepTypeRegistry.isRegistered(stepType)) {
+                throw exception(FLOW_STEP_TYPE_NOT_REGISTERED, stepType);
+            }
+            if (!StepTypeRegistry.isControlType(stepType)) {
+                // 能力型类型必须挂步骤，不允许在节点上凭空写配置
+                throw exception(FLOW_STEP_CONTROL_TYPE, stepType);
+            }
+            if (StrUtil.isBlank(reqVO.getName())) {
+                throw exception(FLOW_DEFINITION_INVALID, "控制类节点要填名称");
+            }
+            validateTypeConfig(stepType, reqVO.getTypeConfig(), reqVO.getName());
+            if (StrUtil.isBlank(reqVO.getNodeId())) {
+                throw exception(FLOW_RELATION_NODE_INVALID);
+            }
+            builder = prepareInsert(definition, nodes, reqVO.getNodeId().trim())
+                    .name(reqVO.getName().trim())
+                    .stepType(stepType)
+                    .typeConfig(StrUtil.trimToNull(reqVO.getTypeConfig()));
         }
-        if (nodes.stream().anyMatch(item -> nodeId.equals(item.getNodeId()))) {
-            throw exception(FLOW_RELATION_NODE_DUPLICATE, nodeId);
-        }
-        FlowNodeDO row = FlowNodeDO.builder()
-                .definitionId(definition.getId())
-                .stepId(step.getId())
-                .nodeId(nodeId)
+        FlowNodeDO row = builder
                 .sortNo(nodes.size())
-                .dependsOn("[]")
+                .dependsOn(toJson(reqVO.getDependsOn()))
                 .build();
         flowNodeMapper.insert(row);
-        nodes.add(row);
-        rewriteOrder(nodes);
+        assertStructure(definition.getId());
         return row.getId();
     }
 
     /**
-     * 卸下关联。步骤定义留在步骤表里。
+     * 改编排形态：前置、汇合、分支出口、参数映射；控制类节点还能改名称和配置。
+     * 挂能力的节点可写节点级 typeConfig 覆盖。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateRelation(FlowRelationUpdateReqVO reqVO) {
+        FlowNodeDO row = requireRelation(reqVO.getId());
+        requireDraft(row.getDefinitionId());
+        boolean control = row.getStepId() == null;
+        // 名称：控制类节点可改；挂能力时名称跟随步骤，忽略
+        if (control && reqVO.getName() != null) {
+            if (StrUtil.isBlank(reqVO.getName())) {
+                throw exception(FLOW_DEFINITION_INVALID, "控制类节点要填名称");
+            }
+            row.setName(reqVO.getName().trim());
+        }
+        // 类型配置：控制类节点必填；挂能力时为节点级覆盖
+        if (reqVO.getTypeConfig() != null) {
+            String effectiveType = StrUtil.isNotBlank(row.getStepType()) ? row.getStepType()
+                    : effectiveStepTypeOf(row);
+            validateTypeConfig(effectiveType, reqVO.getTypeConfig(), row.getNodeId());
+            row.setTypeConfig(StrUtil.trimToNull(reqVO.getTypeConfig()));
+        }
+        // 前置：允许清空成起点
+        if (reqVO.getDependsOn() != null) {
+            if (reqVO.getDependsOn().contains(row.getNodeId())) {
+                throw exception(FLOW_DEFINITION_INVALID, "节点不能依赖自己");
+            }
+            row.setDependsOn(toJson(reqVO.getDependsOn()));
+        }
+        // 汇合策略：空串表示清掉回落默认
+        if (reqVO.getJoinPolicy() != null) {
+            row.setJoinPolicy(StrUtil.trimToNull(reqVO.getJoinPolicy()));
+        }
+        if (reqVO.getJoinFailurePolicy() != null) {
+            row.setJoinFailurePolicy(StrUtil.trimToNull(reqVO.getJoinFailurePolicy()));
+        }
+        // 出口映射：只有 route 节点有意义
+        if (reqVO.getBranches() != null) {
+            boolean route = FlowConstants.STEP_ROUTE.equals(StrUtil.isNotBlank(row.getStepType())
+                    ? row.getStepType() : effectiveStepTypeOf(row));
+            row.setBranches(route && !reqVO.getBranches().isEmpty()
+                    ? JSONUtil.toJsonStr(reqVO.getBranches()) : null);
+        }
+        // 参数映射
+        if (reqVO.getMappings() != null) {
+            row.setInputMapping(reqVO.getMappings().isEmpty() ? null
+                    : JSONUtil.toJsonStr(reqVO.getMappings()));
+        }
+        flowNodeMapper.updateById(row);
+        assertStructure(row.getDefinitionId());
+    }
+
+    /**
+     * 卸下节点。还有节点依赖它时先解除那些依赖。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -113,11 +208,12 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         requireDraft(row.getDefinitionId());
         flowNodeMapper.deleteById(id);
         List<FlowNodeDO> nodes = new ArrayList<>(flowNodeMapper.selectByDefinitionId(row.getDefinitionId()));
-        rewriteOrder(nodes);
+        reorder(nodes);
+        assertStructure(row.getDefinitionId());
     }
 
     /**
-     * 和相邻的一条交换位置。已经在两端时不动。
+     * 只调展示顺序，不动依赖。已经在两端时不动。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -141,11 +237,11 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         }
         FlowNodeDO moving = nodes.remove(index);
         nodes.add(target, moving);
-        rewriteOrder(nodes);
+        reorder(nodes);
     }
 
     /**
-     * 分页，并补上流程名称和步骤上的设备动作。
+     * 分页。展示值经装配器解析成生效值。
      */
     @Override
     public PageResult<FlowRelationRespVO> getRelationPage(FlowRelationPageReqVO reqVO) {
@@ -164,16 +260,65 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         return new PageResult<>(list, page.getTotal());
     }
 
+    // ==================== 内部 ====================
+
     /**
-     * 按当前列表重写顺序和前置。第一步没有前置，后面每步只依赖紧挨着的上一步。
+     * 新节点插入前的公共检查：编码合法且不与版本内已有节点重复
      */
-    private void rewriteOrder(List<FlowNodeDO> nodes) {
+    private FlowNodeDO.FlowNodeDOBuilder prepareInsert(FlowDefinitionDO definition,
+                                                       List<FlowNodeDO> nodes, String nodeId) {
+        if (!NODE_ID.matcher(nodeId).matches()) {
+            throw exception(FLOW_RELATION_NODE_INVALID);
+        }
+        if (nodes.stream().anyMatch(item -> nodeId.equals(item.getNodeId()))) {
+            throw exception(FLOW_RELATION_NODE_DUPLICATE, nodeId);
+        }
+        return FlowNodeDO.builder().definitionId(definition.getId()).nodeId(nodeId);
+    }
+
+    /**
+     * 类型配置必须能被该类型的配置模型解析并通过类型校验
+     */
+    private void validateTypeConfig(String stepType, String typeConfig, String label) {
+        Object config = stepTypeRegistry.parseConfig(stepType, typeConfig);
+        List<FlowIssue> issues = new ArrayList<>();
+        stepTypeRegistry.getDescriptor(stepType).validate(config, label, issues);
+        if (!issues.isEmpty()) {
+            throw exception(FLOW_STEP_TYPE_CONFIG_INVALID, label, FlowGraphChecker.join(issues));
+        }
+    }
+
+    /**
+     * 节点引用能力时的生效类型（无节点级覆盖时取步骤表）
+     */
+    private String effectiveStepTypeOf(FlowNodeDO row) {
+        if (StrUtil.isNotBlank(row.getStepType()) || row.getStepId() == null) {
+            return row.getStepType();
+        }
+        FlowStepDO step = flowStepMapper.selectById(row.getStepId());
+        return step == null ? null : step.getStepType();
+    }
+
+    /**
+     * 每次变更后立刻校验结构。不合法抛错回滚，草稿永远结构合法。
+     */
+    private void assertStructure(Long definitionId) {
+        List<FlowIssue> issues = FlowGraphChecker.checkStructure(draftAssembler.assemble(definitionId));
+        if (!issues.isEmpty()) {
+            throw exception(FLOW_DEFINITION_INVALID, FlowGraphChecker.join(issues));
+        }
+    }
+
+    /**
+     * 重排展示顺序。v3 顺序只影响列表展示，依赖关系不动。
+     */
+    private void reorder(List<FlowNodeDO> nodes) {
         for (int i = 0; i < nodes.size(); i++) {
             FlowNodeDO row = nodes.get(i);
-            List<String> dependsOn = i == 0 ? List.of() : List.of(nodes.get(i - 1).getNodeId());
-            row.setSortNo(i);
-            row.setDependsOn(JSONUtil.toJsonStr(dependsOn));
-            flowNodeMapper.updateById(row);
+            if (row.getSortNo() == null || row.getSortNo() != i) {
+                row.setSortNo(i);
+                flowNodeMapper.updateById(row);
+            }
         }
     }
 
@@ -204,7 +349,7 @@ public class FlowRelationServiceImpl implements FlowRelationService {
     }
 
     /**
-     * 列表行。步骤被删掉时设备动作为空，页面上能看出来断了。
+     * 列表行。生效值用装配器解析，展示和校验看到的是同一张图。
      */
     private FlowRelationRespVO toResp(FlowNodeDO row, FlowDefinitionDO definition, FlowStepDO step) {
         FlowRelationRespVO resp = new FlowRelationRespVO();
@@ -219,15 +364,38 @@ public class FlowRelationServiceImpl implements FlowRelationService {
             resp.setVersion(definition.getVersion());
             resp.setDefinitionStatus(definition.getStatus());
         }
+        FlowNodeDraft draft = draftAssembler.toDraft(row, step);
+        resp.setName(draft.getName());
+        resp.setStepType(draft.getStepType());
+        resp.setTypeConfig(draft.getTypeConfig());
+        resp.setDependsOn(draft.getDependsOn());
+        resp.setJoinPolicy(draft.getJoinPolicy());
+        resp.setJoinFailurePolicy(draft.getJoinFailurePolicy());
+        resp.setBranches(draft.getBranches());
+        resp.setMappings(draft.getMappings().stream().map(mapping -> {
+            cn.boheng.frame.module.flow.controller.admin.definition.vo.FlowMappingReqVO req =
+                    new cn.boheng.frame.module.flow.controller.admin.definition.vo.FlowMappingReqVO();
+            req.setParam(mapping.getParam());
+            req.setSource(mapping.getSource());
+            req.setField(mapping.getField());
+            req.setNodeId(mapping.getNodeId());
+            req.setValue(mapping.getValue());
+            return req;
+        }).toList());
+        resp.setTimeoutSec(draft.getTimeoutMs() == null ? null : (int) (draft.getTimeoutMs() / 1000));
+        resp.setMaxAttempts(draft.getMaxAttempts());
         if (step != null) {
             resp.setStepKey(step.getStepKey());
             resp.setStepName(step.getName());
-            resp.setDeviceCode(step.getDeviceCode());
-            resp.setActionCode(step.getActionCode());
-            resp.setTimeoutSec(step.getTimeoutMs() == null ? null : (int) (step.getTimeoutMs() / 1000));
-            resp.setMaxAttempts(step.getMaxAttempts());
         }
         return resp;
+    }
+
+    /**
+     * 依赖数组收成 JSON。空列表存 "[]"。
+     */
+    private String toJson(List<String> dependsOn) {
+        return JSONUtil.toJsonStr(dependsOn == null ? List.of() : dependsOn);
     }
 
 }

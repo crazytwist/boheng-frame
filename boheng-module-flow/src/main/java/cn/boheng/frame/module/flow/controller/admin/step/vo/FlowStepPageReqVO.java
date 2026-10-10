@@ -21,8 +21,8 @@ public class FlowStepPageReqVO extends PageParam {
     @Schema(description = "步骤名称", example = "离心")
     private String name;
 
-    @Schema(description = "设备编码", example = "DEV-001")
-    private String deviceCode;
+    @Schema(description = "步骤类型", example = "device.command")
+    private String stepType;
 
     @Schema(description = "状态：0 启用，1 停用", example = "0")
     private Integer status;

@@ -1,41 +1,50 @@
 package cn.boheng.frame.module.flow.service.definition;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
+import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
+import cn.boheng.frame.module.flow.engine.type.config.DeviceCommandConfig;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
+import cn.boheng.frame.module.flow.enums.JoinPolicy;
 import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.boheng.frame.module.flow.service.definition.model.FlowMapping;
 import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * 检查一条直线流程能不能保存、能不能发布，并计算发布指纹。
- * 不访问数据库。设备是否存在由调用方用 {@link DeviceLookup} 回答。
+ * 流程图校验器。保存草稿做结构校验，发布做全量校验（fail-fast）：
+ * v2 的防线是「依赖服务端按顺序写」，v3 放开 depends_on 后，
+ * 「画得出跑不了」的防线全部由这里的校验矩阵补回。
+ * 不访问数据库；设备与子流程引用由调用方通过回调回答。
  */
 public final class FlowGraphChecker {
 
     /**
-     * 步骤编码：小写开头，方便出现在日志和回调路径里。
+     * 节点编码规则
      */
     private static final Pattern NODE_ID = Pattern.compile(FlowConstants.NODE_ID_REGEX);
 
     /**
-     * 参数名和字段名。允许大写，因为设备动作的参数常常是 READ_PLATE 这种风格。
+     * 分支出口名规则
      */
-    private static final Pattern FIELD_NAME = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,63}$");
+    private static final Pattern BRANCH_KEY = Pattern.compile(FlowConstants.BRANCH_KEY_REGEX);
 
     private FlowGraphChecker() {
     }
 
     /**
-     * 保存草稿时就要成立的结构。设备可以先空着，人还在选。
+     * 保存草稿时的结构校验。设备可以先空着，人还在选。
      */
     public static List<FlowIssue> checkStructure(List<FlowNodeDraft> nodes) {
         List<FlowIssue> issues = new ArrayList<>();
@@ -43,76 +52,94 @@ public final class FlowGraphChecker {
             return issues;
         }
         if (nodes.size() > FlowConstants.MAX_NODES) {
-            issues.add(new FlowIssue(null, "一条流程最多 " + FlowConstants.MAX_NODES + " 步"));
+            issues.add(new FlowIssue(null, "一条流程最多 " + FlowConstants.MAX_NODES + " 个节点"));
         }
         Set<String> seen = new HashSet<>();
-        for (int i = 0; i < nodes.size(); i++) {
-            FlowNodeDraft node = nodes.get(i);
-            String label = labelOf(node, i);
-            checkIdentity(issues, seen, node, label);
-            checkLimits(issues, node, label);
-            checkMappings(issues, nodes, i, label);
+        for (FlowNodeDraft node : nodes) {
+            checkIdentity(issues, seen, node);
         }
+        issues.addAll(checkGraph(nodes));
         return issues;
     }
 
     /**
-     * 发布时在结构之外再确认：至少一步，每一步都指向一台还在、动作仍启用的设备。
+     * 发布时的全量校验：结构 + 类型配置 + 图关系 + 设备台账。
+     *
+     * @param lookup     设备查询回调
+     * @param registry   类型注册表（type_config 的 Descriptor 校验）
+     * @param subflowRef 子流程引用回调：目标是否已发布
      */
-    public static List<FlowIssue> checkPublish(List<FlowNodeDraft> nodes, DeviceLookup lookup) {
+    public static List<FlowIssue> checkPublish(List<FlowNodeDraft> nodes, DeviceLookup lookup,
+                                                StepTypeRegistry registry, SubflowLookup subflowRef) {
         List<FlowIssue> issues = new ArrayList<>(checkStructure(nodes));
         if (nodes == null || nodes.isEmpty()) {
-            issues.add(new FlowIssue(null, "至少添加一步设备动作"));
+            issues.add(new FlowIssue(null, "至少添加一个节点"));
             return issues;
         }
-        for (int i = 0; i < nodes.size(); i++) {
-            FlowNodeDraft node = nodes.get(i);
-            String label = labelOf(node, i);
-            if (StrUtil.hasBlank(node.getDeviceCode(), node.getActionCode())) {
-                issues.add(new FlowIssue(node.getNodeId(), "第 " + (i + 1) + " 步「" + label + "」还没选择设备和动作"));
-                continue;
-            }
-            DeviceSummaryDTO device = lookup.getByCode(node.getDeviceCode());
-            if (device == null) {
-                issues.add(new FlowIssue(node.getNodeId(), "设备【" + node.getDeviceCode() + "】不存在"));
-                continue;
-            }
-            if (!lookup.hasEnabledAction(device.getDeviceTypeCode(), node.getActionCode())) {
+        for (FlowNodeDraft node : nodes) {
+            String label = labelOf(node);
+            // 类型已注册
+            if (StrUtil.isBlank(node.getStepType()) || !registry.isRegistered(node.getStepType())) {
                 issues.add(new FlowIssue(node.getNodeId(),
-                        "设备【" + device.getDeviceName() + "】没有启用的动作【" + node.getActionCode() + "】"));
+                        "节点【" + label + "】的步骤类型【" + StrUtil.nullToEmpty(node.getStepType()) + "】未注册"));
+                continue;
+            }
+            // 控制类节点不允许挂能力目录
+            if (StepTypeRegistry.isControlType(node.getStepType()) && node.getStepId() != null) {
+                issues.add(new FlowIssue(node.getNodeId(),
+                        "控制类节点【" + label + "】不能关联步骤表里的能力"));
+            }
+            // Descriptor 的类型专属校验
+            Object config = registry.parseConfig(node.getStepType(), node.getTypeConfig());
+            registry.getDescriptor(node.getStepType()).validate(config, node.getNodeId(), issues);
+            // 设备类节点：设备在台账且动作启用
+            if (FlowConstants.STEP_DEVICE_COMMAND.equals(node.getStepType())) {
+                checkDevice(issues, node, config, lookup);
+            }
+            // 子流程引用：目标必须已发布
+            if (FlowConstants.STEP_SUBFLOW.equals(node.getStepType()) && subflowRef != null
+                    && StrUtil.isNotBlank(node.getSubflowTargetKey())
+                    && !subflowRef.isPublished(node.getSubflowTargetKey(), null)) {
+                issues.add(new FlowIssue(node.getNodeId(),
+                        "子流程【" + node.getSubflowTargetKey() + "】不是已发布状态"));
             }
         }
         return issues;
     }
 
     /**
-     * 按步骤顺序和映射内容计算指纹。同一张图每次发布得到同一个值。
+     * 发布指纹。同一张图每次发布得到同一个值。
      */
     public static String checksum(List<FlowNodeDraft> nodes) {
         StringBuilder text = new StringBuilder();
-        for (FlowNodeDraft node : nodes) {
-            text.append(node.getNodeId()).append('|')
-                    .append(node.getDeviceCode()).append('|')
-                    .append(node.getActionCode()).append('|')
-                    .append(node.getTimeoutMs()).append('|')
-                    .append(node.getMaxAttempts()).append('|')
-                    .append(node.getFailStrategy()).append('|');
-            List<FlowMapping> mappings = new ArrayList<>(node.getMappings() == null ? List.of() : node.getMappings());
-            mappings.sort(Comparator.comparing(FlowMapping::getParam, Comparator.nullsFirst(String::compareTo)));
-            for (FlowMapping mapping : mappings) {
-                text.append(mapping.getParam()).append('=')
-                        .append(mapping.getSource()).append(':')
-                        .append(StrUtil.nullToEmpty(mapping.getNodeId())).append(':')
-                        .append(StrUtil.nullToEmpty(mapping.getField())).append(':')
-                        .append(StrUtil.nullToEmpty(mapping.getValue())).append(',');
+        if (nodes != null) {
+            List<FlowNodeDraft> sorted = new ArrayList<>(nodes);
+            sorted.sort(Comparator.comparing(FlowNodeDraft::getNodeId, Comparator.nullsFirst(String::compareTo)));
+            for (FlowNodeDraft node : sorted) {
+                text.append(node.getNodeId()).append('|')
+                        .append(node.getStepType()).append('|')
+                        .append(StrUtil.nullToEmpty(node.getTypeConfig())).append('|')
+                        .append(node.getDependsOn() == null ? "" : node.getDependsOn().toString()).append('|')
+                        .append(StrUtil.nullToEmpty(node.getJoinPolicy())).append('|')
+                        .append(node.getTimeoutMs()).append('|')
+                        .append(node.getMaxAttempts()).append('|')
+                        .append(StrUtil.nullToEmpty(node.getFailStrategy())).append('|');
+                if (node.getBranches() != null) {
+                    List<String> keys = new ArrayList<>(node.getBranches().keySet());
+                    keys.sort(String::compareTo);
+                    for (String key : keys) {
+                        text.append(key).append('=').append(node.getBranches().get(key)).append(',');
+                    }
+                }
+                appendMappings(text, node);
+                text.append('\n');
             }
-            text.append('\n');
         }
         return DigestUtil.sha256Hex(text.toString());
     }
 
     /**
-     * 发布失败时把多条原因收成一句，塞进错误码的占位符。
+     * 发布失败时把多条原因收成一句
      */
     public static String join(List<FlowIssue> issues) {
         StringBuilder text = new StringBuilder();
@@ -125,90 +152,190 @@ public final class FlowGraphChecker {
         return text.toString();
     }
 
+    // ==================== 图关系校验 ====================
+
     /**
-     * 编码、名称、类型。编码在整条流程里不能重复。
+     * 图级校验：前置存在、无环、join 与前置数一致、参数映射必须是直接前驱、
+     * loop 区间合法、route 出口目标存在。
      */
-    private static void checkIdentity(List<FlowIssue> issues, Set<String> seen, FlowNodeDraft node, String label) {
-        if (StrUtil.isBlank(node.getNodeId()) || !NODE_ID.matcher(node.getNodeId()).matches()) {
-            issues.add(new FlowIssue(node.getNodeId(), "步骤「" + label + "」的编码须是小写字母开头，只含小写、数字和下划线"));
-        } else if (!seen.add(node.getNodeId())) {
-            issues.add(new FlowIssue(node.getNodeId(), "步骤编码【" + node.getNodeId() + "】重复"));
+    private static List<FlowIssue> checkGraph(List<FlowNodeDraft> nodes) {
+        List<FlowIssue> issues = new ArrayList<>();
+        Map<String, FlowNodeDraft> byId = new LinkedHashMap<>();
+        for (FlowNodeDraft node : nodes) {
+            if (StrUtil.isNotBlank(node.getNodeId())) {
+                byId.put(node.getNodeId(), node);
+            }
         }
-        if (StrUtil.isBlank(node.getName()) || node.getName().length() > 128) {
-            issues.add(new FlowIssue(node.getNodeId(), "步骤「" + label + "」的名称不能为空，且不超过 128 字"));
+        for (FlowNodeDraft node : nodes) {
+            String label = labelOf(node);
+            // 前置存在
+            for (String dep : node.getDependsOn() == null ? List.<String>of() : node.getDependsOn()) {
+                if (!byId.containsKey(dep)) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "节点【" + label + "】的前置【" + dep + "】不存在"));
+                }
+            }
+            // join 与前置数一致：单前置用 ANY_SUCCESS 没有意义且易错
+            if (node.getDependsOn() != null && node.getDependsOn().size() <= 1
+                    && JoinPolicy.ANY_SUCCESS.name().equals(node.getJoinPolicy())) {
+                issues.add(new FlowIssue(node.getNodeId(),
+                        "节点【" + label + "】只有一个前置，不能用 ANY_SUCCESS"));
+            }
+            // 参数映射：NODE 来源必须取直接前驱
+            for (FlowMapping mapping : node.getMappings() == null ? List.<FlowMapping>of() : node.getMappings()) {
+                if (mapping == null || !FlowConstants.SOURCE_NODE.equals(mapping.getSource())) {
+                    continue;
+                }
+                if (node.getDependsOn() == null || !node.getDependsOn().contains(mapping.getNodeId())) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "节点【" + label + "】的参数【" + StrUtil.nullToEmpty(mapping.getParam())
+                                    + "】只能取直接前置的输出，【" + StrUtil.nullToEmpty(mapping.getNodeId()) + "】不是前置"));
+                }
+            }
+            // route：出口目标必须存在
+            if (FlowConstants.STEP_ROUTE.equals(node.getStepType()) && node.getBranches() != null) {
+                for (Map.Entry<String, List<String>> entry : node.getBranches().entrySet()) {
+                    for (String target : entry.getValue() == null ? List.<String>of() : entry.getValue()) {
+                        if (!byId.containsKey(target)) {
+                            issues.add(new FlowIssue(node.getNodeId(),
+                                    "路由节点【" + label + "】的出口【" + entry.getKey()
+                                            + "】指向的节点【" + target + "】不存在"));
+                        }
+                    }
+                }
+            }
+            // loop：区间端点存在且不自指
+            if (FlowConstants.STEP_LOOP.equals(node.getStepType())) {
+                boolean entryMissing = StrUtil.isBlank(node.getLoopBodyEntry())
+                        || !byId.containsKey(node.getLoopBodyEntry());
+                boolean exitMissing = StrUtil.isBlank(node.getLoopBodyExit())
+                        || !byId.containsKey(node.getLoopBodyExit());
+                if (entryMissing || exitMissing) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "循环节点【" + label + "】的循环体入口或出口不存在"));
+                } else if (node.getLoopBodyEntry().equals(node.getNodeId())
+                        || node.getLoopBodyExit().equals(node.getNodeId())) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "循环节点【" + label + "】的区间不能包含自己"));
+                }
+            }
         }
-        if (!FlowConstants.STEP_DEVICE_COMMAND.equals(node.getStepType())) {
-            issues.add(new FlowIssue(node.getNodeId(), "当前只能添加设备动作，不能使用【" + node.getStepType() + "】"));
-        }
-        if (!FlowConstants.FAIL_FAST.equals(node.getFailStrategy())) {
-            issues.add(new FlowIssue(node.getNodeId(), "当前失败后只能终止流程"));
-        }
+        detectCycle(nodes, issues);
+        return issues;
     }
 
     /**
-     * 超时和次数的范围。缺省值由保存逻辑先填上，这里看到的应是具体数字。
+     * 环检测：Kahn 拓扑排序，入度清不完即有环
      */
-    private static void checkLimits(List<FlowIssue> issues, FlowNodeDraft node, String label) {
-        Long timeout = node.getTimeoutMs();
-        if (timeout == null || timeout < FlowConstants.MIN_TIMEOUT_MS || timeout > FlowConstants.MAX_TIMEOUT_MS) {
-            issues.add(new FlowIssue(node.getNodeId(), "步骤「" + label + "」的等待时间须在 1 秒到 24 小时之间"));
+    private static void detectCycle(List<FlowNodeDraft> nodes, List<FlowIssue> issues) {
+        Map<String, Integer> indegree = new LinkedHashMap<>();
+        Map<String, List<String>> adjacency = new LinkedHashMap<>();
+        for (FlowNodeDraft node : nodes) {
+            String id = node.getNodeId();
+            indegree.putIfAbsent(id, 0);
+            for (String dep : node.getDependsOn() == null ? List.<String>of() : node.getDependsOn()) {
+                adjacency.computeIfAbsent(dep, k -> new ArrayList<>()).add(id);
+                indegree.merge(id, 1, Integer::sum);
+            }
         }
-        Integer attempts = node.getMaxAttempts();
-        if (attempts == null || attempts < 1 || attempts > FlowConstants.MAX_ATTEMPTS_LIMIT) {
-            issues.add(new FlowIssue(node.getNodeId(), "步骤「" + label + "」的尝试次数须在 1 到 " + FlowConstants.MAX_ATTEMPTS_LIMIT + " 之间"));
+        Deque<String> queue = new ArrayDeque<>();
+        indegree.forEach((id, degree) -> {
+            if (degree == 0) {
+                queue.add(id);
+            }
+        });
+        int visited = 0;
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            visited++;
+            for (String next : adjacency.getOrDefault(current, List.of())) {
+                int degree = indegree.merge(next, -1, Integer::sum);
+                if (degree == 0) {
+                    queue.add(next);
+                }
+            }
+        }
+        if (visited < indegree.size()) {
+            issues.add(new FlowIssue(null, "依赖关系有环，请检查节点的连线"));
         }
     }
 
+    // ==================== 节点身份 ====================
+
     /**
-     * 映射只能取启动入参、固定值，或紧挨着的上一步。不能跳步，也不能指向后面的步骤。
+     * 编码、名称、类型
      */
-    private static void checkMappings(List<FlowIssue> issues, List<FlowNodeDraft> nodes, int index, String label) {
-        FlowNodeDraft node = nodes.get(index);
-        if (node.getMappings() == null || node.getMappings().isEmpty()) {
+    private static void checkIdentity(List<FlowIssue> issues, Set<String> seen, FlowNodeDraft node) {
+        if (node == null) {
             return;
         }
-        String previousId = index == 0 ? null : nodes.get(index - 1).getNodeId();
-        Set<String> params = new HashSet<>();
-        for (FlowMapping mapping : node.getMappings()) {
-            if (mapping == null || StrUtil.isBlank(mapping.getParam()) || !FIELD_NAME.matcher(mapping.getParam()).matches()) {
-                issues.add(new FlowIssue(node.getNodeId(), "步骤「" + label + "」有一条参数名不合法"));
-                continue;
-            }
-            if (!params.add(mapping.getParam())) {
-                issues.add(new FlowIssue(node.getNodeId(), "步骤「" + label + "」的参数【" + mapping.getParam() + "】重复"));
-            }
-            String source = mapping.getSource();
-            if (FlowConstants.SOURCE_LITERAL.equals(source)) {
-                if (StrUtil.isBlank(mapping.getValue()) || mapping.getValue().length() > 512) {
-                    issues.add(new FlowIssue(node.getNodeId(), "参数【" + mapping.getParam() + "】的固定值不能为空，且不超过 512 字"));
-                }
-            } else if (FlowConstants.SOURCE_INPUT.equals(source)) {
-                if (StrUtil.isBlank(mapping.getField()) || !FIELD_NAME.matcher(mapping.getField()).matches()) {
-                    issues.add(new FlowIssue(node.getNodeId(), "参数【" + mapping.getParam() + "】要写明启动时传入的字段名"));
-                }
-            } else if (FlowConstants.SOURCE_NODE.equals(source)) {
-                if (previousId == null) {
-                    issues.add(new FlowIssue(node.getNodeId(), "第一步没有上一步，参数【" + mapping.getParam() + "】不能从上一步取值"));
-                } else if (!previousId.equals(mapping.getNodeId())) {
-                    issues.add(new FlowIssue(node.getNodeId(), "参数【" + mapping.getParam() + "】只能取上一步【" + previousId + "】的输出"));
-                }
-                if (StrUtil.isBlank(mapping.getField()) || !FIELD_NAME.matcher(StrUtil.nullToEmpty(mapping.getField())).matches()) {
-                    issues.add(new FlowIssue(node.getNodeId(), "参数【" + mapping.getParam() + "】要写明上一步的字段名"));
-                }
-            } else {
-                issues.add(new FlowIssue(node.getNodeId(), "参数【" + mapping.getParam() + "】的来源无法识别"));
-            }
+        String label = labelOf(node);
+        if (StrUtil.isBlank(node.getNodeId()) || !NODE_ID.matcher(node.getNodeId()).matches()) {
+            issues.add(new FlowIssue(node.getNodeId(),
+                    "节点【" + label + "】的编码须是小写字母开头，只含小写、数字和下划线"));
+        } else if (!seen.add(node.getNodeId())) {
+            issues.add(new FlowIssue(node.getNodeId(), "节点编码【" + node.getNodeId() + "】重复"));
+        }
+        if (StrUtil.isBlank(node.getName()) || node.getName().length() > 128) {
+            issues.add(new FlowIssue(node.getNodeId(), "节点【" + label + "】的名称不能为空，且不超过 128 字"));
+        }
+        if (StrUtil.isBlank(node.getStepType())) {
+            issues.add(new FlowIssue(node.getNodeId(), "节点【" + label + "】要选择步骤类型"));
         }
     }
 
     /**
-     * 提示里优先用名称。名称还没填时用序号。
+     * 设备类节点的台账校验
      */
-    private static String labelOf(FlowNodeDraft node, int index) {
+    private static void checkDevice(List<FlowIssue> issues, FlowNodeDraft node, Object config, DeviceLookup lookup) {
+        if (!(config instanceof DeviceCommandConfig device) || StrUtil.isBlank(device.getDeviceCode())) {
+            issues.add(new FlowIssue(node.getNodeId(), "设备步骤【" + labelOf(node) + "】还没选择设备"));
+            return;
+        }
+        if (StrUtil.isBlank(device.getActionCode())) {
+            issues.add(new FlowIssue(node.getNodeId(), "设备步骤【" + labelOf(node) + "】还没选择动作"));
+            return;
+        }
+        if (lookup == null) {
+            return;
+        }
+        DeviceSummaryDTO summary = lookup.getByCode(device.getDeviceCode());
+        if (summary == null) {
+            issues.add(new FlowIssue(node.getNodeId(), "设备【" + device.getDeviceCode() + "】不存在"));
+            return;
+        }
+        if (!lookup.hasEnabledAction(summary.getDeviceTypeCode(), device.getActionCode())) {
+            issues.add(new FlowIssue(node.getNodeId(),
+                    "设备【" + summary.getDeviceName() + "】没有启用的动作【" + device.getActionCode() + "】"));
+        }
+    }
+
+    /**
+     * 指纹里的参数映射段
+     */
+    private static void appendMappings(StringBuilder text, FlowNodeDraft node) {
+        if (node.getMappings() == null) {
+            return;
+        }
+        List<FlowMapping> mappings = new ArrayList<>(node.getMappings());
+        mappings.sort(Comparator.comparing(FlowMapping::getParam, Comparator.nullsFirst(String::compareTo)));
+        for (FlowMapping mapping : mappings) {
+            text.append(mapping.getParam()).append('=')
+                    .append(mapping.getSource()).append(':')
+                    .append(StrUtil.nullToEmpty(mapping.getNodeId())).append(':')
+                    .append(StrUtil.nullToEmpty(mapping.getField())).append(':')
+                    .append(StrUtil.nullToEmpty(mapping.getValue())).append(',');
+        }
+    }
+
+    /**
+     * 提示里优先用名称
+     */
+    private static String labelOf(FlowNodeDraft node) {
         if (node != null && StrUtil.isNotBlank(node.getName())) {
             return node.getName();
         }
-        return "第 " + (index + 1) + " 步";
+        return node == null ? "" : StrUtil.nullToEmpty(node.getNodeId());
     }
 
     /**
@@ -225,6 +352,18 @@ public final class FlowGraphChecker {
          * 该类型下动作是否仍启用。
          */
         boolean hasEnabledAction(String deviceTypeCode, String actionCode);
+
+    }
+
+    /**
+     * 发布校验问子流程引用的问题：目标是否已发布。
+     */
+    public interface SubflowLookup {
+
+        /**
+         * 目标编码 + 版本是否处于已发布状态。版本空 = 任意已发布版本
+         */
+        boolean isPublished(String pipelineKey, Integer version);
 
     }
 

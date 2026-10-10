@@ -16,9 +16,11 @@ export interface FlowNodeVO {
   name: string
   sortNo?: number
   stepType?: string
-  deviceCode?: string
-  actionCode?: string
+  typeConfig?: string
   dependsOn?: string[]
+  joinPolicy?: string
+  joinFailurePolicy?: string
+  branches?: Record<string, string[]>
   timeoutSec?: number
   maxAttempts?: number
   failStrategy?: string

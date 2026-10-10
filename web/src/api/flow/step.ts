@@ -1,11 +1,24 @@
 import request from '@/config/axios'
 
+/**
+ * 步骤类型 key。与后端 StepTypeRegistry 注册表一致，
+ * 控制类类型（route/loop/subflow/timer.wait）只能在流程节点上配置，不进能力目录
+ */
+export const STEP_TYPES = [
+  { value: 'device.command', label: '设备动作' },
+  { value: 'bean.invoke', label: 'JavaBean 调用' },
+  { value: 'script.run', label: '脚本表达式' },
+  { value: 'manual.task', label: '人工确认' },
+  { value: 'notification.send', label: '发送通知' }
+] as const
+
 export interface FlowStepVO {
   id?: number
   stepKey?: string
   name?: string
-  deviceCode?: string
-  actionCode?: string
+  stepType?: string
+  typeConfig?: string
+  defaultParams?: string
   timeoutSec?: number
   maxAttempts?: number
   remark?: string
