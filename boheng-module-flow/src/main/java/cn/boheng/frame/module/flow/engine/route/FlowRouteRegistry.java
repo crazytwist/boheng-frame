@@ -1,11 +1,11 @@
 package cn.boheng.frame.module.flow.engine.route;
 
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.Resource;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,10 +16,12 @@ import java.util.Map;
 public class FlowRouteRegistry {
 
     /**
-     * 全部实现
+     * 全部实现。SPI 允许暂时一个实现都没有（空名单也是合法状态），
+     * 因此用 ObjectProvider 注入——集合直注入在零实现时容器会按
+     * java.util.List 找 bean 并启动失败
      */
-    @Resource
-    private List<FlowRouteAction> actions;
+    @Autowired
+    private ObjectProvider<FlowRouteAction> actionsProvider;
 
     /**
      * Bean 名 -> 实现
@@ -31,7 +33,7 @@ public class FlowRouteRegistry {
      */
     @PostConstruct
     public void init() {
-        for (FlowRouteAction action : actions) {
+        for (FlowRouteAction action : actionsProvider.orderedStream().toList()) {
             String name = action.beanName();
             FlowRouteAction previous = actionMap.put(name, action);
             if (previous != null) {

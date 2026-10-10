@@ -12,7 +12,8 @@ import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.Resource;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -27,10 +28,12 @@ import java.util.Map;
 public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
 
     /**
-     * 全部可调用动作
+     * 全部可调用动作。SPI 允许暂时一个实现都没有（空名单也是合法状态），
+     * 因此用 ObjectProvider 注入——集合直注入在零实现时容器会按
+     * java.util.List 找 bean 并启动失败
      */
-    @Resource
-    private List<FlowBeanAction> actions;
+    @Autowired
+    private ObjectProvider<FlowBeanAction> actionsProvider;
 
     /**
      * Bean 名 -> 实现
@@ -42,7 +45,7 @@ public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
      */
     @PostConstruct
     public void init() {
-        for (FlowBeanAction action : actions) {
+        for (FlowBeanAction action : actionsProvider.orderedStream().toList()) {
             actionMap.put(action.beanName(), action);
         }
     }
