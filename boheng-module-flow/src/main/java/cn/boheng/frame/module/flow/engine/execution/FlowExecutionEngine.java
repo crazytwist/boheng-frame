@@ -233,6 +233,22 @@ public class FlowExecutionEngine {
         }
         // 循环收口：body 全部终态的 loop 求值是否再来一轮
         driveLoops(graph, execution, latest);
+        // 循环驱动可能刚创建了下一轮 PENDING 行；立即再认领一次并分发
+        List<FlowStepExecutionDO> refreshed = stepExecutionMapper.selectByExecutionId(executionId);
+        Map<String, FlowStepExecutionDO> latestAfterLoop = latestByNode(refreshed);
+        DagScheduler.Decision loopDecision = DagScheduler.decide(graph, latestAfterLoop);
+        for (String nodeId : loopDecision.readyNodeIds()) {
+            FlowStepExecutionDO latestRow = latestAfterLoop.get(nodeId);
+            if (latestRow == null) {
+                continue;
+            }
+            FlowStepExecutionDO claimRow = stepExecutionMapper.selectLatestAttempt(executionId, nodeId,
+                    latestRow.getIterationNo());
+            if (claimRow == null || !claim(claimRow)) {
+                continue;
+            }
+            dispatch(graph, execution, claimRow);
+        }
         // 终态检查
         checkFinish(executionId, graph);
     }
@@ -464,10 +480,14 @@ public class FlowExecutionEngine {
                     insertStepRow(execution.getId(), bodyNode, currentIteration + 1, 1, "PENDING");
                 }
             } else {
+                String outputJson = JSONUtil.toJsonStr(Map.of("iterations", currentIteration + 1));
                 loopRow.setStatus("SUCCESS");
-                loopRow.setOutputData(JSONUtil.toJsonStr(Map.of("iterations", currentIteration + 1)));
+                loopRow.setOutputData(outputJson);
                 loopRow.setFinishedAt(LocalDateTime.now());
                 stepExecutionMapper.updateById(loopRow);
+                // 循环轮数进上下文，下游节点按参数映射取 node.{loop}.iterations
+                contextHolder.saveNodeOutput(execution.getId(), node.getNodeId(), 0,
+                        outputJson, "{\"iterations\":\"iterations\"}");
             }
         }
     }
@@ -528,10 +548,13 @@ public class FlowExecutionEngine {
         }
         if (plan.isEmpty()) {
             // 空计划：无组可拆，节点直接成功
+            String outputJson = JSONUtil.toJsonStr(Map.of("children", 0));
             row.setStatus("SUCCESS");
-            row.setOutputData(JSONUtil.toJsonStr(Map.of("children", 0)));
+            row.setOutputData(outputJson);
             row.setFinishedAt(LocalDateTime.now());
             stepExecutionMapper.updateById(row);
+            contextHolder.saveNodeOutput(execution.getId(), node.getNodeId(), 0,
+                    outputJson, "{\"children\":\"children\"}");
             advance(execution.getId());
             return;
         }
@@ -628,14 +651,20 @@ public class FlowExecutionEngine {
                 "executionNo", c.getExecutionNo(),
                 "groupIndex", c.getParentGroupIndex() == null ? -1 : c.getParentGroupIndex(),
                 "status", c.getStatus())));
+        String outputJson = JSONUtil.toJsonStr(Map.of("children", children.size(), "detail", summary));
         row.setStatus(ok ? "SUCCESS" : "DEAD");
-        row.setOutputData(JSONUtil.toJsonStr(Map.of("children", children.size(), "detail", summary)));
+        row.setOutputData(outputJson);
         if (!ok) {
             row.setErrorCode("FLOW_CHILD_FAILED");
             row.setErrorMessage("子流程未按完成策略全部成功");
         }
         row.setFinishedAt(LocalDateTime.now());
         stepExecutionMapper.updateById(row);
+        // 扇出汇合结果进上下文，下游节点按参数映射取 node.{subflow}.children
+        if (ok) {
+            contextHolder.saveNodeOutput(parentExecutionId, parentNodeId, 0,
+                    outputJson, "{\"children\":\"children\"}");
+        }
         advance(parentExecutionId);
     }
 
@@ -766,7 +795,14 @@ public class FlowExecutionEngine {
                 .queuedAt(LocalDateTime.now())
                 .rowVersion(0)
                 .build();
-        stepExecutionMapper.insert(row);
+        try {
+            stepExecutionMapper.insert(row);
+        } catch (org.springframework.dao.DuplicateKeyException ex) {
+            // row_key 唯一索引上的幂等保护：并发 advance 看到同一轮 body 已结束时会重复插入；
+            // 静默忽略，让先到的线程完成插入，后到的发现已存在则跳过
+            log.debug("[flow][engine] 节点行已存在，跳过: exec={} node={} iter={} attempt={}",
+                    executionId, node.getNodeId(), iterationNo, attempt);
+        }
     }
 
     /**

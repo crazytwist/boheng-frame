@@ -7,10 +7,16 @@ import cn.boheng.frame.module.flow.service.definition.model.FlowMapping;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.temporal.Temporal;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +27,8 @@ import java.util.Map;
  */
 @Component
 public class ExecutionContextHolder {
+
+    private static final Logger log = LoggerFactory.getLogger(ExecutionContextHolder.class);
 
     /**
      * 上下文表
@@ -126,25 +134,124 @@ public class ExecutionContextHolder {
      * 落一行上下文
      */
     private void save(Long executionId, String namespace, String nodeId, int iterationNo, String key, Object value) {
+        // hutool 的 JSONUtil.toJsonStr 对 String 直接返回原值（视为已是 JSON），
+        // 落到 MySQL JSON 列会被当成无效 JSON 报错；非 String 走 toJsonStr 正常
+        String valueData = encodeValue(value);
         FlowExecutionContextDO row = FlowExecutionContextDO.builder()
                 .executionId(executionId)
                 .namespace(namespace)
                 .nodeId(nodeId)
                 .iterationNo(iterationNo)
                 .contextKey(key)
-                .valueData(JSONUtil.toJsonStr(value))
+                .valueData(valueData)
                 .build();
-        contextMapper.insert(row);
+        try {
+            contextMapper.insert(row);
+        } catch (org.springframework.dao.DuplicateKeyException ex) {
+            // row_key 唯一索引兜底：并发 settle 抢跑同节点同轮同一 key，
+            // 先到者写入，后续 settle 跳过，保持先到的语义
+            log.debug("[flow][engine] 上下文行已存在，跳过: ns={} node={} iter={} key={}",
+                    namespace, nodeId, iterationNo, key);
+        }
     }
 
     /**
-     * JSON 值转 Java 对象
+     * 把任意值序列化成合法的 JSON 值字符串（带引号的字符串 / true / 数字 / {} / []）。
+     * 写入 MySQL JSON 列时整列视为 JSON 文档，
+     * 字符串必须带引号，hutool JSONUtil.toJsonStr 在 String 上直接返回原值会报错
+     */
+    private String encodeValue(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        if (value instanceof CharSequence || value instanceof Character) {
+            return JSONUtil.quote(value.toString());
+        }
+        if (value instanceof Number || value instanceof Boolean || value instanceof Date
+                || value instanceof Temporal || value.getClass().isEnum()) {
+            return JSONUtil.toJsonStr(value);
+        }
+        // Map / List / Bean 等复合类型走 hutool 默认序列化
+        return JSONUtil.toJsonStr(value);
+    }
+
+    /**
+     * JSON 值转 Java 对象。值在 MySQL JSON 列里以合法 JSON 文档存储，
+     * 读取时按首字符分派：对象 / 数组 / 字符串 / 原生字面量
      */
     private Object parseValue(String json) {
         if (json == null || json.isBlank()) {
             return null;
         }
-        return JSONUtil.parse(json);
+        char first = json.charAt(0);
+        switch (first) {
+            case '{' -> {
+                return JSONUtil.parseObj(json);
+            }
+            case '[' -> {
+                return JSONUtil.parseArray(json);
+            }
+            case '"' -> {
+                // 带引号 JSON 字符串——自行解引号（hutool 没有 unquote API）
+                return unquoteJsonString(json);
+            }
+            default -> {
+                // 数字 / false / true / null 等字面量
+                if ("null".equals(json)) {
+                    return null;
+                }
+                if ("true".equals(json) || "false".equals(json)) {
+                    return Boolean.parseBoolean(json);
+                }
+                try {
+                    return Long.parseLong(json);
+                } catch (NumberFormatException ignored) {
+                }
+                try {
+                    return Double.parseDouble(json);
+                } catch (NumberFormatException ignored) {
+                }
+                return json;
+            }
+        }
+    }
+
+    /**
+     * 解 JSON 字符串字面量。处理 \" \\ \n \r \t \/ \ uXXXX 等转义；
+     * hutool 5.8 内部对 String 字面量直接丢给 parseObj 解析，本工具自给自足
+     */
+    private String unquoteJsonString(String text) {
+        if (text == null || text.length() < 2 || text.charAt(0) != '"' || text.charAt(text.length() - 1) != '"') {
+            throw new IllegalArgumentException("不是合法的 JSON 字符串字面量: " + text);
+        }
+        StringBuilder sb = new StringBuilder(text.length() - 2);
+        int end = text.length() - 1;
+        for (int i = 1; i < end; i++) {
+            char c = text.charAt(i);
+            if (c == '\\' && i + 1 < end) {
+                char next = text.charAt(++i);
+                switch (next) {
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    case '/' -> sb.append('/');
+                    case 'b' -> sb.append('\b');
+                    case 'f' -> sb.append('\f');
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    case 'u' -> {
+                        if (i + 4 < end) {
+                            sb.append((char) Integer.parseInt(text.substring(i + 1, i + 5), 16));
+                            i += 4;
+                        }
+                    }
+                    default -> sb.append(next);
+                }
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**

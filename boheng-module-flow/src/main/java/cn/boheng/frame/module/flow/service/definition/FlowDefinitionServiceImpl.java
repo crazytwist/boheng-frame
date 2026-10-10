@@ -288,6 +288,11 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         List<FlowIssue> issues = new ArrayList<>();
         List<FlowNodeDraft> drafts = new ArrayList<>();
         for (FlowNodeDO row : rows) {
+            // 控制类节点（loop / subflow / route / timer.wait）允许 step_id 为空——它们由 type_config 承载逻辑
+            if (row.getStepId() == null && StepTypeRegistry.isControlType(row.getStepType())) {
+                drafts.add(draftAssembler.toDraft(row, null));
+                continue;
+            }
             FlowStepDO step = row.getStepId() == null ? null : flowStepMapper.selectById(row.getStepId());
             if (step == null) {
                 issues.add(new FlowIssue(row.getNodeId(), "关联的步骤不存在"));

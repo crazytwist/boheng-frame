@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.flow.engine.type.builtin;
 
+import cn.boheng.frame.module.flow.engine.execution.ExecutionContextHolder;
 import cn.boheng.frame.module.flow.enums.CompletionMode;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
 import cn.boheng.frame.module.flow.enums.StepRole;
@@ -12,6 +13,7 @@ import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -34,6 +36,13 @@ public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
      */
     @Autowired
     private ObjectProvider<FlowBeanAction> actionsProvider;
+
+    /**
+     * 上下文装载器。Bean 的第一个参数是完整执行上下文，
+     * 与 FlowRouteAction / FlowDispatchAction 看到同一个视图
+     */
+    @Resource
+    private ExecutionContextHolder contextHolder;
 
     /**
      * Bean 名 -> 实现
@@ -82,7 +91,9 @@ public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
     }
 
     /**
-     * 执行：调白名单 Bean。Bean 抛异常按节点失败处理
+     * 执行：调白名单 Bean。第一个参数是完整执行上下文（input / sys / node 三层命名空间，
+     * 外加 params = 本节点参数映射的解析结果），第二个参数是节点配置的固定参数。
+     * Bean 抛异常按节点失败处理
      */
     @Override
     public StepOutcome execute(StepExecutionContext ctx) {
@@ -93,8 +104,10 @@ public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
         }
         Map<String, Object> args = StrUtil.isBlank(config.getArgsJson())
                 ? Map.of() : JSONUtil.parseObj(config.getArgsJson());
+        Map<String, Object> env = contextHolder.loadEnv(ctx.getExecutionId());
+        env.put("params", ctx.getParams());
         try {
-            String output = action.execute(ctx.getParams(), args);
+            String output = action.execute(env, args);
             return StepOutcome.success(output);
         } catch (RuntimeException ex) {
             return StepOutcome.failed(ex.getMessage());
