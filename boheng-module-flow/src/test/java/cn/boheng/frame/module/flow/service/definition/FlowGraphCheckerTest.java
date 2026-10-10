@@ -2,6 +2,7 @@ package cn.boheng.frame.module.flow.service.definition;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
 import cn.boheng.frame.module.flow.engine.expression.ExpressionEvaluator;
+import cn.boheng.frame.module.flow.engine.route.FlowRouteAction;
 import cn.boheng.frame.module.flow.engine.route.FlowRouteRegistry;
 import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.engine.type.builtin.LoopStepType;
@@ -12,11 +13,15 @@ import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.boheng.frame.module.flow.service.definition.model.FlowMapping;
 import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -246,7 +251,9 @@ class FlowGraphCheckerTest {
     private static StepTypeRegistry registry() {
         ExpressionEvaluator evaluator = new ExpressionEvaluator();
         FlowRouteRegistry routeRegistry = new FlowRouteRegistry();
-        inject(routeRegistry, "actions", List.of());
+        // FlowRouteRegistry 的 actionsProvider 是 ObjectProvider（SPI 允许零实现），
+        // 测试里注入空提供器，再 init() 建空索引
+        inject(routeRegistry, "actionsProvider", emptyRouteActions());
         routeRegistry.init();
         StepTypeRegistry registry = new StepTypeRegistry();
         inject(registry, "descriptors", List.of(
@@ -258,6 +265,61 @@ class FlowGraphCheckerTest {
                 new RouteStepType(evaluator, routeRegistry)));
         registry.init();
         return registry;
+    }
+
+    /**
+     * 空的路由决策器提供器。init() 只消费 orderedStream()，其余方法不参与本组测试
+     */
+    private static ObjectProvider<FlowRouteAction> emptyRouteActions() {
+        return new ObjectProvider<>() {
+            @Override
+            public FlowRouteAction getObject() {
+                return null;
+            }
+
+            @Override
+            public FlowRouteAction getObject(Object... args) {
+                return null;
+            }
+
+            @Override
+            public FlowRouteAction getIfAvailable() {
+                return null;
+            }
+
+            @Override
+            public FlowRouteAction getIfAvailable(Supplier<FlowRouteAction> defaultSupplier) {
+                return defaultSupplier.get();
+            }
+
+            @Override
+            public void ifAvailable(Consumer<FlowRouteAction> dependencyConsumer) {
+            }
+
+            @Override
+            public FlowRouteAction getIfUnique() {
+                return null;
+            }
+
+            @Override
+            public FlowRouteAction getIfUnique(Supplier<FlowRouteAction> defaultSupplier) {
+                return defaultSupplier.get();
+            }
+
+            @Override
+            public void ifUnique(Consumer<FlowRouteAction> dependencyConsumer) {
+            }
+
+            @Override
+            public Stream<FlowRouteAction> stream() {
+                return Stream.empty();
+            }
+
+            @Override
+            public Stream<FlowRouteAction> orderedStream() {
+                return Stream.empty();
+            }
+        };
     }
 
     /**

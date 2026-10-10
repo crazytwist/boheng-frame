@@ -567,7 +567,7 @@ public class FlowExecutionEngine {
                 return;
             }
             // 幂等：同一父节点同一组只建一次。business_key = 运行:节点:尝试:组号
-            String businessKey = execution.getId() + ":" + node.getNodeId() + ":" + row.getAttempt() + ":" + i;
+            String businessKey = fanoutBusinessKey(execution.getId(), node.getNodeId(), row.getAttempt(), i);
             FlowExecutionDO existing = findByBusinessKey(businessKey);
             if (existing == null) {
                 start(child, entry.getInputJson(), "CHILD", StrUtil.nullToEmpty(execution.getTriggeredBy()),
@@ -874,6 +874,16 @@ public class FlowExecutionEngine {
      */
     private FlowExecutionDO findByBusinessKey(String businessKey) {
         return executionMapper.selectOne(FlowExecutionDO::getBusinessKey, businessKey);
+    }
+
+    /**
+     * FANOUT 子运行的业务键。格式固定为 {@code 父运行:父节点:尝试:组号}，
+     * 是 Java 侧幂等建行的判据——同一父节点同一尝试下，组号不同键不同；
+     * 数据库侧再由 flow_execution.business_key_guard 生成列 + uk_flow_execution_fanout
+     * 唯一索引兜底，双保险防并发扇出建重行。
+     */
+    static String fanoutBusinessKey(long executionId, String nodeId, int attempt, int groupIndex) {
+        return executionId + ":" + nodeId + ":" + attempt + ":" + groupIndex;
     }
 
     /**

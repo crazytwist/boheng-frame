@@ -207,7 +207,22 @@
               <el-option label="节点" value="NODE" />
               <el-option label="固定" value="LITERAL" />
             </el-select>
-            <el-input v-if="mapping.source !== 'LITERAL'" v-model="mapping.field" maxlength="64" placeholder="字段名" class="!w-100px" />
+            <el-select
+              v-if="mapping.source !== 'LITERAL'"
+              v-model="mapping.field"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="字段/路径"
+              class="!w-150px"
+            >
+              <el-option
+                v-for="f in knownFields(mapping.source === 'NODE' ? mapping.nodeId : undefined)"
+                :key="f.value"
+                :label="f.label"
+                :value="f.value"
+              />
+            </el-select>
             <el-select v-if="mapping.source === 'NODE'" v-model="mapping.nodeId" filterable placeholder="前置节点" class="!w-110px">
               <el-option v-for="id in editForm.dependsOn" :key="id" :label="id" :value="id" />
             </el-select>
@@ -274,6 +289,29 @@ const typeLabel = (type?: string) =>
   '—'
 const joinLabel = (policy?: string) =>
   policy === 'ANY_SUCCESS' ? '任一成功' : policy === 'ALL_DONE' ? '全部终态' : '全部成功'
+
+/**
+ * 已知结构化字段：按前置节点类型给出可下钻的路径。
+ * loop → iterations；subflow → children / detail[0].*（子运行详情数组）。
+ * 其它类型（device/bean/script 等）输出动态，无静态 schema，留给用户手写路径。
+ */
+const knownFields = (nodeId?: string): { label: string; value: string }[] => {
+  if (!nodeId) return []
+  const type = list.value.find((item) => item.nodeId === nodeId)?.stepType
+  if (type === 'loop') {
+    return [{ label: 'iterations · 循环轮数', value: 'iterations' }]
+  }
+  if (type === 'subflow') {
+    return [
+      { label: 'children · 子流程数', value: 'children' },
+      { label: 'detail[0].executionId · 首个子运行ID', value: 'detail[0].executionId' },
+      { label: 'detail[0].executionNo · 首个子运行业务号', value: 'detail[0].executionNo' },
+      { label: 'detail[0].status · 首个子运行状态', value: 'detail[0].status' },
+      { label: 'detail[0].groupIndex · 首个子运行组号', value: 'detail[0].groupIndex' }
+    ]
+  }
+  return []
+}
 
 /** 某流程版本下可选的前置节点编码 */
 const nodeOptions = (definitionId?: number) =>

@@ -1,5 +1,31 @@
 # boheng-boot-mini 项目长期记忆
 
+## ⚠️ 实际开发目录（2026-10-10 确认）
+- 实际开发在 **`/Users/yinan/workspace/yinan/boheng/boheng-frame`**（main 分支）；
+  `/Volumes/External_1TB` 未挂载时旧路径不可用
+- **前端在仓库内 `web/`**（非独立仓库）；前端类型检查 `cd web && npm run ts:check`
+
+## 构建命令（2026-10-10 校准）
+```bash
+JAVA_HOME=/Users/yinan/Library/Java/JavaVirtualMachines/ms-17.0.17/Contents/Home \
+  /Users/yinan/workspace/apache-maven-3.9.12/bin/mvn -pl boheng-module-flow -am -DskipTests compile
+```
+- Maven 在 `/Users/yinan/workspace/apache-maven-3.9.12`（不是 tools/ 子目录，也不在 PATH）
+- JDK17 实际版本号是 **ms-17.0.17**（非 0.18）
+- 单模块跑测试必须带 `-am`（framework SNAPSHOT 未装本地仓库）；指定 -Dtest 需加
+  `-Dsurefire.failIfNoSpecifiedTests=false`
+- device-api 是零依赖纯契约层：接口/DTO 不能用 jakarta.validation 注解
+
+## Flow v3（2026-10-10 已全量落地，提交 e8c6997）
+- 模型：能力×编排正交。flow_step=能力目录（step_type+type_config，控制类类型拒绝入目录）；
+  flow_node 统一承载挂能力与控制类节点（route/loop/subflow/timer.wait，stepId 空）
+- FlowDraftAssembler 是「类型生效规则」唯一实现（节点级覆盖>步骤表），校验与展示共用
+- 关联服务每次变更后 assertStructure，草稿永远结构合法；sortNo 只管展示
+- 运行层五表 + 引擎已落地（CAS 认领/DAG/分支裁剪/循环展开/FANOUT 幂等/信号收件箱/Sweeper）
+- 权限：运行菜单 12827-12831（flow:execution:query/create/update/signal）
+- SQL：flow-definition.sql（新库）、flow-v3-migrate.sql（存量库）、flow-execution.sql + 菜单
+- 待办：存量库跑迁移后清 Redis 权限缓存（引擎单测 / 示例 Bean / loop·subflow 联调均已落地）
+
 ## ⚠️ 工作目录已切换（2026-09-26）
 - 项目已通过 `ProjectReactor` 改名为 **`boheng-frame`**，新工作目录：
   **`/Volumes/External_1TB/Projects/boheng-frame`**（包名 `cn.boheng.frame.*`）

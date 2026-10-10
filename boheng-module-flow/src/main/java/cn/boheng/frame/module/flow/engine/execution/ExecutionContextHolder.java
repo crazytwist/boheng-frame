@@ -17,8 +17,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 执行上下文的装载与写入。表里每键一行，内存里拼成三层 Map：
@@ -119,15 +117,89 @@ public class ExecutionContextHolder {
                 continue;
             }
             switch (mapping.getSource() == null ? "" : mapping.getSource()) {
-                case FlowConstants.SOURCE_INPUT -> params.put(mapping.getParam(), input.get(mapping.getField()));
+                case FlowConstants.SOURCE_INPUT -> params.put(mapping.getParam(),
+                        pathGet(input, mapping.getField()));
                 case FlowConstants.SOURCE_NODE -> params.put(mapping.getParam(),
-                        flatNode.get(mapping.getNodeId() + "." + mapping.getField()));
+                        pathGet(flatNode.get(mapping.getNodeId()), mapping.getField()));
                 case FlowConstants.SOURCE_LITERAL -> params.put(mapping.getParam(), plainValue(mapping.getValue()));
                 default -> {
                 }
             }
         }
         return params;
+    }
+
+    /**
+     * 按路径从嵌套结构里取值。支持点分下钻与数组下标：
+     * {@code children}、{@code children[0].executionId}、{@code a.b[2].c}。
+     * 空路径返回根对象本身；任何一段取不到返回 null（映射到参数为 null，不抛异常）。
+     *
+     * <p>这是参数映射引用结构化字段的唯一实现，INPUT 与 NODE 来源共用：
+     * 子流程扇出后，下游就能写 {@code detail[0].executionId} 取第一个子运行的编号。
+     */
+    static Object pathGet(Object root, String path) {
+        if (root == null || path == null || path.isBlank()) {
+            return root;
+        }
+        Object current = root;
+        for (String segment : path.split("\\.")) {
+            if (current == null) {
+                return null;
+            }
+            int bracket = segment.indexOf('[');
+            if (bracket < 0) {
+                current = readKey(current, segment);
+                continue;
+            }
+            if (bracket > 0) {
+                current = readKey(current, segment.substring(0, bracket));
+            }
+            while (current != null) {
+                int close = segment.indexOf(']', bracket);
+                if (close < 0) {
+                    break;
+                }
+                current = readIndex(current, segment.substring(bracket + 1, close).trim());
+                bracket = segment.indexOf('[', close);
+                if (bracket < 0) {
+                    break;
+                }
+            }
+        }
+        return current;
+    }
+
+    /**
+     * 按键取值。空键原样返回；Map 按键，其它类型取不到
+     */
+    private static Object readKey(Object current, String key) {
+        if (key.isEmpty()) {
+            return current;
+        }
+        if (current instanceof Map<?, ?> map) {
+            return map.get(key);
+        }
+        return null;
+    }
+
+    /**
+     * 按下标取值。List 或数组按索引，越界或非法下标返回 null
+     */
+    private static Object readIndex(Object current, String idx) {
+        int index;
+        try {
+            index = Integer.parseInt(idx);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        if (current instanceof List<?> list) {
+            return index >= 0 && index < list.size() ? list.get(index) : null;
+        }
+        if (current.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(current);
+            return index >= 0 && index < length ? java.lang.reflect.Array.get(current, index) : null;
+        }
+        return null;
     }
 
     /**
