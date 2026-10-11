@@ -18,6 +18,11 @@ public class FlowDeviceTaskCompleteReqVO {
     @Size(max = 64, message = "任务号长度不能超过 64 个字符")
     private String taskNo;
 
+    @Schema(description = "回报令牌。认领时下发", requiredMode = Schema.RequiredMode.REQUIRED, example = "7f3a1b2c3d4e5f6a")
+    @NotBlank(message = "回报令牌不能为空")
+    @Size(max = 128, message = "回报令牌长度不能超过 128 个字符")
+    private String callbackToken;
+
     @Schema(description = "true 执行成功，false 执行失败", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "执行结果不能为空")
     private Boolean success;

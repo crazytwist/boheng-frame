@@ -62,11 +62,12 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
     /**
      * CAS 认领：PENDING → CLAIMED。返回 1 表示认领成功，0 表示被抢走
      */
-    default int claim(Long id, String claimedBy) {
+    default int claim(Long id, String claimedBy, Long waitMs) {
         FlowDeviceTaskDO patch = new FlowDeviceTaskDO();
         patch.setStatus("CLAIMED");
         patch.setClaimedBy(claimedBy);
         patch.setClaimedAt(LocalDateTime.now());
+        patch.setWaitMs(waitMs);
         return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getId, id)
                 .eq(FlowDeviceTaskDO::getStatus, "PENDING"));
@@ -75,11 +76,12 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
     /**
      * 标记任务终态（完成 / 失败）。只允许从 CLAIMED 推进，防重复回报
      */
-    default int finish(Long id, String status, String resultJson, String errorMessage) {
+    default int finish(Long id, String status, String resultJson, String errorMessage, Long executeMs) {
         FlowDeviceTaskDO patch = new FlowDeviceTaskDO();
         patch.setStatus(status);
         patch.setResultJson(resultJson);
         patch.setErrorMessage(errorMessage);
+        patch.setExecuteMs(executeMs);
         return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getId, id)
                 .eq(FlowDeviceTaskDO::getStatus, "CLAIMED"));

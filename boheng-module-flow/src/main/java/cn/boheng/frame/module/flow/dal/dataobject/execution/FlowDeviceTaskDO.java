@@ -38,6 +38,11 @@ public class FlowDeviceTaskDO extends TenantBaseDO {
     private String taskNo;
 
     /**
+     * 完成回报校验令牌。入队生成，认领时下发，回报时校验
+     */
+    private String callbackToken;
+
+    /**
      * 所属运行
      */
     private Long executionId;
@@ -88,6 +93,11 @@ public class FlowDeviceTaskDO extends TenantBaseDO {
     private LocalDateTime claimedAt;
 
     /**
+     * 排队耗时 = 认领时间 - 创建时间，毫秒
+     */
+    private Long waitMs;
+
+    /**
      * 完成结果 JSON（写进节点输出）
      */
     private String resultJson;
@@ -96,5 +106,10 @@ public class FlowDeviceTaskDO extends TenantBaseDO {
      * 失败说明
      */
     private String errorMessage;
+
+    /**
+     * 执行耗时 = 终态时间 - 认领时间，毫秒
+     */
+    private Long executeMs;
 
 }

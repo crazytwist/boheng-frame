@@ -15,6 +15,9 @@ public class FlowDeviceTaskRespVO {
     @Schema(description = "任务号", example = "task_1812345678901234567")
     private String taskNo;
 
+    @Schema(description = "回报令牌。认领时下发，回报时带回", example = "7f3a1b2c3d4e5f6a")
+    private String callbackToken;
+
     @Schema(description = "所属运行编号", example = "1")
     private Long executionId;
 
@@ -45,11 +48,17 @@ public class FlowDeviceTaskRespVO {
     @Schema(description = "认领时间")
     private LocalDateTime claimedAt;
 
+    @Schema(description = "排队耗时（毫秒）", example = "2100")
+    private Long waitMs;
+
     @Schema(description = "完成结果 JSON", example = "{\"od450\":[0.1,0.2]}")
     private String resultJson;
 
     @Schema(description = "失败说明")
     private String errorMessage;
+
+    @Schema(description = "执行耗时（毫秒）", example = "185000")
+    private Long executeMs;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

@@ -67,7 +67,7 @@ public class FlowDeviceTaskController {
     @PermitAll
     @Operation(summary = "回报任务执行结果")
     public CommonResult<Boolean> complete(@Valid @RequestBody FlowDeviceTaskCompleteReqVO reqVO) {
-        boolean accepted = signalDispatcher.deviceTaskSignal(reqVO.getTaskNo(),
+        boolean accepted = signalDispatcher.deviceTaskSignal(reqVO.getTaskNo(), reqVO.getCallbackToken(),
                 Boolean.TRUE.equals(reqVO.getSuccess()), reqVO.getResultJson(), reqVO.getErrorMessage());
         return success(accepted);
     }

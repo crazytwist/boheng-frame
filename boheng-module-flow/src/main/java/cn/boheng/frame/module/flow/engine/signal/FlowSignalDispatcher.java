@@ -122,15 +122,20 @@ public class FlowSignalDispatcher {
     /**
      * 设备异步任务回报信号。机器端执行完调 complete 接口，这里落信号并结算节点。
      *
-     * @param taskNo       机器端回报的任务号
-     * @param success      执行成功 / 失败
-     * @param resultJson   成功结果 JSON（写进节点输出）
-     * @param errorMessage 失败说明
-     * @return 信号是否被接受（任务不存在或节点已不在等待时拒绝）
+     * @param taskNo        机器端回报的任务号
+     * @param callbackToken 认领时下发的回报令牌，校验通过才推进
+     * @param success       执行成功 / 失败
+     * @param resultJson    成功结果 JSON（写进节点输出）
+     * @param errorMessage  失败说明
+     * @return 信号是否被接受（任务不存在、令牌不匹配或节点已不在等待时拒绝）
      */
-    public boolean deviceTaskSignal(String taskNo, boolean success, String resultJson, String errorMessage) {
+    public boolean deviceTaskSignal(String taskNo, String callbackToken, boolean success, String resultJson, String errorMessage) {
         FlowDeviceTaskDO task = deviceTaskService.selectByTaskNo(taskNo);
         if (task == null) {
+            return false;
+        }
+        if (!deviceTaskService.matchesToken(task, callbackToken)) {
+            log.warn("[flow][signal] 设备任务回报令牌不匹配: taskNo={}", taskNo);
             return false;
         }
         Long executionId = task.getExecutionId();
