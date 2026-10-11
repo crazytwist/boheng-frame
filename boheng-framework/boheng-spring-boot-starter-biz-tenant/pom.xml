@@ -71,6 +71,13 @@
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
         </dependency>
+
+        <!-- 日志：Logback 转换器（TenantLogConverter）编译依赖，运行时由 Spring Boot 提供 -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
 </project>

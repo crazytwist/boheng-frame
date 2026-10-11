@@ -1,0 +1,35 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// 采集宿主机挂载的应用日志文件（/logs/*.log*，含滚动文件）
+loki.source.file "app_logs" {
+  targets = [
+    {
+      __path__ = "/logs/*.log*",
+      service  = "boheng-server",
+      env      = "local",
+    },
+  ]
+  forward_to = [loki.process.app_logs.receiver]
+}
+
+// 从日志行里提取 [tenant:123] 作为 Loki 的 tenant 标签，便于多租户隔离检索
+loki.process "app_logs" {
+  stage.regex {
+    expression = `tenant:(?P<tenant>[0-9]+)`
+  }
+  stage.labels {
+    values = {
+      tenant = "",
+    }
+  }
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

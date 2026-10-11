@@ -1,0 +1,43 @@
+# Loki 单机本地盘存储配置（轻量级）
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 默认摄取上限很低，突发日志会被拒收，这里调高到轻量场景够用
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  # 保留 30 天，配合 compactor 生效
+  retention_period: 720h
+  allow_structured_metadata: true
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
