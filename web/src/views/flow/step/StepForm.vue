@@ -15,7 +15,7 @@ const formType = ref('')
 const devices = ref<DeviceVO[]>([])
 const actions = ref<DeviceActionVO[]>([])
 
-/** 设备动作专属配置：从 typeConfig JSON 拆出的两个选择框 */
+/** 设备动作 / 设备任务专属配置：从 typeConfig JSON 拆出的两个选择框 */
 const deviceConfig = reactive<{ deviceCode: string; actionCode: string }>({ deviceCode: '', actionCode: '' })
 
 const createEmpty = (): FlowStepVO => ({
@@ -44,13 +44,17 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const isDeviceType = computed(() => formData.value.stepType === 'device.command')
+const isDeviceCommand = computed(() => formData.value.stepType === 'device.command')
+const isDeviceTask = computed(() => formData.value.stepType === 'device.task')
+const isDeviceType = computed(() => isDeviceCommand.value || isDeviceTask.value)
 
 const loadActions = async (deviceCode?: string) => {
   actions.value = []
-  const type = devices.value.find((item) => item.deviceCode === deviceCode)?.deviceTypeCode
-  if (!type) return
-  const list = await DeviceActionApi.getActionList({ deviceTypeCode: type })
+  const type = deviceCode ? devices.value.find((item) => item.deviceCode === deviceCode)?.deviceTypeCode : undefined
+  // 设备任务允许不限设备：没选设备时拉全量动作列表，选了设备则按设备类型过滤
+  const list = type
+    ? await DeviceActionApi.getActionList({ deviceTypeCode: type })
+    : await DeviceActionApi.getActionList()
   actions.value = (list || []).filter((item: DeviceActionVO) => item.status == null || item.status === 0)
 }
 
@@ -93,7 +97,7 @@ const open = async (type: string, id?: number) => {
   formLoading.value = true
   try {
     formData.value = await FlowStepApi.get(id)
-    if (formData.value.stepType === 'device.command') {
+    if (isDeviceType.value) {
       parseDeviceConfig(formData.value.typeConfig)
       await loadActions(deviceConfig.deviceCode)
     }
@@ -105,9 +109,10 @@ const open = async (type: string, id?: number) => {
 /** 提交前把设备选择框收进 typeConfig */
 const buildPayload = (): FlowStepVO => {
   const payload = { ...formData.value }
-  if (payload.stepType === 'device.command') {
+  if (isDeviceType.value) {
+    // 设备任务可不限设备，deviceCode 空时不落字段
     payload.typeConfig = JSON.stringify({
-      deviceCode: deviceConfig.deviceCode,
+      ...(deviceConfig.deviceCode ? { deviceCode: deviceConfig.deviceCode } : {}),
       actionCode: deviceConfig.actionCode
     })
   } else {
@@ -122,8 +127,12 @@ const buildPayload = (): FlowStepVO => {
 const submitForm = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
-  if (formData.value.stepType === 'device.command' && (!deviceConfig.deviceCode || !deviceConfig.actionCode)) {
+  if (isDeviceCommand.value && (!deviceConfig.deviceCode || !deviceConfig.actionCode)) {
     message.error('设备动作步骤要选择设备和动作')
+    return
+  }
+  if (isDeviceTask.value && !deviceConfig.actionCode) {
+    message.error('设备任务步骤要选择任务类型（动作）')
     return
   }
   formLoading.value = true
@@ -161,15 +170,16 @@ const emit = defineEmits<{ success: [] }>()
           <el-option v-for="item in STEP_TYPES" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <!-- 设备动作：设备 + 动作选择框，收进 typeConfig -->
+      <!-- 设备动作 / 设备任务：设备 + 动作选择框，收进 typeConfig -->
       <template v-if="isDeviceType">
-        <el-form-item label="设备" required>
-          <el-select v-model="deviceConfig.deviceCode" filterable placeholder="请选择设备" class="!w-1/1" @change="onDeviceChange">
+        <el-form-item label="设备" :required="isDeviceCommand">
+          <el-select v-model="deviceConfig.deviceCode" filterable :clearable="isDeviceTask"
+            :placeholder="isDeviceTask ? '请选择设备（可留空不限设备）' : '请选择设备'" class="!w-1/1" @change="onDeviceChange">
             <el-option v-for="item in devices" :key="item.deviceCode" :label="`${item.deviceName}（${item.deviceCode}）`" :value="item.deviceCode!" />
           </el-select>
         </el-form-item>
         <el-form-item label="动作" required>
-          <el-select v-model="deviceConfig.actionCode" filterable placeholder="请选择动作" class="!w-1/1" :disabled="!deviceConfig.deviceCode">
+          <el-select v-model="deviceConfig.actionCode" filterable placeholder="请选择动作" class="!w-1/1" :disabled="isDeviceCommand && !deviceConfig.deviceCode">
             <el-option v-for="item in actions" :key="item.actionCode" :label="`${item.actionName}（${item.actionCode}）`" :value="item.actionCode!" />
           </el-select>
         </el-form-item>

@@ -359,7 +359,7 @@ public class FlowExecutionEngine {
                 row.setStatus("WAITING");
                 row.setWaitingFor(outcome.getWaitingFor());
                 row.setWaitRef(outcome.getWaitRef());
-                row.setDeadlineAt(deadlineOf(outcome, row));
+                row.setDeadlineAt(deadlineOf(outcome, graph, node));
                 stepExecutionMapper.updateById(row);
             }
             case BRANCH -> {
@@ -379,9 +379,13 @@ public class FlowExecutionEngine {
     /**
      * 等待截止时刻：TIMER 的 waitRef 就是到期时刻文本；设备等待按节点超时
      */
-    private LocalDateTime deadlineOf(StepOutcome outcome, FlowStepExecutionDO row) {
+    private LocalDateTime deadlineOf(StepOutcome outcome, PipelineGraph graph, RuntimeNode node) {
         if ("TIMER".equals(outcome.getWaitingFor()) && StrUtil.isNotBlank(outcome.getWaitRef())) {
             return LocalDateTime.parse(outcome.getWaitRef());
+        }
+        // 设备异步任务：按节点超时给等待截止时刻，超时扫描按它判失败
+        if ("DEVICE_CALLBACK".equals(outcome.getWaitingFor())) {
+            return LocalDateTime.now().plus(effectiveTimeout(graph, node), java.time.temporal.ChronoUnit.MILLIS);
         }
         return null;
     }

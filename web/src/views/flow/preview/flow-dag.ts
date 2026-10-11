@@ -17,6 +17,7 @@ export interface TypeMeta {
 
 export const TYPE_META: Record<string, TypeMeta> = {
   'device.command': { label: '设备动作', color: '#2563eb', bg: '#dbeafe', icon: 'ep:cpu' },
+  'device.task': { label: '设备任务', color: '#0284c7', bg: '#e0f2fe', icon: 'ep:list' },
   'bean.invoke': { label: 'JavaBean', color: '#7c3aed', bg: '#ede9fe', icon: 'ep:grid' },
   'script.run': { label: '脚本', color: '#0891b2', bg: '#cffafe', icon: 'ep:document' },
   'manual.task': { label: '人工确认', color: '#d97706', bg: '#fef3c7', icon: 'ep:user' },

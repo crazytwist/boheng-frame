@@ -118,8 +118,12 @@ public class FlowExecutionSweeper {
             if (row.getDeadlineAt() == null) {
                 continue; // MANUAL 等人，没有期限
             }
-            if ("TIMER".equals(row.getWaitingFor()) && !now.isBefore(row.getDeadlineAt())) {
-                signalDispatcher.timerSignal(execution.getId(), row.getNodeId(), row.getAttempt());
+            if (!now.isBefore(row.getDeadlineAt())) {
+                if ("TIMER".equals(row.getWaitingFor())) {
+                    signalDispatcher.timerSignal(execution.getId(), row.getNodeId(), row.getAttempt());
+                } else if ("DEVICE_CALLBACK".equals(row.getWaitingFor())) {
+                    signalDispatcher.deviceTaskTimeout(execution.getId(), row.getNodeId(), row.getAttempt());
+                }
             }
         }
     }

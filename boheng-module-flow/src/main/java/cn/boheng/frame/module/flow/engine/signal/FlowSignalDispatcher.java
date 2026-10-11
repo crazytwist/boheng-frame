@@ -6,7 +6,9 @@ import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowStepSignalDO;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowExecutionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowStepExecutionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowStepSignalMapper;
+import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowDeviceTaskDO;
 import cn.boheng.frame.module.flow.engine.execution.FlowExecutionEngine;
+import cn.boheng.frame.module.flow.service.task.FlowDeviceTaskService;
 import cn.boheng.frame.module.flow.engine.type.StepOutcome;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
@@ -52,6 +54,12 @@ public class FlowSignalDispatcher {
     @Resource
     @Lazy
     private FlowExecutionEngine engine;
+
+    /**
+     * 设备异步任务服务
+     */
+    @Resource
+    private FlowDeviceTaskService deviceTaskService;
 
     /**
      * 人工确认信号。页面上确认 / 拒绝都走这里
@@ -108,6 +116,64 @@ public class FlowSignalDispatcher {
         FlowExecutionDO execution = executionMapper.selectById(executionId);
         if (execution != null && "RUNNING".equals(execution.getStatus())) {
             engine.settle(row, StepOutcome.success("{\"waited\":true}"));
+        }
+    }
+
+    /**
+     * 设备异步任务回报信号。机器端执行完调 complete 接口，这里落信号并结算节点。
+     *
+     * @param taskNo       机器端回报的任务号
+     * @param success      执行成功 / 失败
+     * @param resultJson   成功结果 JSON（写进节点输出）
+     * @param errorMessage 失败说明
+     * @return 信号是否被接受（任务不存在或节点已不在等待时拒绝）
+     */
+    public boolean deviceTaskSignal(String taskNo, boolean success, String resultJson, String errorMessage) {
+        FlowDeviceTaskDO task = deviceTaskService.selectByTaskNo(taskNo);
+        if (task == null) {
+            return false;
+        }
+        Long executionId = task.getExecutionId();
+        String nodeId = task.getNodeId();
+        Integer attempt = task.getAttempt();
+        FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
+        if (row == null || !"WAITING".equals(row.getStatus()) || !"DEVICE_CALLBACK".equals(row.getWaitingFor())
+                || !attempt.equals(row.getAttempt())) {
+            return false;
+        }
+        String signalId = "devicetask_" + executionId + "_" + nodeId + "_" + attempt;
+        if (signalMapper.selectBySignalId(signalId) != null) {
+            return false; // 重复回报
+        }
+        // 任务推进到终态（CLAIMED → DONE/FAILED），先落信号再结算
+        deviceTaskService.finish(taskNo, success, resultJson, errorMessage);
+        save(signalId, executionId, nodeId, attempt, row.getIterationNo(), "EXTERNAL", resultJson, success);
+        FlowExecutionDO execution = executionMapper.selectById(executionId);
+        if (execution != null && "RUNNING".equals(execution.getStatus())) {
+            engine.settle(row, success
+                    ? StepOutcome.success(StrUtil.blankToDefault(resultJson, "{\"completed\":true}"))
+                    : StepOutcome.failed(StrUtil.blankToDefault(errorMessage, "设备任务失败")));
+        }
+        return true;
+    }
+
+    /**
+     * 设备任务超时信号。扫描器发现 DEVICE_CALLBACK 到期时调用，按失败结算。
+     */
+    public void deviceTaskTimeout(Long executionId, String nodeId, Integer attempt) {
+        FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
+        if (row == null || !"WAITING".equals(row.getStatus()) || !"DEVICE_CALLBACK".equals(row.getWaitingFor())) {
+            return;
+        }
+        String signalId = "devicetask_timeout_" + executionId + "_" + nodeId + "_" + row.getAttempt();
+        if (signalMapper.selectBySignalId(signalId) != null) {
+            return;
+        }
+        deviceTaskService.timeout(executionId, nodeId, row.getAttempt());
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "EXTERNAL", null, false);
+        FlowExecutionDO execution = executionMapper.selectById(executionId);
+        if (execution != null && "RUNNING".equals(execution.getStatus())) {
+            engine.settle(row, StepOutcome.failed("设备任务超时"));
         }
     }
 

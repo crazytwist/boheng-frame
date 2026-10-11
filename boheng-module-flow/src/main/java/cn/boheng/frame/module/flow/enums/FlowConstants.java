@@ -26,6 +26,9 @@ public final class FlowConstants {
     /** 调用一次设备动作 */
     public static final String STEP_DEVICE_COMMAND = "device.command";
 
+    /** 设备异步任务：投递到队列，由机器端拉取执行后回报完成 */
+    public static final String STEP_DEVICE_TASK = "device.task";
+
     /** 调用一个白名单 Spring Bean */
     public static final String STEP_BEAN_INVOKE = "bean.invoke";
 

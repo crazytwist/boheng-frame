@@ -6,6 +6,7 @@ import request from '@/config/axios'
  */
 export const STEP_TYPES = [
   { value: 'device.command', label: '设备动作' },
+  { value: 'device.task', label: '设备任务' },
   { value: 'bean.invoke', label: 'JavaBean 调用' },
   { value: 'script.run', label: '脚本表达式' },
   { value: 'manual.task', label: '人工确认' },
