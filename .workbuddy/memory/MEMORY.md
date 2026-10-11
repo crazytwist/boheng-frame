@@ -26,6 +26,19 @@ JAVA_HOME=/Users/yinan/Library/Java/JavaVirtualMachines/ms-17.0.17/Contents/Home
 - SQL：flow-definition.sql（新库）、flow-v3-migrate.sql（存量库）、flow-execution.sql + 菜单
 - 待办：存量库跑迁移后清 Redis 权限缓存（引擎单测 / 示例 Bean / loop·subflow 联调均已落地）
 
+## Flow 设备异步任务 device.task（2026-10-11，提交 323dec7）
+- 场景：节点不主动推设备，任务入库由机器端**拉取→执行→回报**，信号结算推进（Camunda external-task 模式）
+- `device.task` 步骤类型：ACTION + CALLBACK，`execute` 入队 `waiting("DEVICE_CALLBACK", taskNo)`，与 `device.command`（同步推）正交
+- 表 `flow_device_task`（tenant 表）：`task_no_guard` 生成列 + 唯一索引；状态 PENDING/CLAIMED/DONE/FAILED/CANCELLED；
+  **CAS 认领**（PENDING→CLAIMED）防多机重复；`device_code` 可空 × `action_code` 必填（设备/任务类型双维度）
+- 引擎：`FlowSignalDispatcher.deviceTaskSignal/Timeout`；`settle.deadlineOf` 支持 DEVICE_CALLBACK；`Sweeper` 扫超时按失败结算
+- 接口：机器端 **`controller/app` 包 → `/app-api` 前缀** `/flow/device-task` claim/complete（`@PermitAll` + `tenant-id` 头）；
+  后台 `/admin-api/flow/device-task/page`（复用 flow:execution:query，无新权限）
+- SQL：`flow-device-task.sql`；前端 step.ts/flow-dag.ts/StepForm 加 device.task（设备可空=不限设备，actionCode 必填）
+- 基本功三件套（7360a18，参照 labillion task）：`callback_token` 常量时间校验 + `flow_device_task_event` 事件流水 + `wait_ms/execute_ms`
+- 结论：不照搬 labillion 通用 task 模块（多 taskType/flow-api 契约层/Spring Event 桥是服务多执行单元+多模块的，
+  boheng 只有设备一个场景，属过度设计）；未来若有 AGV/人工/计算任务或脱离流程的独立任务，再泛化成通用 task 模块（按 boheng 基座重写）
+
 ## ⚠️ 工作目录已切换（2026-09-26）
 - 项目已通过 `ProjectReactor` 改名为 **`boheng-frame`**，新工作目录：
   **`/Volumes/External_1TB/Projects/boheng-frame`**（包名 `cn.boheng.frame.*`）
