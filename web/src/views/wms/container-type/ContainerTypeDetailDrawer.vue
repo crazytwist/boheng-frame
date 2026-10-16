@@ -44,6 +44,8 @@
           <dd>{{ item.usageType === 'DISPOSABLE' ? '一次性' : '周转' }}</dd>
           <dt>复用次数</dt>
           <dd>{{ item.usageType === 'DISPOSABLE' ? '—' : item.lifeCycles ?? '不限' }}</dd>
+          <dt>最大数量</dt>
+          <dd>{{ item.maxCount ?? '—' }}</dd>
         </dl>
       </section>
 

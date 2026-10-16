@@ -33,6 +33,7 @@
     "@form-create/designer": "^3.4.0",
     "@form-create/element-ui": "^3.2.38",
     "@iconify/vue": "^5.0.1",
+    "@logicflow/core": "^2.2.5",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@videojs-player/vue": "^1.0.0",
     "@vueuse/core": "^14.3.0",

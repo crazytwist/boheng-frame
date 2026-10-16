@@ -3,8 +3,6 @@ package cn.boheng.frame.module.wms.controller.admin.slot.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.time.LocalDateTime;
 
 /**
  * 槽位 Response VO
@@ -41,6 +39,9 @@ public class SlotRespVO {
 
     @Schema(description = "扩展数据（JSON，坐标描述 row/col/layer）", example = "JSON 对象，如 rowNo/colNo/layerNo")
     private String extData;
+
+    @Schema(description = "适用物料（JSON 数组，可绑定试剂/容器）", example = "[{\"kind\":\"CONTAINER\",\"materialId\":1,\"materialCode\":\"TUBE_1.5\",\"materialName\":\"1.5mL离心管\"}]")
+    private String suitableMaterials;
 
     @Schema(description = "所属设备编码", example = "TECAN_F200_01")
     private String deviceCode;

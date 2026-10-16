@@ -1,5 +1,13 @@
 import request from '@/config/axios'
 
+// 槽位「适用物料」单条（存库为 JSON 数组字符串）
+export interface SlotSuitableMaterial {
+  kind: 'CONTENT' | 'CONTAINER'
+  materialId: number
+  materialCode: string
+  materialName: string
+}
+
 // WMS 槽位 VO
 export interface SlotVO {
   id?: number
@@ -11,6 +19,8 @@ export interface SlotVO {
   capacity?: number
   uniqueBatch?: boolean
   extData?: string
+  /** 适用物料（JSON 数组字符串，可绑定试剂/容器） */
+  suitableMaterials?: string
   deviceCode?: string
   devicePositionNo?: string
   occupiedQty?: number
@@ -55,5 +65,10 @@ export const SlotApi = {
   // 按区域布局批量生成槽位
   generateByZone: async (zoneCode: string) => {
     return await request.post({ url: '/wms/slot/generate-by-zone', params: { zoneCode } })
+  },
+
+  // 更新槽位适用物料（可绑定试剂/容器，支持批量）
+  updateSuitableMaterials: async (data: { ids: number[]; suitableMaterials?: string }) => {
+    return await request.put({ url: '/wms/slot/update-suitable-materials', data })
   }
 }

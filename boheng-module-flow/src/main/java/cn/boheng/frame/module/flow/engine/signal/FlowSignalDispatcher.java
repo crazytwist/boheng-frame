@@ -79,6 +79,7 @@ public class FlowSignalDispatcher {
         save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "MANUAL", comment, success);
         FlowExecutionDO execution = executionMapper.selectById(executionId);
         if (execution != null && "RUNNING".equals(execution.getStatus())) {
+            log.info("[flow] 信号结算 type=MANUAL node={} success={}", nodeId, success);
             engine.settle(row, success
                     ? StepOutcome.success("{\"confirmed\":true,\"comment\":\"" + safe(comment) + "\"}")
                     : StepOutcome.failed("人工拒绝: " + StrUtil.nullToEmpty(comment)));
@@ -96,6 +97,8 @@ public class FlowSignalDispatcher {
         }
         save(signalId, child.getParentExecutionId(), child.getParentNodeId(), child.getParentAttempt(),
                 0, "CHILD", "{\"status\":\"" + child.getStatus() + "\"}", success);
+        log.info("[flow] 信号结算 type=CHILD child={} parentNode={} success={}",
+                child.getExecutionNo(), child.getParentNodeId(), success);
         engine.onChildFinished(child.getParentExecutionId(), child.getParentNodeId(),
                 child.getParentAttempt(), child.getParentGroupIndex(), success);
     }
@@ -115,6 +118,7 @@ public class FlowSignalDispatcher {
         save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "TIMER", null, true);
         FlowExecutionDO execution = executionMapper.selectById(executionId);
         if (execution != null && "RUNNING".equals(execution.getStatus())) {
+            log.info("[flow] 信号结算 type=TIMER node={}", nodeId);
             engine.settle(row, StepOutcome.success("{\"waited\":true}"));
         }
     }
@@ -150,15 +154,22 @@ public class FlowSignalDispatcher {
         if (signalMapper.selectBySignalId(signalId) != null) {
             return false; // 重复回报
         }
-        // 任务推进到终态（CLAIMED → DONE/FAILED），先落信号再结算
-        deviceTaskService.finish(taskNo, success, resultJson, errorMessage);
-        save(signalId, executionId, nodeId, attempt, row.getIterationNo(), "EXTERNAL", resultJson, success);
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution != null && "RUNNING".equals(execution.getStatus())) {
-            engine.settle(row, success
-                    ? StepOutcome.success(StrUtil.blankToDefault(resultJson, "{\"completed\":true}"))
-                    : StepOutcome.failed(StrUtil.blankToDefault(errorMessage, "设备任务失败")));
+        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+            return false;
         }
+        // 先抢任务行。抢不到说明超时或另一次回报已经收口，不能再结算，也不能占住信号号
+        if (!deviceTaskService.finish(taskNo, success, resultJson, errorMessage)) {
+            return false;
+        }
+        log.info("[flow] 信号结算 type=DEVICE taskNo={} node={} success={}", taskNo, nodeId, success);
+        boolean settled = engine.settle(row, success
+                ? StepOutcome.success(StrUtil.blankToDefault(resultJson, "{\"completed\":true}"))
+                : StepOutcome.failed(StrUtil.blankToDefault(errorMessage, "设备任务失败")));
+        if (!settled) {
+            return false;
+        }
+        save(signalId, executionId, nodeId, attempt, row.getIterationNo(), "EXTERNAL", resultJson, success);
         return true;
     }
 
@@ -174,12 +185,18 @@ public class FlowSignalDispatcher {
         if (signalMapper.selectBySignalId(signalId) != null) {
             return;
         }
-        deviceTaskService.timeout(executionId, nodeId, row.getAttempt());
-        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "EXTERNAL", null, false);
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution != null && "RUNNING".equals(execution.getStatus())) {
-            engine.settle(row, StepOutcome.failed("设备任务超时"));
+        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+            return;
         }
+        if (!deviceTaskService.timeout(executionId, nodeId, row.getAttempt())) {
+            return;
+        }
+        log.info("[flow] 信号结算 type=TIMEOUT node={}", nodeId);
+        if (!engine.settle(row, StepOutcome.failed("设备任务超时"))) {
+            return;
+        }
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "EXTERNAL", null, false);
     }
 
     /**

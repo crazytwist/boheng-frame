@@ -29,6 +29,11 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
+      <template #empty>
+        <el-empty description="还没有运行实例">
+          <el-button type="primary" @click="openStart">启动一次</el-button>
+        </el-empty>
+      </template>
       <el-table-column label="运行号" align="center" prop="executionNo" min-width="200" :show-overflow-tooltip="true" />
       <el-table-column label="流程" align="center" min-width="140" :show-overflow-tooltip="true">
         <template #default="scope">{{ scope.row.pipelineKey }} v{{ scope.row.version }}</template>
@@ -121,6 +126,20 @@
           :closable="false"
           class="mb-10px"
         />
+
+        <!-- 启动入参 / 顶层输出：失败时尤其重要，看输入是不是空了、输出是不是没写出来 -->
+        <el-row :gutter="10" class="mb-10px">
+          <el-col :span="12">
+            <div class="ex-section-kicker">启动入参（启动时传入 + 入参声明合并后的值）</div>
+            <pre v-if="detail.inputParams" class="param-json">{{ formatInputParams }}</pre>
+            <div v-else class="param-empty">未传启动入参</div>
+          </el-col>
+          <el-col :span="12">
+            <div class="ex-section-kicker">顶层输出（outputMapping 后挂在 sys.* 下的最终产出）</div>
+            <pre v-if="detail.outputData" class="param-json">{{ formatOutputData }}</pre>
+            <div v-else class="param-empty">流程尚未产生顶层输出</div>
+          </el-col>
+        </el-row>
 
         <el-tabs v-model="detailTab">
           <el-tab-pane label="流程图" name="graph">
@@ -339,6 +358,20 @@ const detailLoading = ref(false)
 const detail = ref<FlowExecutionVO>()
 const detailTab = ref('graph')
 const detailNodes = ref<FlowNodeVO[]>([])
+
+/** 启动入参 / 顶层输出：JSON 美化；解析失败回退原文 */
+const formatInputParams = computed(() => pretty(detail.value?.inputParams))
+const formatOutputData = computed(() => pretty(detail.value?.outputData))
+
+const pretty = (raw?: string): string => {
+  if (!raw?.trim()) return ''
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+}
+
 let pollTimer: number | undefined
 
 const openDetail = async (id: number) => {
@@ -431,3 +464,36 @@ onMounted(async () => {
   await getList()
 })
 </script>
+
+<style lang="scss" scoped>
+.ex-section-kicker {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.param-json {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.param-empty {
+  padding: 8px 10px;
+  background: var(--el-fill-color-lighter);
+  border: 1px dashed var(--el-border-color-lighter);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #c0c4cc;
+  text-align: center;
+}
+</style>

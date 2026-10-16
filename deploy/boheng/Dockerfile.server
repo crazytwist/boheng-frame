@@ -1,0 +1,15 @@
+# boheng 后端镜像（JDK17 + Spring Boot 3.5.15）
+# 构建前提：本地已 mvn package 产出 boheng-server/target/boheng-server.jar
+FROM eclipse-temurin:17-jre
+
+RUN mkdir -p /boheng-server
+WORKDIR /boheng-server
+
+COPY ./target/boheng-server.jar app.jar
+
+ENV TZ=Asia/Shanghai
+ENV JAVA_OPTS="-Xms512m -Xmx1024m -Djava.security.egd=file:/dev/./urandom"
+
+EXPOSE 48080
+
+CMD java ${JAVA_OPTS} -jar app.jar

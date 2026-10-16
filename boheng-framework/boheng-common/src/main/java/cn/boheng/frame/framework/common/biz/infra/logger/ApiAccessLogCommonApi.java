@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 /**
  * API 访问日志的 API 接口
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface ApiAccessLogCommonApi {
 

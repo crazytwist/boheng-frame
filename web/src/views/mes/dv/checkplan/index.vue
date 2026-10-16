@@ -1,8 +1,5 @@
 <template>
-  <doc-alert
-    title="【设备】点检保养项目、点检保养方案"
-    url="https://doc.iocoder.cn/mes/dv/check-plan/"
-  />
+  
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -46,7 +43,7 @@
           />
         </el-select>
       </el-form-item>
-      <!-- TODO @芋艿：【后续在看】草稿、已确认、审批中、已审批、已完成、已取消； -->
+      <!-- TODO @伯珩：【后续在看】草稿、已确认、审批中、已审批、已完成、已取消； -->
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-240px">
           <el-option

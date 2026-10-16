@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【结账】期末结账" url="https://doc.iocoder.cn/fms/closing/" />
+  
   <!-- 会计期间 -->
   <ContentWrap>
     <el-form class="-mb-15px" :inline="true" label-width="68px">

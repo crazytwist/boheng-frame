@@ -3,7 +3,7 @@ package cn.boheng.frame.module.infra.framework.file.core.client;
 /**
  * 文件客户端
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface FileClient {
 

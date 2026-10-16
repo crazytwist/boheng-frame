@@ -12,7 +12,7 @@ import static cn.boheng.frame.module.infra.enums.ErrorCodeConstants.FILE_PATH_IN
 /**
  * 文件路径工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class FilePathUtils {
 

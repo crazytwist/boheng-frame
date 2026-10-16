@@ -10,7 +10,7 @@ import static cn.boheng.frame.framework.web.core.util.WebFrameworkUtils.HEADER_T
 /**
  * 多租户 Util
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class TenantUtils {
 

@@ -6,6 +6,7 @@ import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowStepExecutionDO;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowExecutionMapper;
 import cn.boheng.frame.module.flow.engine.type.StepOutcome;
 import cn.boheng.frame.module.flow.engine.type.device.DeviceCommandStepType;
+import cn.boheng.frame.module.flow.framework.log.FlowLogContextHolder;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -91,18 +92,26 @@ public class FlowExecutionWorker {
                                  cn.boheng.frame.module.flow.engine.execution.RuntimeNode node) {
         Long tenantId = execution.getTenantId();
         Long executionId = execution.getId();
+        String executionNo = execution.getExecutionNo();
+        String nodeId = row.getNodeId();
         executor.submit(() -> TenantUtils.execute(tenantId, () -> {
+            // 工作线程显式带执行/节点维度，设备命令日志才能与运行串起来
+            FlowLogContextHolder.setExecutionNo(executionNo);
+            FlowLogContextHolder.setNodeId(nodeId);
             try {
                 FlowExecutionDO fresh = executionMapper.selectById(executionId);
                 if (fresh == null || !"RUNNING".equals(fresh.getStatus())) {
                     return;
                 }
+                log.info("[flow] 设备任务下发 node={} iter={} attempt={}",
+                        nodeId, row.getIterationNo(), row.getAttempt());
                 StepOutcome outcome = engine.executeStep(graph, fresh, row, node);
                 engine.settle(row, outcome);
             } catch (RuntimeException ex) {
-                log.error("[flow][worker] 设备步骤执行异常: execution={}, node={}",
-                        executionId, row.getNodeId(), ex);
+                log.error("[flow] 设备步骤执行异常: node={}", nodeId, ex);
                 engine.settle(row, StepOutcome.failed("执行异常: " + ex.getMessage()));
+            } finally {
+                FlowLogContextHolder.clear();
             }
         }));
     }

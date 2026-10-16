@@ -13,7 +13,7 @@ import static cn.boheng.frame.framework.common.util.date.DateUtils.FORMAT_YEAR_M
 @Data
 public class Demo03StudentInnerPageReqVO extends PageParam {
 
-    @Schema(description = "名字", example = "芋艿")
+    @Schema(description = "名字", example = "伯珩")
     private String name;
 
     @Schema(description = "性别")

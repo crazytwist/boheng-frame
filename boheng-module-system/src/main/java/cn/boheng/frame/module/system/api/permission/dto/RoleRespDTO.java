@@ -6,7 +6,7 @@ import lombok.Data;
 /**
  * 角色 Response DTO
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Data
 public class RoleRespDTO {

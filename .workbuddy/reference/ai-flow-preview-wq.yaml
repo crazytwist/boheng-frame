@@ -1,0 +1,331 @@
+# AI 对话生成实验流程 · 预览快照（不入库）
+#
+# 场景：实验员用自然语言描述「水质检测怎么做」，系统映射到现有能力目录，
+# 产出 FlowNodeDraft IR。本文件 = 一次生成会话的内存态，不写 flow_definition / flow_node。
+#
+# 对应架构：doc/05-AI流程生成架构方案.md
+# 对应 demo：sql/mysql/flow-water-quality-demo.sql
+# IR 对齐：FlowNodeDraft；预览期用 stepKey，apply 时才解析成 stepId。
+
+persist: false
+phase: PREVIEW                 # INTENT → SELECT → ASSEMBLE → REPAIR → PREVIEW → (人点 apply 才 DONE)
+status: CHECK_PASSED
+pipelineKey: wq_main
+name: 水质检测主流程
+definitionId: null             # 空 = 尚未落到某个草稿版本
+inputParams:
+  taskNo: WQ-20261015-001
+  sampleCount: 96
+
+# ---------------------------------------------------------------------------
+# 对话（人描述实验 → 模型反问 → 人确认）
+# ---------------------------------------------------------------------------
+conversation:
+  - role: user
+    text: >
+      我们要做一批水质检测，大概 96 个水样。
+      先按任务号登记、再分成 A/B 两组，预处理之后测 pH 和浊度，两台仪器可以同时跑。
+      测完汇总看合不合格。COD 和氨氮走异步仪器，滴定要跑两轮。
+      重金属分两条线，最后出总报告。
+
+  - role: assistant
+    phase: INTENT
+    text: >
+      我按现有能力目录理解成下面这份意图，有三处需要你拍板，确认后才组图：
+      1) 样本按水样登记，启动入参 taskNo + sampleCount=96？
+      2) 滴定两轮用「滴定轮次检查」驱动循环模板（while = needMore）？
+      3) 重金属用现成子流程 wq_metal_line_a / wq_metal_line_b 做 FANOUT 扇出？
+      COD 绑定 WQ-COD-01，氨氮不限设备、按动作码抢——也是现有台账，对吗？
+
+  - role: user
+    text: 对，都按现有仪器和能力走，循环和扇出也用现成模板。
+
+  - role: assistant
+    phase: SELECT
+    text: 能力目录命中 14 条，无一新造。循环、扇出按模板插入。开始组 IR。
+
+# ---------------------------------------------------------------------------
+# S1 意图（ExperimentIntent）
+# ---------------------------------------------------------------------------
+intent:
+  goal: 96 个水样一次水质检测任务，理化 + 异步仪器 + 滴定 + 重金属，出总报告
+  sampleSpec:
+    sampleType: WATER
+    count: 96
+    registerBy: taskNo
+  detections:
+    - pH
+    - turbidity
+    - COD
+    - ammonia
+    - titration
+    - heavyMetal
+  parallelism:
+    - [ph_test, turbidity_test]
+    - [cod_test, ammonia_test]
+  controlTemplates:
+    - kind: loop
+      why: 滴定平行测定 2 轮
+      body: [wq_titrate, wq_titrate_check]
+      while: "node.titrate_check.needMore == true"
+    - kind: subflow
+      why: 重金属 A/B 两条检测线
+      dispatchMode: FANOUT
+      dispatchBean: waterGroupDispatchAction
+      targets: [wq_metal_line_a, wq_metal_line_b]
+  expectedOutputs: [report]
+  openQuestions: []            # 人已确认，空
+
+# ---------------------------------------------------------------------------
+# S2 选型（只从 flow_step 里挑，禁止幻觉 stepKey）
+# ---------------------------------------------------------------------------
+selection:
+  - rank: 1
+    stepKey: wq_register
+    name: 样品登记
+    stepType: bean.invoke
+    why: 按任务号生成样本清单
+  - rank: 2
+    stepKey: wq_split
+    name: 样本分组
+    stepType: bean.invoke
+    why: 对半拆 A/B，给重金属扇出用
+  - rank: 3
+    stepKey: wq_prepare
+    name: 样品预处理
+    stepType: device.command
+    why: 预处理台 WQ-PREP-01
+  - rank: 4
+    stepKey: wq_ph_measure
+    name: pH 测定
+    stepType: device.command
+    why: 与浊度并行
+  - rank: 5
+    stepKey: wq_turbidity
+    name: 浊度测定
+    stepType: device.command
+    why: 与 pH 并行
+  - rank: 6
+    stepKey: wq_merge
+    name: 理化汇总
+    stepType: bean.invoke
+    why: pH+浊度汇合后按 GB 5749-2022 判定
+  - rank: 7
+    stepKey: wq_cod
+    name: COD 测定
+    stepType: device.task
+    why: 异步队列，绑定 WQ-COD-01
+  - rank: 8
+    stepKey: wq_ammonia
+    name: 氨氮测定
+    stepType: device.task
+    why: 异步队列，deviceCode 空=按动作码抢
+  - rank: 9
+    stepKey: wq_titrate
+    name: 自动滴定
+    stepType: device.command
+    why: 循环体入口
+  - rank: 10
+    stepKey: wq_titrate_check
+    name: 滴定轮次检查
+    stepType: bean.invoke
+    why: 产出 needMore 驱动循环
+  - rank: 11
+    stepKey: wq_metal_prep
+    name: 重金属备样
+    stepType: bean.invoke
+    why: 子流程内复用，不进主图
+    inSubflow: true
+  - rank: 12
+    stepKey: wq_metal_a
+    name: 重金属检测 A 线
+    stepType: device.command
+    why: 子流程 wq_metal_line_a
+    inSubflow: true
+  - rank: 13
+    stepKey: wq_metal_b
+    name: 重金属检测 B 线
+    stepType: device.command
+    why: 子流程 wq_metal_line_b
+    inSubflow: true
+  - rank: 14
+    stepKey: wq_report
+    name: 检测总报告
+    stepType: bean.invoke
+    why: 等循环、扇出、两个异步任务全部成功
+
+# ---------------------------------------------------------------------------
+# S3 组装 = FlowNodeDraft[]（预览 IR）
+# 预览期带 stepKey；apply 时 CapabilityCatalog 解析 stepId，控制类节点 stepId 为空。
+# ---------------------------------------------------------------------------
+ir:
+  nodes:
+    - nodeId: register
+      name: 样品登记
+      stepKey: wq_register
+      stepType: bean.invoke
+      typeConfig: '{"beanName":"waterRegisterAction"}'
+      dependsOn: []
+      timeoutMs: 60000
+      maxAttempts: 1
+
+    - nodeId: split
+      name: 样本分组
+      stepKey: wq_split
+      stepType: bean.invoke
+      typeConfig: '{"beanName":"waterSplitAction"}'
+      dependsOn: [register]
+      timeoutMs: 60000
+      maxAttempts: 1
+
+    - nodeId: pretreat
+      name: 样品预处理
+      stepKey: wq_prepare
+      stepType: device.command
+      typeConfig: '{"deviceCode":"WQ-PREP-01","actionCode":"PREPARE"}'
+      dependsOn: [split]
+      mappings:
+        - { param: taskNo, source: INPUT, field: taskNo }
+        - { param: sampleCount, source: INPUT, field: sampleCount }
+      outputMapping: '{"commandNo":"prepCommandNo"}'
+      timeoutMs: 300000
+      maxAttempts: 1
+
+    - nodeId: ph_test
+      name: pH 测定
+      stepKey: wq_ph_measure
+      stepType: device.command
+      typeConfig: '{"deviceCode":"WQ-PH-01","actionCode":"MEASURE_PH"}'
+      dependsOn: [pretreat]
+      mappings:
+        - { param: taskNo, source: INPUT, field: taskNo }
+        - { param: sampleCount, source: INPUT, field: sampleCount }
+      outputMapping: '{"body":"raw"}'
+      timeoutMs: 300000
+      maxAttempts: 1
+
+    - nodeId: turbidity_test
+      name: 浊度测定
+      stepKey: wq_turbidity
+      stepType: device.command
+      typeConfig: '{"deviceCode":"WQ-TB-01","actionCode":"MEASURE_TURBIDITY"}'
+      dependsOn: [pretreat]
+      mappings:
+        - { param: taskNo, source: INPUT, field: taskNo }
+        - { param: sampleCount, source: INPUT, field: sampleCount }
+      outputMapping: '{"body":"raw"}'
+      timeoutMs: 300000
+      maxAttempts: 1
+
+    - nodeId: merge_check
+      name: 理化汇总
+      stepKey: wq_merge
+      stepType: bean.invoke
+      typeConfig: '{"beanName":"waterMergeAction"}'
+      dependsOn: [ph_test, turbidity_test]
+      joinPolicy: ALL_SUCCESS
+      mappings:
+        - { param: phRaw, source: NODE, nodeId: ph_test, field: raw }
+        - { param: tbRaw, source: NODE, nodeId: turbidity_test, field: raw }
+      outputMapping: '{"ph":"ph","turbidity":"turbidity","qualified":"qualified","standard":"standard"}'
+      timeoutMs: 60000
+      maxAttempts: 1
+
+    - nodeId: cod_test
+      name: COD 测定
+      stepKey: wq_cod
+      stepType: device.task
+      typeConfig: '{"deviceCode":"WQ-COD-01","actionCode":"MEASURE_COD"}'
+      dependsOn: [merge_check]
+      mappings:
+        - { param: taskNo, source: INPUT, field: taskNo }
+        - { param: sampleCount, source: INPUT, field: sampleCount }
+      outputMapping: '{"cod":"cod","unit":"unit"}'
+      timeoutMs: 300000
+      maxAttempts: 1
+
+    - nodeId: ammonia_test
+      name: 氨氮测定
+      stepKey: wq_ammonia
+      stepType: device.task
+      typeConfig: '{"actionCode":"MEASURE_AMMONIA"}'
+      dependsOn: [merge_check]
+      mappings:
+        - { param: taskNo, source: INPUT, field: taskNo }
+        - { param: sampleCount, source: INPUT, field: sampleCount }
+      outputMapping: '{"ammonia":"ammonia","unit":"unit"}'
+      timeoutMs: 300000
+      maxAttempts: 1
+
+    - nodeId: titrate
+      name: 自动滴定
+      stepKey: wq_titrate
+      stepType: device.command
+      typeConfig: '{"deviceCode":"WQ-TIT-01","actionCode":"TITRATE"}'
+      dependsOn: [merge_check]
+      mappings:
+        - { param: taskNo, source: INPUT, field: taskNo }
+      outputMapping: '{"body":"raw"}'
+      timeoutMs: 300000
+      maxAttempts: 1
+
+    - nodeId: titrate_check
+      name: 滴定轮次检查
+      stepKey: wq_titrate_check
+      stepType: bean.invoke
+      typeConfig: '{"beanName":"waterTitrationCheckAction","argsJson":"{\"targetRounds\":2}"}'
+      dependsOn: [titrate]
+      outputMapping: '{"round":"round","needMore":"needMore","volume":"volume"}'
+      timeoutMs: 60000
+      maxAttempts: 1
+
+    - nodeId: titration_loop
+      name: 循环滴定
+      stepKey: null
+      stepType: loop
+      stepId: null
+      typeConfig: >
+        {"bodyEntryNodeId":"titrate","bodyExitNodeId":"titrate_check",
+         "maxIterations":5,"whileExpression":"node.titrate_check.needMore == true"}
+      dependsOn: [merge_check]
+      loopBodyEntry: titrate
+      loopBodyExit: titrate_check
+
+    - nodeId: heavy_dispatch
+      name: 重金属扇出
+      stepKey: null
+      stepType: subflow
+      stepId: null
+      typeConfig: >
+        {"dispatchMode":"FANOUT",
+         "dispatch":{"kind":"bean","beanName":"waterGroupDispatchAction"},
+         "completionPolicy":"ALL_SUCCESS"}
+      dependsOn: [titration_loop]
+      subflowTargetKey: null     # FANOUT 由 dispatch Bean 决定目标，不写死单编码
+
+    - nodeId: report
+      name: 检测总报告
+      stepKey: wq_report
+      stepType: bean.invoke
+      typeConfig: '{"beanName":"waterReportAction"}'
+      dependsOn: [titration_loop, heavy_dispatch, cod_test, ammonia_test]
+      joinPolicy: ALL_SUCCESS
+      mappings:
+        - { param: iterations, source: NODE, nodeId: titration_loop, field: iterations }
+        - { param: metalLines, source: NODE, nodeId: heavy_dispatch, field: children }
+      timeoutMs: 60000
+      maxAttempts: 1
+
+# ---------------------------------------------------------------------------
+# S4 校验（走现成 FlowGraphChecker，不让模型自评）
+# ---------------------------------------------------------------------------
+checker:
+  checkStructure: PASS
+  checkPublish: SKIPPED        # 预览不做发布校验；apply 落草稿后由人点验再 /publish
+  issues: []
+  checksum: preview-only       # apply 之后才由 FlowGraphChecker.checksum(nodes) 生成
+  persist: false
+  nextActions:
+    - 人在画布上看 diff，改错节点 / 改映射
+    - POST /ai/flow-session/{id}/apply 才写 flow_node（要求 definition 为 DRAFT）
+    - 绝不自动 /publish

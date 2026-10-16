@@ -18,7 +18,7 @@ import static cn.boheng.frame.module.infra.enums.ErrorCodeConstants.*;
 /**
  * 示例分类 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated

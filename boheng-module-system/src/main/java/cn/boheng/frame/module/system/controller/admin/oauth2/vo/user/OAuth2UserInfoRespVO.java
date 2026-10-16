@@ -16,10 +16,10 @@ public class OAuth2UserInfoRespVO {
     @Schema(description = "用户编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long id;
 
-    @Schema(description = "用户账号", requiredMode = Schema.RequiredMode.REQUIRED, example = "芋艿")
+    @Schema(description = "用户账号", requiredMode = Schema.RequiredMode.REQUIRED, example = "伯珩")
     private String username;
 
-    @Schema(description = "用户昵称", requiredMode = Schema.RequiredMode.REQUIRED, example = "芋道")
+    @Schema(description = "用户昵称", requiredMode = Schema.RequiredMode.REQUIRED, example = "伯珩")
     private String nickname;
 
     @Schema(description = "用户邮箱", example = "boheng@iocoder.cn")

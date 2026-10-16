@@ -43,9 +43,14 @@ public class FlowStepSaveReqVO {
     @Size(max = 4096, message = "默认输入长度不能超过 4096 个字符")
     private String defaultParams;
 
-    @Schema(description = "等待秒数", example = "300")
+    @Schema(description = "输出声明 JSON：{输出字段: 说明}。声明这一步写出哪些上下文键",
+            example = "{\"plateRead\":\"读板结果对象\"}")
+    @Size(max = 4096, message = "输出声明长度不能超过 4096 个字符")
+    private String outputSchema;
+
+    @Schema(description = "等待秒数。-1 表示永不超时", example = "300")
     @NotNull(message = "等待时间不能为空")
-    @Min(value = 1, message = "等待时间至少 1 秒")
+    @Min(value = -1, message = "等待秒数须为 -1（永不超时）或正整数")
     @Max(value = 86400, message = "等待时间不能超过 24 小时")
     private Integer timeoutSec;
 

@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="邮件配置" url="https://doc.iocoder.cn/mail" />
+  
 
   <ContentWrap>
     <el-form

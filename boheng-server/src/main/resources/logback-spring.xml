@@ -4,9 +4,11 @@
     <!-- CONSOLE_LOG_PATTERN 相比 FILE_LOG_PATTERN 多了 highlight、cyan 等高亮 -->
     <!-- 自定义转换词：租户编号（读 TenantContextHolder，非租户线程输出空串，形如 [tenant:]） -->
     <conversionRule conversionWord="tenantId" converterClass="cn.boheng.frame.framework.tenant.core.log.TenantLogConverter"/>
+    <!-- 自定义转换词：流程执行维度（读 FlowLogContextHolder，非流程线程输出空串，形如 [exe=xxx node=yyy]） -->
+    <conversionRule conversionWord="flow" converterClass="cn.boheng.frame.module.flow.framework.log.FlowLogConverter"/>
 
-    <property name="CONSOLE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [tenant:%tenantId] %highlight(%-5level) %cyan(%logger{50}:%L) - %msg%n"/>
-    <property name="FILE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [tenant:%tenantId] %-5level %logger{50}:%L - %msg%n"/>
+    <property name="CONSOLE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [tenant:%tenantId]%flow %highlight(%-5level) %cyan(%logger{50}:%L) - %msg%n"/>
+    <property name="FILE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [tenant:%tenantId]%flow %-5level %logger{50}:%L - %msg%n"/>
 
     <!-- 控制台 Appender -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">　　　　　

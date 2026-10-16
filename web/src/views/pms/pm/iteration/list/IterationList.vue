@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【PMS】项目详情与迭代" url="https://doc.iocoder.cn/pms/pm/project/detail/" />
+  
 
   <!-- 迭代搜索与操作 -->
   <div class="mb-16px flex flex-wrap items-center justify-between gap-12px">

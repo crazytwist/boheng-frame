@@ -19,7 +19,7 @@ import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUt
 /**
  * OAuth2 授予 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 public class OAuth2GrantServiceImpl implements OAuth2GrantService {

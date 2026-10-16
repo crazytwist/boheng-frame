@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【库存】其它入库、其它出库" url="https://doc.iocoder.cn/erp/stock-in-out/" />
+  
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -372,6 +372,6 @@ onMounted(async () => {
   supplierList.value = await SupplierApi.getSupplierSimpleList()
   userList.value = await UserApi.getSimpleUserList()
 })
-// TODO 芋艿：可优化功能：列表界面，支持导入
-// TODO 芋艿：可优化功能：详情界面，支持打印
+// TODO 伯珩：可优化功能：列表界面，支持导入
+// TODO 伯珩：可优化功能：详情界面，支持打印
 </script>

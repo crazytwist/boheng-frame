@@ -117,6 +117,26 @@
         </el-col>
       </el-row>
 
+      <el-row v-if="!isUpdate" :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="批量数量">
+            <el-input-number v-model="batchQty" :min="1" :max="500" controls-position="right" class="!w-1/1" />
+            <div class="form-hint">大于 1 时批量生成多个实例（不落位），编码自动追加 -001 序号</div>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20">
+        <el-col :span="24">
+          <el-form-item label="关联样本">
+            <el-input :model-value="formData.sampleId || '未关联'" disabled />
+            <div class="form-hint">
+              从样本「生成实例」时自动带出；试剂 / 空容器等非样本类实例留空
+            </div>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
       <!-- 内容物（CARRIER 不装东西，隐藏） -->
       <template v-if="isCarrier === false">
         <el-divider content-position="left">内容物</el-divider>
@@ -171,6 +191,7 @@ import { MaterialInstanceApi, MaterialInstanceVO } from '@/api/wms/instance'
 import { ContainerTypeApi, ContainerTypeVO } from '@/api/wms/container'
 import { ContentDefApi, ContentDefVO } from '@/api/wms/content'
 import { SlotApi, SlotVO } from '@/api/wms/space/slot'
+import { SampleVO } from '@/api/wms/sample'
 
 defineOptions({ name: 'WmsInstanceForm' })
 
@@ -196,6 +217,7 @@ const createEmptyFormData = (): MaterialInstanceVO => ({
   contentDefId: undefined,
   contentDefCode: undefined,
   contentType: undefined,
+  sampleId: undefined,
   currentVolUl: undefined,
   currentCount: undefined,
   instanceStatus: 'AVAILABLE',
@@ -219,6 +241,9 @@ const statusOptions = [
   { label: '已过期', value: 'EXPIRED' },
   { label: '已废弃', value: 'DISCARDED' }
 ]
+
+/** 批量生成数量（仅创建态，>1 时走批量接口，实例不落位） */
+const batchQty = ref(1)
 
 // ========== 下拉数据源 ==========
 const containerTypes = ref<ContainerTypeVO[]>([])
@@ -332,6 +357,7 @@ const open = async (type: string, id?: number, presetParentId?: number) => {
   dialogTitle.value = t('action.' + type)
   formType.value = type
   formData.value = createEmptyFormData()
+  batchQty.value = 1
   formRef.value?.clearValidate()
   // 新增子实例时预设父实例
   if (presetParentId) {
@@ -355,8 +381,20 @@ const submitForm = async () => {
   formLoading.value = true
   try {
     if (formType.value === 'create') {
-      await MaterialInstanceApi.createMaterialInstance(formData.value)
-      message.success(t('common.createSuccess'))
+      if (batchQty.value > 1) {
+        // 批量生成：编码追加序号，且批量不落位（避免多个实例争抢同一槽位）
+        const list = Array.from({ length: batchQty.value }, (_, i) => ({
+          ...formData.value,
+          instanceCode: `${formData.value.instanceCode}-${String(i + 1).padStart(3, '0')}`,
+          rootSlotId: undefined,
+          rootSlotCode: undefined
+        }))
+        await MaterialInstanceApi.createMaterialInstanceBatch(list)
+        message.success(`已批量生成 ${list.length} 个实例`)
+      } else {
+        await MaterialInstanceApi.createMaterialInstance(formData.value)
+        message.success(t('common.createSuccess'))
+      }
     } else {
       await MaterialInstanceApi.updateMaterialInstance(formData.value)
       message.success(t('common.updateSuccess'))
@@ -368,7 +406,44 @@ const submitForm = async () => {
   }
 }
 
-defineExpose({ open })
+/**
+ * 从样本「生成实例」入口打开：预填样本 / 内容物 / 期望容器 / 初始体积，
+ * 一个样本可多次调用生成多个实例（sampleId 相同）。
+ */
+const openFromSample = async (sample: SampleVO) => {
+  dialogVisible.value = true
+  dialogTitle.value = t('action.create')
+  formType.value = 'create'
+  formData.value = createEmptyFormData()
+  batchQty.value = 1
+  formRef.value?.clearValidate()
+  formLoading.value = true
+  try {
+    await loadOptions()
+    formData.value.sampleId = sample.sampleId
+    // 容器类型（先：容器决定能否装内容物，按样本期望容器类型编码反查）
+    if (sample.containerTypeCode) {
+      const ct = containerTypes.value.find((c) => c.typeCode === sample.containerTypeCode)
+      if (ct) {
+        formData.value.containerTypeId = ct.id
+        handleContainerTypeChange(ct.id!)
+      } else {
+        formData.value.containerTypeCode = sample.containerTypeCode
+      }
+    }
+    // 内容物（后：样本登记时的物质定义）
+    if (sample.contentDefId) {
+      formData.value.contentDefId = sample.contentDefId
+      handleContentDefChange(sample.contentDefId)
+    }
+    // 初始体积：样本登记承诺量
+    formData.value.currentVolUl = sample.initialVolUl
+  } finally {
+    formLoading.value = false
+  }
+}
+
+defineExpose({ open, openFromSample })
 const emit = defineEmits<{ success: [] }>()
 </script>
 

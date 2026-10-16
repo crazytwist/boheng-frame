@@ -14,7 +14,7 @@ import static cn.boheng.frame.framework.security.core.util.SecurityFrameworkUtil
 /**
  * 默认的 {@link SecurityFrameworkService} 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @AllArgsConstructor
 public class SecurityFrameworkServiceImpl implements SecurityFrameworkService {

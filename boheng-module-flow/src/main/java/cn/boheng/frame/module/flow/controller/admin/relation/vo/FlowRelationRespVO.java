@@ -71,10 +71,22 @@ public class FlowRelationRespVO {
     @Schema(description = "参数映射。来源 INPUT / NODE / LITERAL")
     private List<cn.boheng.frame.module.flow.controller.admin.definition.vo.FlowMappingReqVO> mappings;
 
+    @Schema(description = "节点输出归一化映射 JSON：{输出字段: 上下文键}")
+    private String outputMapping;
+
+    @Schema(description = "能力的输出声明 JSON：{输出字段: 说明}。控制类节点为空")
+    private String outputSchema;
+
     @Schema(description = "等待秒数（生效值）")
     private Integer timeoutSec;
 
     @Schema(description = "尝试次数（生效值）")
     private Integer maxAttempts;
+
+    @Schema(description = "画布横坐标（拖拽编排）")
+    private Integer x;
+
+    @Schema(description = "画布纵坐标（拖拽编排）")
+    private Integer y;
 
 }

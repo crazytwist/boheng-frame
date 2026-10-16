@@ -3,7 +3,7 @@ package cn.boheng.frame.framework.quartz.core.handler;
 /**
  * 任务处理器
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface JobHandler {
 

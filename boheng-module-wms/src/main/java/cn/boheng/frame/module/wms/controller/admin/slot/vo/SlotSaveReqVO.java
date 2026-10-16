@@ -53,6 +53,10 @@ public class SlotSaveReqVO {
     @Size(max = 512, message = "扩展数据（JSON，坐标描述 row/col/layer）长度不能超过 512 个字符")
     private String extData;
 
+    @Schema(description = "适用物料（JSON 数组，可绑定试剂/容器）", example = "[{\"kind\":\"CONTAINER\",\"materialId\":1,\"materialCode\":\"TUBE_1.5\",\"materialName\":\"1.5mL离心管\"}]")
+    @Size(max = 2048, message = "适用物料长度不能超过 2048 个字符")
+    private String suitableMaterials;
+
     @Schema(description = "所属设备编码", example = "TECAN_F200_01")
     @Size(max = 64, message = "所属设备编码长度不能超过 64 个字符")
     private String deviceCode;

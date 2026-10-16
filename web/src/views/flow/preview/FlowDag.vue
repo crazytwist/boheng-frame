@@ -78,6 +78,9 @@
               {{ statusMeta(n.status).label }}
             </div>
           </div>
+          <span v-if="n.deviceTaskStatus" class="task-badge" :style="{ color: deviceTaskStatusMeta(n.deviceTaskStatus).color, background: deviceTaskStatusMeta(n.deviceTaskStatus).bg }">
+            任务·{{ deviceTaskStatusMeta(n.deviceTaskStatus).label }}
+          </span>
           <span v-if="n.iterationCount > 1" class="iter-badge">{{ n.iterationCount }}轮</span>
         </div>
       </div>
@@ -94,7 +97,7 @@
               {{ typeMeta(detailNode.stepType).label }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item v-if="detailNode.timeoutSec" label="超时">{{ detailNode.timeoutSec }} 秒</el-descriptions-item>
+          <el-descriptions-item v-if="detailNode.timeoutSec" label="超时">{{ detailNode.timeoutSec < 0 ? '永不超时' : `${detailNode.timeoutSec} 秒` }}</el-descriptions-item>
           <el-descriptions-item v-if="detailNode.maxAttempts" label="尝试上限">{{ detailNode.maxAttempts }} 次</el-descriptions-item>
           <el-descriptions-item v-if="detailNode.joinPolicy" label="汇合策略">{{ detailNode.joinPolicy }}</el-descriptions-item>
           <el-descriptions-item v-if="detailNode.joinFailurePolicy" label="失败策略">{{ detailNode.joinFailurePolicy }}</el-descriptions-item>
@@ -121,7 +124,16 @@
         <!-- 类型配置 -->
         <div class="drawer-section">
           <div class="section-title">类型配置</div>
-          <pre v-if="detailNode.typeConfig" class="json-block">{{ prettyJson(detailNode.typeConfig) }}</pre>
+          <el-table v-if="typeConfigRows.length" :data="typeConfigRows" border size="small">
+            <el-table-column label="配置项" prop="label" width="110" />
+            <el-table-column label="值" min-width="150">
+              <template #default="scope">
+                <code v-if="scope.row.isJson" class="mapping-code">{{ scope.row.value }}</code>
+                <span v-else>{{ scope.row.value }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <pre v-else-if="detailNode.typeConfig" class="json-block">{{ prettyJson(detailNode.typeConfig) }}</pre>
           <span v-else class="color-#909399 text-13px">—</span>
         </div>
 
@@ -174,6 +186,7 @@
 <script lang="ts" setup>
 import type { FlowNodeVO } from '@/api/flow/definition'
 import type { FlowStepExecutionVO } from '@/api/flow/execution'
+import { STEP_TYPE_FIELDS, type ParamField } from '@/api/flow/stepSchema'
 import {
   buildDag,
   isControl,
@@ -320,6 +333,46 @@ const detailRuns = computed<FlowStepExecutionVO[]>(() => {
 
 const detailLatest = computed<FlowStepExecutionVO | undefined>(() => detailRuns.value[0])
 
+// ==================== 类型配置结构化展示 ====================
+
+const getPath = (obj: any, key: string): any => key.split('.').reduce((acc: any, k) => acc?.[k], obj)
+
+const formatConfigValue = (f: ParamField, v: any): string => {
+  if (f.type === 'boolean') return v ? '是' : '否'
+  if (f.type === 'enum') return f.options?.find((o) => o.value === v)?.label ?? String(v)
+  if (f.type === 'json') return typeof v === 'string' ? prettyJson(v) : prettyJson(JSON.stringify(v))
+  return String(v)
+}
+
+/** 把节点 typeConfig 按字段 schema 解析成「配置项-值」行，供抽屉结构化展示 */
+const typeConfigRows = computed(() => {
+  const type = detailNode.value?.stepType
+  const json = detailNode.value?.typeConfig
+  if (!type || !json) return []
+  let config: Record<string, any> = {}
+  try {
+    config = JSON.parse(json)
+  } catch {
+    return []
+  }
+  if (typeof config !== 'object' || config === null) return []
+  const fields = STEP_TYPE_FIELDS[type] ?? []
+  const rows: { label: string; value: string; isJson?: boolean }[] = []
+  const declared = new Set<string>()
+  for (const f of fields) {
+    const v = getPath(config, f.key)
+    if (v === null || v === undefined || v === '') continue
+    declared.add(f.key.split('.')[0])
+    rows.push({ label: f.label, value: formatConfigValue(f, v), isJson: f.type === 'json' })
+  }
+  for (const [k, v] of Object.entries(config)) {
+    if (declared.has(k)) continue
+    if (v === null || v === undefined) continue
+    rows.push({ label: k, value: typeof v === 'object' ? prettyJson(JSON.stringify(v)) : String(v) })
+  }
+  return rows
+})
+
 const SOURCE_LABELS: Record<string, string> = { INPUT: '入参', NODE: '节点', LITERAL: '固定' }
 const sourceLabel = (source?: string) => SOURCE_LABELS[source ?? ''] ?? source ?? ''
 
@@ -335,6 +388,16 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 }
 const statusMeta = (status?: string) =>
   STATUS_META[status ?? ''] ?? { label: status ?? '—', color: '#94a3b8' }
+
+const DEVICE_TASK_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  PENDING: { label: '待领取', color: '#0369a1', bg: '#e0f2fe' },
+  CLAIMED: { label: '执行中', color: '#075985', bg: '#bae6fd' },
+  DONE: { label: '完成', color: '#166534', bg: '#dcfce7' },
+  FAILED: { label: '失败', color: '#991b1b', bg: '#fee2e2' },
+  CANCELLED: { label: '已取消', color: '#475569', bg: '#f1f5f9' }
+}
+const deviceTaskStatusMeta = (status?: string) =>
+  DEVICE_TASK_STATUS_META[status ?? ''] ?? { label: status ?? '—', color: '#475569', bg: '#f1f5f9' }
 
 const durationOf = (row: FlowStepExecutionVO): string => {
   if (!row.startedAt || !row.finishedAt) return '—'
@@ -533,6 +596,17 @@ const durationOf = (row: FlowStepExecutionVO): string => {
   color: #fff;
   background: #16a34a;
   border-radius: 8px;
+}
+
+.task-badge {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid currentColor;
 }
 
 .node-icon {

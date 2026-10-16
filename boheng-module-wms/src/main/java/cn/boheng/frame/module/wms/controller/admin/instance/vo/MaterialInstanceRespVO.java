@@ -60,6 +60,9 @@ public class MaterialInstanceRespVO {
     @Schema(description = "内容物类型快照（CARRIER 为空；空容器为 EMPTY）", example = "BUFFER")
     private String contentType;
 
+    @Schema(description = "样本业务编号（关联 wms_sample_info.sample_id）", example = "SP-20261011-001")
+    private String sampleId;
+
     @Schema(description = "当前体积（μL）", example = "200.00")
     private BigDecimal currentVolUl;
 

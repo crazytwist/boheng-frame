@@ -254,7 +254,7 @@ const clearViewer = () => {
 }
 
 /** 添加自定义箭头 */
-// TODO 芋艿：自定义箭头不生效，有点奇怪！！！！相关的 marker-end、marker-start 暂时也注释了！！！
+// TODO 伯珩：自定义箭头不生效，有点奇怪！！！！相关的 marker-end、marker-start 暂时也注释了！！！
 const addCustomDefs = () => {
   if (!bpmnViewer.value) {
     return
@@ -324,7 +324,6 @@ const importXML = async (xml: string) => {
       // 高亮流程
       setProcessStatus(props.view)
       // 启动 ResizeObserver，等待容器可见且有尺寸时自动居中
-      // 对应 https://github.com/yudaocode/yudao-ui-admin-vue3/pull/221 场景
       if (bpmnViewer.value) {
         await nextTick()
         startResizeObserver()

@@ -20,7 +20,7 @@ import static cn.boheng.frame.framework.common.util.collection.CollectionUtils.c
 /**
  * OAuth2 批准 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated

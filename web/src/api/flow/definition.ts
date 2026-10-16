@@ -34,6 +34,7 @@ export interface FlowDefinitionVO {
   version?: number
   name?: string
   remark?: string
+  inputParams?: string
   status?: string
   checksum?: string
   publishedAt?: Date
@@ -54,10 +55,10 @@ export const FlowDefinitionApi = {
   get: async (id: number) => {
     return await request.get({ url: '/flow/definition/get', params: { id } })
   },
-  create: async (data: { pipelineKey: string; name: string; remark?: string }) => {
+  create: async (data: { pipelineKey: string; name: string; remark?: string; inputParams?: string }) => {
     return await request.post({ url: '/flow/definition/create', data })
   },
-  save: async (data: { id: number; name: string; remark?: string }) => {
+  save: async (data: { id: number; name: string; remark?: string; inputParams?: string }) => {
     return await request.put({ url: '/flow/definition/save', data })
   },
   delete: async (id: number) => {

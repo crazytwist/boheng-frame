@@ -74,6 +74,9 @@ public class FlowDraftAssembler {
         draft.setJoinFailurePolicy(row.getJoinFailurePolicy());
         draft.setBranches(parseBranches(row.getBranches()));
         draft.setMappings(parseMappings(row.getInputMapping()));
+        draft.setOutputMapping(row.getOutputMapping());
+        // 能力的输出声明：只来自步骤表（控制类节点没有能力，由引擎固定键兜底）
+        draft.setOutputSchema(step == null ? null : step.getOutputSchema());
         // 运行覆盖：超时 / 次数 / 失败策略
         JSONObject run = parseObject(row.getRunConfig());
         Long timeoutMs = run == null ? null : run.getLong("timeoutMs");

@@ -14,10 +14,11 @@
 --   wms-cleanup-test-data.sql    一次性测试数据清理
 --   wms-slot-occupancy-fix.sql   存量数据修复，不是结构
 --
--- 六张表：
+-- 七张表：
 --   空间  wms_zone_info / wms_slot_info
 --   规格  wms_container_type / wms_content_def
---   实物  wms_material_instance（含 uk_root_slot）
+--   实物  wms_material_instance（含 uk_root_slot + sample_id）
+--   样本  wms_sample_info（样本业务对象：谱系/状态/实验参数/流程关联）
 --   流水  wms_material_movement
 --
 -- 与 Java DO 对齐的要点：
@@ -39,6 +40,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- 1. 重建六张当前表
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `wms_material_movement`;
+DROP TABLE IF EXISTS `wms_sample_info`;
 DROP TABLE IF EXISTS `wms_material_instance`;
 DROP TABLE IF EXISTS `wms_slot_info`;
 DROP TABLE IF EXISTS `wms_zone_info`;
@@ -204,6 +206,7 @@ CREATE TABLE `wms_material_instance` (
   `content_def_id` bigint NULL DEFAULT NULL COMMENT '内容物定义编号(仅 CARRIER 与空容器为空)',
   `content_def_code` varchar(64) NULL DEFAULT NULL COMMENT '内容物编码(冗余，编码寻址)',
   `content_type` varchar(32) NULL DEFAULT NULL COMMENT '内容物类型快照(CARRIER 为 NULL；空容器为 EMPTY；其余同 wms_content_def.content_type)',
+  `sample_id` varchar(128) NULL DEFAULT NULL COMMENT '样本业务编号(关联 wms_sample_info.sample_id，样本类实例填写，试剂/空容器为 NULL)',
   `current_vol_ul` decimal(10,2) NULL DEFAULT NULL COMMENT '当前体积(μL)，液体类内容物填写',
   `current_count` int NULL DEFAULT NULL COMMENT '当前数量(个)，固体/耗材类填写',
   `ext_data` json NULL DEFAULT NULL COMMENT '扩展数据(JSON): {"concentration":"0.5mol/L"} 等实例级覆盖描述',
@@ -226,11 +229,69 @@ CREATE TABLE `wms_material_instance` (
   INDEX `idx_instance_path`(`instance_path`(64) ASC) USING BTREE,
   INDEX `idx_instance_status`(`instance_status` ASC) USING BTREE,
   INDEX `idx_content_def_id`(`content_def_id` ASC) USING BTREE,
+  INDEX `idx_sample_id`(`sample_id` ASC) USING BTREE,
   UNIQUE INDEX `uk_root_slot`(`tenant_id` ASC, `slot_unique_key` ASC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '物料实例(实物个体树：位置即实例 + 内容物内联)';
 
 -- -----------------------------------------------------------------------------
--- 6. wms_material_movement  物料流水（只增不改）
+-- 6. wms_sample_info  样本主表（样本业务对象：谱系 / 状态 / 实验参数 / 流程关联）
+--    —— 样本与实物分离：样本可提前登记，实例化时把 sample_id 挂到 material_instance
+-- -----------------------------------------------------------------------------
+CREATE TABLE `wms_sample_info` (
+  `id` bigint NOT NULL COMMENT '主键',
+  `sample_id` varchar(128) NOT NULL COMMENT '样本业务编号(条码/二维码，租户内唯一)',
+  `parent_sample_id` varchar(128) NULL DEFAULT NULL COMMENT '父样本编号(NULL=原始样本)',
+  `root_sample_id` varchar(128) NULL DEFAULT NULL COMMENT '根样本编号(原始样本=自身，查整棵谱系树)',
+  `generation` int NOT NULL DEFAULT 0 COMMENT '谱系代数(原始=0，每拆分/合并一次+1)',
+  `derive_type` varchar(32) NOT NULL DEFAULT 'ORIGINAL' COMMENT '衍生类型: ORIGINAL 原始/SPLIT 拆分/MERGE 合并/ALIQUOT 分装/ADD_REAGENT 加试剂',
+  `sample_type` varchar(64) NULL DEFAULT NULL COMMENT '样本类型(字典 wms_sample_type): WATER 水样/BLOOD 血样/SOIL 土样/...',
+  `sample_name` varchar(128) NULL DEFAULT NULL COMMENT '样本名称/描述',
+  `content_def_id` bigint NULL DEFAULT NULL COMMENT '内容物定义编号(样本是什么物质，关联 wms_content_def)',
+  `content_def_code` varchar(64) NULL DEFAULT NULL COMMENT '内容物编码(冗余，编码寻址)',
+  `container_type_code` varchar(64) NULL DEFAULT NULL COMMENT '期望容器类型编码(登记时可指定，关联 wms_container_type)',
+  `initial_vol_ul` decimal(10,2) NULL DEFAULT NULL COMMENT '初始体积(μL，登记承诺量，不再变更；当前量在实例 current_vol_ul)',
+  `experiment_params` json NULL DEFAULT NULL COMMENT '实验参数(JSON，流程步骤执行时读，如 {"targetPh":7.2,"volumeUl":500})',
+  `ext_data` json NULL DEFAULT NULL COMMENT '扩展属性(JSON，不同类型样本不同属性，如 {"ph":7.2,"color":"透明"})',
+  `status` varchar(32) NOT NULL DEFAULT 'REGISTERED' COMMENT '样本状态: REGISTERED 已登记/LOADED 已装载/IN_PROCESS 处理中/SPLIT 已拆分/COMPLETED 已完成/ARCHIVED 已归档/REJECTED 不合格/LOST 丢失',
+  `current_execution_id` varchar(64) NULL DEFAULT NULL COMMENT '当前流程执行编号(样本在哪个流程)',
+  `current_node_id` varchar(64) NULL DEFAULT NULL COMMENT '当前所在步骤节点编号',
+  `batch_no` varchar(64) NULL DEFAULT NULL COMMENT '样本批次号(同一批送检样本共享；区别于实例的入库批次)',
+  `order_no` varchar(64) NULL DEFAULT NULL COMMENT '检测单/委托单号',
+  `priority` int NOT NULL DEFAULT 0 COMMENT '优先级: 0 普通/1 加急/2 特急',
+  `source` varchar(32) NOT NULL DEFAULT 'MANUAL' COMMENT '来源: MANUAL 手动/IMPORT 导入/LIS 系统对接/DEVICE 设备采集',
+  `external_id` varchar(64) NULL DEFAULT NULL COMMENT '外部系统ID(LIS单号等)',
+  `collected_at` datetime NULL DEFAULT NULL COMMENT '采样时间',
+  `received_at` datetime NULL DEFAULT NULL COMMENT '收样时间(到达实验室)',
+  `expire_time` datetime NULL DEFAULT NULL COMMENT '样本有效期',
+  `description` varchar(512) NULL DEFAULT NULL COMMENT '备注',
+  `creator` varchar(64) NULL DEFAULT '' COMMENT '创建者',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updater` varchar(64) NULL DEFAULT '' COMMENT '更新者',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+  `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
+  `sample_id_key` varchar(128) GENERATED ALWAYS AS (if((`deleted` = b'0'),`sample_id`,NULL)) VIRTUAL COMMENT '样本编号唯一占位键(生成列)：未删除时=sample_id，否则 NULL，用于唯一约束',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_sample_id`(`tenant_id` ASC, `sample_id_key` ASC) USING BTREE,
+  INDEX `idx_parent_sample`(`parent_sample_id` ASC) USING BTREE,
+  INDEX `idx_root_sample`(`root_sample_id` ASC) USING BTREE,
+  INDEX `idx_sample_type`(`sample_type` ASC) USING BTREE,
+  INDEX `idx_status`(`status` ASC) USING BTREE,
+  INDEX `idx_current_execution`(`current_execution_id` ASC) USING BTREE,
+  INDEX `idx_content_def_id`(`content_def_id` ASC) USING BTREE,
+  INDEX `idx_batch_no`(`batch_no` ASC) USING BTREE,
+  INDEX `idx_order_no`(`order_no` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '样本主表(样本业务对象：谱系/状态/实验参数/流程关联；实物经 wms_material_instance.sample_id 关联)';
+-- 说明:
+--   1. 样本与实物分离: 样本是业务对象(可提前登记、无实物)，实物是 material_instance。
+--      一份样本可有 0 个(未实例化)或多个(分装多管)实物实例，通过 sample_id 单向关联。
+--   2. 位置不落样本表: 样本位置真相源 = 其实例的 root_slot_id(未实例化则无位置)。
+--   3. 体积只留 initial_vol_ul(登记承诺量)，当前体积在实例 current_vol_ul，避免双真相源。
+--   4. 实验参数挂样本(experiment_params)，流程步骤执行时从样本读取，不挂实物。
+--   5. 样本状态(status 八态)与实例状态(instance_status 六态)两套正交，各管各的。
+
+-- -----------------------------------------------------------------------------
+-- 7. wms_material_movement  物料流水（只增不改）
 -- -----------------------------------------------------------------------------
 CREATE TABLE `wms_material_movement` (
   `id` bigint NOT NULL COMMENT '主键',

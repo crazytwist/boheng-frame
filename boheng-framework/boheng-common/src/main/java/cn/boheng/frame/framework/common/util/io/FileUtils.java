@@ -9,7 +9,7 @@ import java.io.File;
 /**
  * 文件工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class FileUtils {
 

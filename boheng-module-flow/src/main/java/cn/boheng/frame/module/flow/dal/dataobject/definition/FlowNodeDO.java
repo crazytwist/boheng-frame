@@ -101,4 +101,14 @@ public class FlowNodeDO extends TenantBaseDO {
      */
     private String branches;
 
+    /**
+     * 画布横坐标（拖拽编排）。空值由前端首次布局回填
+     */
+    private Integer x;
+
+    /**
+     * 画布纵坐标（拖拽编排）。空值由前端首次布局回填
+     */
+    private Integer y;
+
 }

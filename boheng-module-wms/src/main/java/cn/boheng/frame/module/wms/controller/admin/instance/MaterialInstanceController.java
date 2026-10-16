@@ -3,6 +3,7 @@ package cn.boheng.frame.module.wms.controller.admin.instance;
 import cn.boheng.frame.framework.common.pojo.CommonResult;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceBatchPutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeByContainerReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
@@ -118,14 +119,37 @@ public class MaterialInstanceController {
         return success(BeanUtils.toBean(list, MaterialInstanceRespVO.class));
     }
 
+    @GetMapping("/list-by-sample")
+    @Operation(summary = "按样本业务编号获得物料实例列表（样本详情反查其已生成的实例）")
+    @Parameter(name = "sampleId", description = "样本业务编号", required = true, example = "SP-20261011-001")
+    @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
+    public CommonResult<List<MaterialInstanceRespVO>> getMaterialInstanceListBySampleId(@RequestParam("sampleId") String sampleId) {
+        List<MaterialInstanceDO> list = materialInstanceService.getMaterialInstanceListBySampleId(sampleId);
+        return success(BeanUtils.toBean(list, MaterialInstanceRespVO.class));
+    }
+
 
     // ==================== 落位操作（上架 / 下架 / 转移） ====================
+
+    @PostMapping("/batch-put-in")
+    @Operation(summary = "批量铺货上架：选中一批空闲槽位，按同一种物料批量生成实例并落位")
+    @PreAuthorize("@ss.hasPermission('wms:material-instance:put-in')")
+    public CommonResult<List<Long>> batchPutIn(@Valid @RequestBody MaterialInstanceBatchPutInReqVO reqVO) {
+        return success(materialInstanceService.batchPutIn(reqVO));
+    }
 
     @PostMapping("/put-in")
     @Operation(summary = "上架：把顶层实例放到目标槽位")
     @PreAuthorize("@ss.hasPermission('wms:material-instance:put-in')")
     public CommonResult<Long> putIn(@Valid @RequestBody MaterialInstancePutInReqVO reqVO) {
         return success(materialInstanceService.putIn(reqVO));
+    }
+
+    @PostMapping("/batch-take-out")
+    @Operation(summary = "批量下架：删除选中槽位上的实例并解绑槽位（空槽位自动跳过）")
+    @PreAuthorize("@ss.hasPermission('wms:material-instance:take-out')")
+    public CommonResult<Integer> batchTakeOut(@RequestBody List<Long> slotIds) {
+        return success(materialInstanceService.batchTakeOut(slotIds));
     }
 
     @PostMapping("/take-out")

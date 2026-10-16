@@ -6,6 +6,7 @@ import cn.boheng.frame.framework.common.util.object.BeanUtils;
 import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotPageReqVO;
 import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotRespVO;
 import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotSaveReqVO;
+import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotSuitableMaterialReqVO;
 import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
 import cn.boheng.frame.module.wms.service.slot.SlotService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -104,5 +105,13 @@ public class SlotController {
     @PreAuthorize("@ss.hasPermission('wms:slot:create')")
     public CommonResult<Integer> generateSlotsByZone(@RequestParam("zoneCode") String zoneCode) {
         return success(slotService.generateSlotsByZone(zoneCode));
+    }
+
+    @PutMapping("/update-suitable-materials")
+    @Operation(summary = "更新槽位适用物料（可绑定试剂/容器，支持批量）")
+    @PreAuthorize("@ss.hasPermission('wms:slot:update')")
+    public CommonResult<Boolean> updateSlotSuitableMaterials(@Valid @RequestBody SlotSuitableMaterialReqVO reqVO) {
+        slotService.updateSlotSuitableMaterials(reqVO.getIds(), reqVO.getSuitableMaterials());
+        return success(true);
     }
 }

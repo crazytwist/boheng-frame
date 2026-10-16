@@ -30,6 +30,9 @@ public class FlowStepRespVO {
     @Schema(description = "默认输入 JSON")
     private String defaultParams;
 
+    @Schema(description = "输出声明 JSON：{输出字段: 说明}")
+    private String outputSchema;
+
     @Schema(description = "等待秒数")
     private Integer timeoutSec;
 

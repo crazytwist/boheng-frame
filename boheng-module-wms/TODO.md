@@ -196,7 +196,7 @@
 > - 数据分 **raw / standardized / analytic** 三层，**上下文必须在摄入时挂上**
 > - **仿真驱动先做**（可并行推进，不必等 Tecan 文档）
 > ⚠️ 调度域将**基于 BPMN 引擎**（竞品 UniteLabs / Roche AutoLab 均用 Camunda）；
-> 项目根 pom 有 `boheng-module-bpm` 占位但**目录不存在**，需从芋道上游恢复 —— 属调度域决策
+> 项目根 pom 有 `boheng-module-bpm` 占位但**目录不存在**，需从伯珩上游恢复 —— 属调度域决策
 > ⚠️ **基建前置**：v3 需本地起 **EMQX** 容器（当前 OrbStack 只有 mysql/redis/neo4j/portainer/it-tools）；
 >   MQTT 依赖**已在 `boheng-dependencies` 预置**（`paho 1.2.5` / `vertx-mqtt`），**无需引新依赖**
 
@@ -382,7 +382,7 @@ WAITING 单独一个 300_000ms（等回调）—— 必须与 RUNNING 分开
 | 区域删除留下悬空 `zone_code` | **已修**：`ZoneServiceImpl.validateZoneDeletable`，`1003000002` / `1003000003` | 2026-09-26 |
 | 槽位一槽多实例 | **禁止**，`uk_root_slot` 唯一索引（含 `deleted` 门控的生成列） | 2026-09-26 |
 | 设备域 v4 五处改动是否现在落 DDL（决策 K） | **现在落**（趁 `device_command` 未铺）。`device.sql` 升 v2.0-device + `device-v4-upgrade.sql` 已执行并实测通过 | 2026-09-30 |
-| 传输层是否复用芋道 `iot-gateway`（决策 L） | **借「协议接法」，不借「模块 + 物模型 + 部署形态」**。device 自定义 `DeviceTransport` SPI，iot-gateway 降级为可选适配器（独立模块） | 2026-09-30 |
+| 传输层是否复用伯珩 `iot-gateway`（决策 L） | **借「协议接法」，不借「模块 + 物模型 + 部署形态」**。device 自定义 `DeviceTransport` SPI，iot-gateway 降级为可选适配器（独立模块） | 2026-09-30 |
 | **仪器不返回空闲状态怎么办** | **必须有开关，不许写死** —— `device_info.busy_check_policy`(`AUTO`/`ALWAYS`/`NEVER`) × `device_action.need_busy_check` | 2026-09-30 |
 | **仪器自带本地队列怎么办** | **必须有开关，不许写死** —— `device_info.concurrency_policy`(`EXCLUSIVE`/`DEVICE_QUEUED`/`PLATFORM_QUEUED`) + `max_inflight` | 2026-09-30 |
 | 忙闲预检字段是否叫 `dispatch_mode` | **不叫**。`dispatch_mode` 已占给 `device_command`(SYNC/ASYNC)；预检命名 `need_busy_check`，避免与 librax 撞名 | 2026-09-30 |

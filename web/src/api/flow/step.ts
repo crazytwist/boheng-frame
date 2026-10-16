@@ -20,6 +20,7 @@ export interface FlowStepVO {
   stepType?: string
   typeConfig?: string
   defaultParams?: string
+  outputSchema?: string
   timeoutSec?: number
   maxAttempts?: number
   remark?: string

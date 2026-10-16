@@ -4,7 +4,7 @@
   </el-button>
 </template>
 <script lang="ts" setup>
-// TODO @芋艿：后续实现。对接 HiPrint 打印插件 + UReport 报表模板，实现标签打印功能
+// TODO @伯珩：后续实现。对接 HiPrint 打印插件 + UReport 报表模板，实现标签打印功能
 
 defineOptions({ name: 'PrinterLabel' })
 

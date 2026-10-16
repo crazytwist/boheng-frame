@@ -107,7 +107,7 @@ export default tseslint.config(
       'no-unused-vars': 'off',
       'space-before-function-paren': 'off',
 
-      // UnoCSS rules - 芋艿：禁用 unocss 顺序提示
+      // UnoCSS rules - 伯珩：禁用 unocss 顺序提示
       '@unocss/order': 'off',
       '@unocss/order-attributify': 'off',
       'unocss/order': 'off',

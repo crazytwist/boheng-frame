@@ -13,7 +13,7 @@ import java.util.*;
 /**
  * OAuth2 相关的工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class OAuth2Utils {
 

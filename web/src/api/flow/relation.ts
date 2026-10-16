@@ -20,8 +20,12 @@ export interface FlowRelationVO {
   joinFailurePolicy?: string
   branches?: Record<string, string[]>
   mappings?: FlowMappingVO[]
+  outputMapping?: string
+  outputSchema?: string
   timeoutSec?: number
   maxAttempts?: number
+  x?: number
+  y?: number
 }
 
 export interface FlowRelationSaveVO {
@@ -32,6 +36,8 @@ export interface FlowRelationSaveVO {
   stepType?: string
   typeConfig?: string
   dependsOn?: string[]
+  x?: number
+  y?: number
 }
 
 export interface FlowRelationUpdateVO {
@@ -43,6 +49,15 @@ export interface FlowRelationUpdateVO {
   joinFailurePolicy?: string
   branches?: Record<string, string[]>
   mappings?: FlowMappingVO[]
+  outputMapping?: Record<string, string>
+  x?: number
+  y?: number
+}
+
+export interface FlowRelationLayoutItemVO {
+  id: number
+  x: number
+  y: number
 }
 
 export interface FlowMappingVO {
@@ -68,5 +83,8 @@ export const FlowRelationApi = {
   },
   move: async (id: number, offset: number) => {
     return await request.post({ url: '/flow/relation/move', params: { id, offset } })
+  },
+  saveLayout: async (items: FlowRelationLayoutItemVO[]) => {
+    return await request.post({ url: '/flow/relation/layout', data: { items } })
   }
 }

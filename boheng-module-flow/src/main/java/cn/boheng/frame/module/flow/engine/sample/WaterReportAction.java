@@ -15,7 +15,8 @@ import static cn.boheng.frame.module.flow.engine.sample.WaterQualitySupport.str;
 
 /**
  * 水质检测示例：总报告。主流程收尾节点——汇合理化判定（并行汇合）、
- * 滴定终体积（循环收口）、重金属检测线数量（子流程汇合），产出检测报告。
+ * 滴定终体积（循环收口）、重金属检测线数量（子流程汇合），
+ * 以及 COD / 氨氮两个异步仪器任务的结果（device.task 队列），产出检测报告。
  */
 @Component
 public class WaterReportAction implements FlowBeanAction {
@@ -38,6 +39,14 @@ public class WaterReportAction implements FlowBeanAction {
         metal.put("lines", metalLines);
         metal.put("groupA", intOf(map(split.get("output")).get("countA"), 0));
         metal.put("groupB", intOf(map(split.get("output")).get("countB"), 0));
+        // 异步仪器任务：COD / 氨氮（device.task 队列，机器端回报后写进节点输出）
+        Map<String, Object> cod = map(node.get("cod_test"));
+        Map<String, Object> ammonia = map(node.get("ammonia_test"));
+        Map<String, Object> asyncInstrument = new LinkedHashMap<>();
+        asyncInstrument.put("cod", cod.get("cod"));
+        asyncInstrument.put("codUnit", str(cod.get("unit")));
+        asyncInstrument.put("ammonia", ammonia.get("ammonia"));
+        asyncInstrument.put("ammoniaUnit", str(ammonia.get("unit")));
 
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("taskNo", str(input.get("taskNo")));
@@ -48,6 +57,7 @@ public class WaterReportAction implements FlowBeanAction {
                 "standard", str(merge.get("standard"))));
         report.put("titration", titration);
         report.put("heavyMetal", metal);
+        report.put("asyncInstrument", asyncInstrument);
         report.put("conclusion", Boolean.TRUE.equals(merge.get("qualified"))
                 ? "常规理化指标合格" : "常规理化指标超限，需复检");
         return JSONUtil.toJsonStr(report);

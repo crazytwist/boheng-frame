@@ -23,6 +23,17 @@ public interface FlowExecutionService {
     Long startExecution(@Valid FlowExecutionStartReqVO reqVO);
 
     /**
+     * 定时启动一次运行（供定时任务 JobHandler 调用）。在指定租户上下文里启动已发布版本。
+     *
+     * @param definitionId 流程版本编号
+     * @param inputParams  启动入参 JSON（可空）
+     * @param businessKey  业务关联键（可空）
+     * @param tenantId     租户编号
+     * @return 运行编号
+     */
+    Long startScheduled(Long definitionId, String inputParams, String businessKey, Long tenantId);
+
+    /**
      * 取消进行中的运行。未开始的节点全部置 CANCELLED。
      */
     void cancelExecution(Long id);

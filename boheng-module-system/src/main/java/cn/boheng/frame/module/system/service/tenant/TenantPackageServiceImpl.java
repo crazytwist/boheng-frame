@@ -25,7 +25,7 @@ import static cn.boheng.frame.module.system.enums.ErrorCodeConstants.*;
 /**
  * 租户套餐 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated

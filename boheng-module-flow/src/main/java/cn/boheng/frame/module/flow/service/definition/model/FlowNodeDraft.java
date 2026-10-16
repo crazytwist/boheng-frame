@@ -59,6 +59,17 @@ public class FlowNodeDraft {
     private List<FlowMapping> mappings = new ArrayList<>();
 
     /**
+     * 节点输出归一化到上下文的映射 JSON：{输出字段: 上下文键}
+     */
+    private String outputMapping;
+
+    /**
+     * 能力的输出声明 JSON：{输出字段: 说明}（来自 flow_step，控制类节点为空）。
+     * 仅发布校验用：声明非空时，output_mapping 的源字段必须在声明里。
+     */
+    private String outputSchema;
+
+    /**
      * 循环体入口节点（loop 专用，图校验用）
      */
     private String loopBodyEntry;

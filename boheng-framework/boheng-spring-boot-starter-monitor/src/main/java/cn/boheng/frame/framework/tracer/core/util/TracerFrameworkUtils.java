@@ -9,7 +9,7 @@ import java.io.StringWriter;
 /**
  * 链路追踪 Util
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class TracerFrameworkUtils {
 

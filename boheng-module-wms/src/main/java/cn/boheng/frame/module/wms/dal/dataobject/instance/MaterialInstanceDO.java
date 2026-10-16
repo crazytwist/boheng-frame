@@ -100,6 +100,11 @@ public class MaterialInstanceDO extends TenantBaseDO {
     private String contentType;
 
     /**
+     * 样本业务编号（关联 wms_sample_info.sample_id，样本类实例填写，试剂/空容器为 NULL）
+     */
+    private String sampleId;
+
+    /**
      * 当前体积（μL）
      */
     private BigDecimal currentVolUl;

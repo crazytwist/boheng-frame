@@ -42,6 +42,11 @@ public class RuntimeNode {
     private String typeConfig;
 
     /**
+     * 能力目录的默认输入 JSON。节点未显式映射时作为参数基底，节点映射同名覆盖
+     */
+    private String defaultParams;
+
+    /**
      * 参数映射（已解析）
      */
     private List<cn.boheng.frame.module.flow.service.definition.model.FlowMapping> inputMapping = new ArrayList<>();

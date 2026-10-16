@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【凭证】凭证管理" url="https://doc.iocoder.cn/fms/voucher/" />
+  
 
   <!-- 凭证操作 -->
   <ContentWrap>

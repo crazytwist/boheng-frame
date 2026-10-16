@@ -44,6 +44,9 @@ public final class FlowConstants {
     /** 出口路由：按属性值选一条分支往下走 */
     public static final String STEP_ROUTE = "route";
 
+    /** 校验门：调白名单 Bean 拿完整上下文判定，通过走 pass、不通过走 fail */
+    public static final String STEP_VALIDATE = "validate";
+
     /** 定时等待 */
     public static final String STEP_TIMER_WAIT = "timer.wait";
 
@@ -101,6 +104,26 @@ public final class FlowConstants {
 
     /** 最长等待 24 小时。再长应拆成定时步骤，而不是把一条命令挂住 */
     public static final long MAX_TIMEOUT_MS = 86_400_000L;
+
+    /** 永不超时的哨兵值。步骤/节点把 timeout 配成 -1 时表示一直等，不落 deadline */
+    public static final long NO_TIMEOUT_MS = -1L;
+
+    /**
+     * 默认输入/固定参数 JSON 里的参数注释保留键。
+     * 形如 {"speed":3000,"__comments__":{"speed":"转速(rpm)"}}，
+     * 只是给人看的说明，解析参数时会剥掉，不会混进执行入参。
+     */
+    public static final String PARAM_COMMENTS_KEY = "__comments__";
+
+    /**
+     * 毫秒超时换算成秒给表单/列表展示。null 原样返回，负数（永不超时）返回 -1
+     */
+    public static Integer toTimeoutSec(Long timeoutMs) {
+        if (timeoutMs == null) {
+            return null;
+        }
+        return timeoutMs < 0 ? -1 : (int) (timeoutMs / 1000);
+    }
 
     /** 含首次。默认 1，避免无意中放大物理动作次数 */
     public static final int DEFAULT_MAX_ATTEMPTS = 1;

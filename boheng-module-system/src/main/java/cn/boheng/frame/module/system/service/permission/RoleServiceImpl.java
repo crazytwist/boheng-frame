@@ -39,7 +39,7 @@ import static cn.boheng.frame.module.system.enums.LogRecordConstants.*;
 /**
  * 角色 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Slf4j

@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【PMS】知识库管理" url="https://doc.iocoder.cn/pms/kb/library/" />
+  
 
   <ContentWrap>
     <!-- 搜索 -->

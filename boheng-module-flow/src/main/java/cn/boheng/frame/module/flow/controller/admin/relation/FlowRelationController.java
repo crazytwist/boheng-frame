@@ -6,6 +6,7 @@ import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationPage
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationRespVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationSaveReqVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationUpdateReqVO;
+import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationLayoutReqVO;
 import cn.boheng.frame.module.flow.service.relation.FlowRelationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -71,6 +72,14 @@ public class FlowRelationController {
     @PreAuthorize("@ss.hasPermission('flow:relation:update')")
     public CommonResult<Boolean> moveRelation(@RequestParam("id") Long id, @RequestParam("offset") Integer offset) {
         flowRelationService.moveRelation(id, offset);
+        return success(true);
+    }
+
+    @PostMapping("/layout")
+    @Operation(summary = "批量保存画布坐标")
+    @PreAuthorize("@ss.hasPermission('flow:relation:update')")
+    public CommonResult<Boolean> saveLayout(@Valid @RequestBody FlowRelationLayoutReqVO reqVO) {
+        flowRelationService.saveLayout(reqVO);
         return success(true);
     }
 

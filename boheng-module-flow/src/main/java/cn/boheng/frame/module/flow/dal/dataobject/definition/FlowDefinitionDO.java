@@ -52,6 +52,13 @@ public class FlowDefinitionDO extends TenantBaseDO {
     private String remark;
 
     /**
+     * 入参声明 JSON。声明这条流程启动时要传的参数（键值对，值即默认值），
+     * 启动时未显式传参则以声明兜底，参数映射的 INPUT 来源也按它给出字段候选。
+     * 参数注释存在保留键 __comments__ 里，与步骤 default_params 同一约定。
+     */
+    private String inputParams;
+
+    /**
      * DRAFT 草稿，PUBLISHED 已发布，RETIRED 已停用
      */
     private String status;

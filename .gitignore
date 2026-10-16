@@ -67,3 +67,12 @@ web/.history/
 web/output/
 web/.playwright-cli/
 web/.idea/
+
+######################################################################
+# Local tooling / deploy artifacts（勿入库）
+
+.docker-config/
+deploy/boheng/*.tar
+deploy/boheng/*.tar.gz
+deploy/boheng/boheng-frame-dump.sql
+deploy/boheng/.env

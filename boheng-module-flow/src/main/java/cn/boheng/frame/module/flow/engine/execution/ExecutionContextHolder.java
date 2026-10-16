@@ -100,10 +100,22 @@ public class ExecutionContextHolder {
     }
 
     /**
-     * 按参数映射解析一个节点的输入。来源：INPUT 启动入参 / NODE 前置输出 / LITERAL 固定值
+     * 按参数映射解析一个节点的输入。来源：INPUT 启动入参 / NODE 前置输出 / LITERAL 固定值。
+     * 能力目录的默认输入（default_params）先作为基底，节点映射同名键覆盖。
      */
     public Map<String, Object> resolveParams(RuntimeNode node, Map<String, Object> env) {
         Map<String, Object> params = new LinkedHashMap<>();
+        // 能力目录默认输入作为基底：节点显式映射可覆盖同名键
+        if (node.getDefaultParams() != null && !node.getDefaultParams().isBlank()) {
+            try {
+                JSONObject defaults = JSONUtil.parseObj(node.getDefaultParams());
+                // 参数注释（__comments__）只是给人看的说明，不进执行入参
+                defaults.remove(FlowConstants.PARAM_COMMENTS_KEY);
+                defaults.forEach(params::put);
+            } catch (RuntimeException ex) {
+                log.debug("[flow][engine] 默认参数 JSON 非法，忽略: node={}", node.getNodeId());
+            }
+        }
         List<FlowMapping> mappings = node.getInputMapping();
         if (mappings == null) {
             return params;

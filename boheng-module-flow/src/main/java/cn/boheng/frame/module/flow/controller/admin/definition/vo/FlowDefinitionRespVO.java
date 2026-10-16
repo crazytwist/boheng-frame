@@ -28,6 +28,9 @@ public class FlowDefinitionRespVO {
     @Schema(description = "说明")
     private String remark;
 
+    @Schema(description = "入参声明 JSON。启动入参默认值 + INPUT 映射字段候选", example = "{\"plateId\":\"PLT-001\"}")
+    private String inputParams;
+
     @Schema(description = "状态")
     private String status;
 

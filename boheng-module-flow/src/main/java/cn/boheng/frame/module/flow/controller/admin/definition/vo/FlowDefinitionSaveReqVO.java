@@ -26,4 +26,8 @@ public class FlowDefinitionSaveReqVO {
     @Size(max = 512, message = "说明长度不能超过 512 个字符")
     private String remark;
 
+    @Schema(description = "入参声明 JSON。启动入参默认值 + INPUT 映射字段候选", example = "{\"plateId\":\"PLT-001\"}")
+    @Size(max = 4096, message = "入参声明长度不能超过 4096 个字符")
+    private String inputParams;
+
 }

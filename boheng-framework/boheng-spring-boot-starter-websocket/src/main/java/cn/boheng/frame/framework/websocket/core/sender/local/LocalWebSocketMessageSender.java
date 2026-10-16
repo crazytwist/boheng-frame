@@ -9,7 +9,7 @@ import cn.boheng.frame.framework.websocket.core.session.WebSocketSessionManager;
  *
  * 注意：仅仅适合单机场景！！！
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class LocalWebSocketMessageSender extends AbstractWebSocketMessageSender {
 

@@ -70,6 +70,13 @@ public class SlotDO extends TenantBaseDO {
     private String extData;
 
     /**
+     * 适用物料（JSON 数组，可绑定试剂/容器）
+     *
+     * 每项：{ kind: CONTENT|CONTAINER, materialId, materialCode, materialName }
+     */
+    private String suitableMaterials;
+
+    /**
      * 所属设备编码
      */
     private String deviceCode;

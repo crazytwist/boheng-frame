@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【账簿】账簿管理" url="https://doc.iocoder.cn/fms/ledger/" />
+  
   <!-- 搜索工作栏 -->
   <ContentWrap>
     <FmsLedgerSearchBar

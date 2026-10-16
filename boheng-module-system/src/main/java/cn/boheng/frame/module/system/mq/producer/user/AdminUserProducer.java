@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * 管理员用户 Producer
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Slf4j
 @Component

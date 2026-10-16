@@ -65,10 +65,12 @@ public class PipelineGraph {
         graph.setSteps(stepRows);
         for (FlowNodeDO row : nodeRows) {
             RuntimeNode node = RuntimeNode.of(row);
-            // 类型解析：节点级覆盖优先；引用能力时取步骤上的
-            if (node.getStepType() == null && row.getStepId() != null) {
-                FlowStepDO step = stepRows.get(row.getStepId());
-                if (step != null) {
+            FlowStepDO step = row.getStepId() == null ? null : stepRows.get(row.getStepId());
+            if (step != null) {
+                // 能力目录默认输入：运行期作为参数基底（resolveParams 里节点映射同名覆盖）
+                node.setDefaultParams(step.getDefaultParams());
+                // 类型解析：节点级覆盖优先；引用能力时取步骤上的
+                if (node.getStepType() == null) {
                     node.setStepType(step.getStepType());
                     if (node.getTypeConfig() == null) {
                         node.setTypeConfig(step.getTypeConfig());

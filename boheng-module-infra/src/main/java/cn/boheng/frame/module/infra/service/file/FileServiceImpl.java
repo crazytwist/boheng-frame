@@ -31,7 +31,7 @@ import static cn.boheng.frame.module.infra.enums.ErrorCodeConstants.FILE_NOT_EXI
 /**
  * 文件 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 public class FileServiceImpl implements FileService {

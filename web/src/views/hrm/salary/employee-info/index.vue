@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【薪资】计薪设置、薪资档案、月度工资、工资条" url="https://doc.iocoder.cn/hrm/salary/config/" />
+  
 
   <!-- 搜索工作栏 -->
   <ContentWrap>

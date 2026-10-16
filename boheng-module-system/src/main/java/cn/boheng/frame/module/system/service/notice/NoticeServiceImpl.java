@@ -18,7 +18,7 @@ import static cn.boheng.frame.module.system.enums.ErrorCodeConstants.NOTICE_NOT_
 /**
  * 通知公告 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 public class NoticeServiceImpl implements NoticeService {

@@ -210,6 +210,51 @@ class FlowGraphCheckerTest {
         assertFalse(first.equals(FlowGraphChecker.checksum(nodes)));
     }
 
+    /**
+     * 能力声明了输出，但 output_mapping 的源字段不在声明里 → 发布失败
+     */
+    @Test
+    void publishRejectsOutputMappingNotInDeclaredSchema() {
+        FlowNodeDraft spin = deviceStep("spin", "离心", "DEV-1", "SPIN");
+        spin.setOutputSchema("{\"rpm\":\"转速\",\"duration\":\"时长\"}");
+        spin.setOutputMapping("{\"rpm\":\"speed\"}");
+        // 多了个 "unknown"，并且 "duration" 没映射，durati→on 不报错
+        // 只在声明有但未配 source 时不报错（声明只是允许列表，不是强制列表）
+        // 这里故意加一个声明外的字段 trigger issue
+        spin.setOutputMapping("{\"rpm\":\"speed\",\"unknown\":\"x\"}");
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(
+                List.of(spin), lookup, registry(), subflowRef);
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("unknown")
+                && issue.getMessage().contains("不在能力声明的输出里")),
+                () -> "实际 issues: " + issues);
+    }
+
+    /**
+     * 两个源字段归一化到同一个上下文键 → 后者覆盖前者，必须拦下
+     */
+    @Test
+    void publishRejectsDuplicateContextKey() {
+        FlowNodeDraft spin = deviceStep("spin", "离心", "DEV-1", "SPIN");
+        spin.setOutputMapping("{\"a\":\"shared\",\"b\":\"shared\"}");
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(
+                List.of(spin), lookup, registry(), subflowRef);
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("都归一化到上下文键")),
+                () -> "实际 issues: " + issues);
+    }
+
+    /**
+     * 能力没声明输出（output_schema 为空）→ 不做白名单校验，只有重复键会拦
+     */
+    @Test
+    void publishAllowsUndeclaredOutput() {
+        FlowNodeDraft spin = deviceStep("spin", "离心", "DEV-1", "SPIN");
+        // 不设 outputSchema（不声明）
+        spin.setOutputMapping("{\"anything\":\"ctx1\"}");
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(
+                List.of(spin), lookup, registry(), subflowRef);
+        assertTrue(issues.isEmpty(), issues.toString());
+    }
+
     // ==================== 测试工具 ====================
 
     /**

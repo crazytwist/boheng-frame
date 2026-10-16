@@ -18,6 +18,7 @@ export interface ContainerTypeVO {
   nestable?: boolean
   usageType?: string
   lifeCycles?: number
+  maxCount?: number
   status?: number
   description?: string
   createTime?: Date

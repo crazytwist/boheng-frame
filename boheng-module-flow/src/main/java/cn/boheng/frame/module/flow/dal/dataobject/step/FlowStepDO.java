@@ -57,6 +57,13 @@ public class FlowStepDO extends TenantBaseDO {
     private String defaultParams;
 
     /**
+     * 输出声明 JSON：{输出字段: 说明}。
+     * 声明这一步会往流程上下文里写哪些字段，是编排侧输出映射的契约；
+     * 未声明（空）= 输出动态，不参与契约校验。
+     */
+    private String outputSchema;
+
+    /**
      * 最多等待的毫秒数
      */
     private Long timeoutMs;

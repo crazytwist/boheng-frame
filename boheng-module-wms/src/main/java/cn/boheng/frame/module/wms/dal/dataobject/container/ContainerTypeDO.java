@@ -105,6 +105,11 @@ public class ContainerTypeDO extends TenantBaseDO {
     private Integer lifeCycles;
 
     /**
+     * 最大数量（如枪头盒 96；批量上架时实例当前数量默认取该值，为空不限定）
+     */
+    private Integer maxCount;
+
+    /**
      * 状态
      */
     private Integer status;

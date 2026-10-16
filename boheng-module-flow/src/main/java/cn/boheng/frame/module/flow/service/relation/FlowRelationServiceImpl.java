@@ -5,6 +5,7 @@ import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationPage
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationRespVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationSaveReqVO;
 import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationUpdateReqVO;
+import cn.boheng.frame.module.flow.controller.admin.relation.vo.FlowRelationLayoutReqVO;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowDefinitionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowNodeDO;
 import cn.boheng.frame.module.flow.dal.dataobject.step.FlowStepDO;
@@ -27,8 +28,10 @@ import org.springframework.validation.annotation.Validated;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -58,6 +61,9 @@ public class FlowRelationServiceImpl implements FlowRelationService {
      * 节点编码和步骤编码用同一条规则，这样默认可以直接拿步骤编码当节点编码。
      */
     private static final Pattern NODE_ID = Pattern.compile(FlowConstants.NODE_ID_REGEX);
+
+    /** node_id 列宽 32，自动加后缀时不能超 */
+    private static final int NODE_ID_MAX_LENGTH = 32;
 
     /**
      * 关联表
@@ -110,7 +116,7 @@ public class FlowRelationServiceImpl implements FlowRelationService {
             if (step.getStatus() != null && step.getStatus() != 0) {
                 throw exception(FLOW_RELATION_STEP_DISABLED, step.getStepKey());
             }
-            String nodeId = StrUtil.blankToDefault(StrUtil.trim(reqVO.getNodeId()), step.getStepKey());
+            String nodeId = nextNodeId(nodes, step.getStepKey());
             builder = prepareInsert(definition, nodes, nodeId)
                     .stepId(step.getId());
         } else {
@@ -138,6 +144,8 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         FlowNodeDO row = builder
                 .sortNo(nodes.size())
                 .dependsOn(toJson(reqVO.getDependsOn()))
+                .x(reqVO.getX())
+                .y(reqVO.getY())
                 .build();
         flowNodeMapper.insert(row);
         assertStructure(definition.getId());
@@ -194,8 +202,34 @@ public class FlowRelationServiceImpl implements FlowRelationService {
             row.setInputMapping(reqVO.getMappings().isEmpty() ? null
                     : JSONUtil.toJsonStr(reqVO.getMappings()));
         }
+        // 输出映射：{输出字段: 上下文键}，空表清空
+        if (reqVO.getOutputMapping() != null) {
+            row.setOutputMapping(reqVO.getOutputMapping().isEmpty() ? null
+                    : JSONUtil.toJsonStr(reqVO.getOutputMapping()));
+        }
+        // 画布坐标
+        if (reqVO.getX() != null) {
+            row.setX(reqVO.getX());
+        }
+        if (reqVO.getY() != null) {
+            row.setY(reqVO.getY());
+        }
         flowNodeMapper.updateById(row);
         assertStructure(row.getDefinitionId());
+    }
+
+    /**
+     * 批量保存画布坐标。位置不改变图结构，跳过结构校验，纯坐标落库。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveLayout(FlowRelationLayoutReqVO reqVO) {
+        for (FlowRelationLayoutReqVO.Item item : reqVO.getItems()) {
+            FlowNodeDO row = requireRelation(item.getId());
+            row.setX(item.getX());
+            row.setY(item.getY());
+            flowNodeMapper.updateById(row);
+        }
     }
 
     /**
@@ -261,6 +295,32 @@ public class FlowRelationServiceImpl implements FlowRelationService {
     }
 
     // ==================== 内部 ====================
+
+/**
+     * 挂能力时自动分配节点编码。默认取步骤编码，同版本内被占用时依次试 _2 / _3 后缀。
+     * 节点编码一律由系统分配，不接受调用方指定：同一版本挂两次同一能力是常态，
+     * 自动去重才不用人惦记这件事。前端只读展示这个值，规则只有这一处。
+     */
+    private String nextNodeId(List<FlowNodeDO> nodes, String stepKey) {
+        Set<String> taken = new HashSet<>();
+        for (FlowNodeDO item : nodes) {
+            taken.add(item.getNodeId());
+        }
+        if (!taken.contains(stepKey)) {
+            return stepKey;
+        }
+        for (int i = 2; i <= FlowConstants.MAX_NODES + 1; i++) {
+            String suffix = "_" + i;
+            // 节点编码最长 32 位（与 node_id 列宽一致），后缀挤进来时先把前缀截到够长
+            String base = stepKey.length() + suffix.length() > NODE_ID_MAX_LENGTH
+                    ? stepKey.substring(0, NODE_ID_MAX_LENGTH - suffix.length()) : stepKey;
+            String candidate = base + suffix;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
+        throw exception(FLOW_RELATION_LIMIT, FlowConstants.MAX_NODES);
+    }
 
     /**
      * 新节点插入前的公共检查：编码合法且不与版本内已有节点重复
@@ -372,6 +432,8 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         resp.setJoinPolicy(draft.getJoinPolicy());
         resp.setJoinFailurePolicy(draft.getJoinFailurePolicy());
         resp.setBranches(draft.getBranches());
+        resp.setOutputMapping(row.getOutputMapping());
+        resp.setOutputSchema(draft.getOutputSchema());
         resp.setMappings(draft.getMappings().stream().map(mapping -> {
             cn.boheng.frame.module.flow.controller.admin.definition.vo.FlowMappingReqVO req =
                     new cn.boheng.frame.module.flow.controller.admin.definition.vo.FlowMappingReqVO();
@@ -382,8 +444,10 @@ public class FlowRelationServiceImpl implements FlowRelationService {
             req.setValue(mapping.getValue());
             return req;
         }).toList());
-        resp.setTimeoutSec(draft.getTimeoutMs() == null ? null : (int) (draft.getTimeoutMs() / 1000));
+        resp.setTimeoutSec(FlowConstants.toTimeoutSec(draft.getTimeoutMs()));
         resp.setMaxAttempts(draft.getMaxAttempts());
+        resp.setX(row.getX());
+        resp.setY(row.getY());
         if (step != null) {
             resp.setStepKey(step.getStepKey());
             resp.setStepName(step.getName());

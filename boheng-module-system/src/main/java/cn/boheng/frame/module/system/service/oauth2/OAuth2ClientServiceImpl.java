@@ -30,7 +30,7 @@ import static cn.boheng.frame.module.system.enums.ErrorCodeConstants.*;
 /**
  * OAuth2.0 Client Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated

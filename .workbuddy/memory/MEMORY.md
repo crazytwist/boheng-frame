@@ -1,168 +1,76 @@
-# boheng-boot-mini 项目长期记忆
+# boheng-frame 项目长期记忆
 
-## ⚠️ 实际开发目录（2026-10-10 确认）
-- 实际开发在 **`/Users/yinan/workspace/yinan/boheng/boheng-frame`**（main 分支）；
-  `/Volumes/External_1TB` 未挂载时旧路径不可用
-- **前端在仓库内 `web/`**（非独立仓库）；前端类型检查 `cd web && npm run ts:check`
+## 环境与构建
+- 开发目录 `/Users/yinan/workspace/yinan/boheng/boheng-frame`（main 分支）；旧路径 `/Volumes/External_1TB/Projects/boheng-frame` 仅盘挂载时可用
+- 前端在仓库内 `web/`（非独立仓库）；类型检查 `cd web && npm run ts:check`
+- Maven `/Users/yinan/workspace/apache-maven-3.9.12/bin/mvn`（不在 PATH）；JDK17=`ms-17.0.17`（非 0.18）
+- 构建：`JAVA_HOME=/Users/yinan/Library/Java/JavaVirtualMachines/ms-17.0.17/Contents/Home mvn -pl <module> -am -DskipTests compile`
+- 单模块测试必须带 `-am`；指定 -Dtest 加 `-Dsurefire.failIfNoSpecifiedTests=false`
+- macOS BSD grep 不支持 `\|` 分支，校验用 `grep -nE "a|b"`
+- 工程 JDK17 + Spring Boot 3.5.15，命名空间 **jakarta.***（非 javax.*）
 
-## 构建命令（2026-10-10 校准）
-```bash
-JAVA_HOME=/Users/yinan/Library/Java/JavaVirtualMachines/ms-17.0.17/Contents/Home \
-  /Users/yinan/workspace/apache-maven-3.9.12/bin/mvn -pl boheng-module-flow -am -DskipTests compile
-```
-- Maven 在 `/Users/yinan/workspace/apache-maven-3.9.12`（不是 tools/ 子目录，也不在 PATH）
-- JDK17 实际版本号是 **ms-17.0.17**（非 0.18）
-- 单模块跑测试必须带 `-am`（framework SNAPSHOT 未装本地仓库）；指定 -Dtest 需加
-  `-Dsurefire.failIfNoSpecifiedTests=false`
-- device-api 是零依赖纯契约层：接口/DTO 不能用 jakarta.validation 注解
+## 底座约定（写代码必守）
+- 实体：租户表 `TenantBaseDO`（含 tenantId）；非租户表 `BaseDO`+`@TenantIgnore`（判定在 `TenantDatabaseInterceptor.computeIgnoreTable()`）
+- 审计列固定：creator/create_time/updater/update_time/deleted bit(1) b'0'
+- MP：logic-delete=1/0，id-type NONE；主键雪花显式 `@TableId(ASSIGN_ID)`
+- **全库 0 个 UNIQUE**：普通索引 + Service 层唯一校验
+- Mapper 继承 BaseMapperX + LambdaQueryWrapperX；VO 用 SaveReqVO/PageReqVO(extends PageParam)/RespVO
+- 错误码段：infra 1-001 / system 1-002 / wms 1-003
+- Controller：`/admin-api` 前缀框架加；app 侧类名加 **App 前缀**（避免同名 bean 撞车），admin 侧不变
+- 模块装配：根 pom `<modules>` + boheng-server/pom.xml 依赖；扫描覆盖 `cn.boheng.frame.module`
 
-## Flow v3（2026-10-10 已全量落地，提交 e8c6997）
-- 模型：能力×编排正交。flow_step=能力目录（step_type+type_config，控制类类型拒绝入目录）；
-  flow_node 统一承载挂能力与控制类节点（route/loop/subflow/timer.wait，stepId 空）
-- FlowDraftAssembler 是「类型生效规则」唯一实现（节点级覆盖>步骤表），校验与展示共用
-- 关联服务每次变更后 assertStructure，草稿永远结构合法；sortNo 只管展示
-- 运行层五表 + 引擎已落地（CAS 认领/DAG/分支裁剪/循环展开/FANOUT 幂等/信号收件箱/Sweeper）
-- 权限：运行菜单 12827-12831（flow:execution:query/create/update/signal）
-- SQL：flow-definition.sql（新库）、flow-v3-migrate.sql（存量库）、flow-execution.sql + 菜单
-- 待办：存量库跑迁移后清 Redis 权限缓存（引擎单测 / 示例 Bean / loop·subflow 联调均已落地）
+## ★ 菜单 ID 段（写菜单 SQL 前必查 MAX(id)）
+- WMS 物料空间目录 1348；WMS 菜单 1379-1421
+- 设备域 12762-12797；流程域 12810-12833；样本域 12834-12838
+- 教训：样本曾误用 12762-12766 撞设备域，已修
 
-## Flow 设备异步任务 device.task（2026-10-11，提交 323dec7）
-- 场景：节点不主动推设备，任务入库由机器端**拉取→执行→回报**，信号结算推进（Camunda external-task 模式）
-- `device.task` 步骤类型：ACTION + CALLBACK，`execute` 入队 `waiting("DEVICE_CALLBACK", taskNo)`，与 `device.command`（同步推）正交
-- 表 `flow_device_task`（tenant 表）：`task_no_guard` 生成列 + 唯一索引；状态 PENDING/CLAIMED/DONE/FAILED/CANCELLED；
-  **CAS 认领**（PENDING→CLAIMED）防多机重复；`device_code` 可空 × `action_code` 必填（设备/任务类型双维度）
-- 引擎：`FlowSignalDispatcher.deviceTaskSignal/Timeout`；`settle.deadlineOf` 支持 DEVICE_CALLBACK；`Sweeper` 扫超时按失败结算
-- 接口：机器端 **`controller/app` 包 → `/app-api` 前缀** `/flow/device-task` claim/complete（`@PermitAll` + `tenant-id` 头）；
-  后台 `/admin-api/flow/device-task/page`（复用 flow:execution:query，无新权限）
-- SQL：`flow-device-task.sql`；前端 step.ts/flow-dag.ts/StepForm 加 device.task（设备可空=不限设备，actionCode 必填）
-- 基本功三件套（7360a18，参照 labillion task）：`callback_token` 常量时间校验 + `flow_device_task_event` 事件流水 + `wait_ms/execute_ms`
-- 结论：不照搬 labillion 通用 task 模块（多 taskType/flow-api 契约层/Spring Event 桥是服务多执行单元+多模块的，
-  boheng 只有设备一个场景，属过度设计）；未来若有 AGV/人工/计算任务或脱离流程的独立任务，再泛化成通用 task 模块（按 boheng 基座重写）
+## ★ 本地 MySQL + SQL 执行约定
+- 本地 MySQL=OrbStack `mysql-local`(8.0)，库 `boheng-frame`，root/root（非 root1234）
+- 我直接执行 SQL（不再让用户跑）：`docker exec -i mysql-local mysql -uroot -proot --default-character-set=utf8mb4 -D boheng-frame < xxx.sql`
+- 必带 `--default-character-set=utf8mb4`（否则中文乱码）；用户侧用 HexHub 连同一库
 
-## ⚠️ 工作目录已切换（2026-09-26）
-- 项目已通过 `ProjectReactor` 改名为 **`boheng-frame`**，新工作目录：
-  **`/Volumes/External_1TB/Projects/boheng-frame`**（包名 `cn.boheng.frame.*`）
-- 原目录 `boheng-boot-mini`（`cn.boheng.frame`）保留，作为芋道原始基座，不再作为开发目录
-- 后续开发都在 `boheng-frame` 下进行；本 MEMORY 文件仍随项目复制（`boheng-frame/.workbuddy/memory/` 已有同份）
-- 改名器跑通时踩过的坑：输出目录若含 `boheng` 关键字会触发防呆退出，已改为写死
-  `/Volumes/External_1TB/Projects/boheng-frame`
+## 个人基座（伯珩）
+- 署名伯珩（拼音 Boheng，曾用名一南）；groupId cn.boheng / artifactId boheng-frame / 包根 cn.boheng.frame / 标题 伯珩基础平台
+- 改名器存档 `.workbuddy/tools/ProjectReactor.java`；派生只改 4 个 New 变量
 
-## 个人基座（伯珩，Boheng）
-- 用户署名：**伯珩**（bó héng，拼音 Boheng），曾用名「一南」
-- **基座命名**（`ProjectReactor.java` 已按此定制，以后所有派生项目都从这里派生，只改 New 变量）：
-  - groupId = `cn.boheng`
-  - artifactId = `boheng-frame`
-  - 包名根 = `cn.boheng.frame`（`cn.boheng.frame.*`）
-  - 系统标题 = `伯珩基础平台`
-- 改名器路径（两份，内容一致、包名不同）：
-  - 源码内：`boheng-server/src/test/java/cn.boheng.frame/ProjectReactor.java`（包 `cn.boheng.frame`，随项目一起被改名）
-  - **存档（基座母版）**：`.workbuddy/tools/ProjectReactor.java`（包 `cn.boheng.frame`，脱离源码目录，是派生的权威起点）
-  - 替换顺序固定：GROUP_ID → PACKAGE_NAME → ARTIFACT_ID（必须放最后，太短）→ 大写首字母 → TITLE
-  - 白名单（不重写直接拷）：gif/jpg/svg/png/eot/woff2/ttf/woff/xdb
-  - 派生新项目时改 main() 里 4 个 New 变量：groupIdNew / artifactIdNew / packageNameNew / titleNew
+## 模块现状
+### Flow v3（能力×编排正交）
+- flow_step=能力目录（step_type+type_config，控制类拒入）；flow_node 统一承载能力+控制类节点（route/loop/subflow/timer.wait，stepId 空）
+- FlowDraftAssembler 是类型生效规则唯一实现；运行层五表+引擎（CAS/DAG/分支裁剪/循环展开/FANOUT 幂等/信号收件箱/Sweeper）
+- 权限 12827-12831；SQL：flow-definition.sql / flow-v3-migrate.sql / flow-execution.sql
+- 日志标准化：FlowLogContextHolder+FlowLogConverter（%flow 转换词，`[exe= node=]` 前缀）
 
-## 工程定位
-- `boheng-boot-mini` = 芋道（ruoyi-vue-pro）精简版，包名根 `cn.boheng.frame`
-- 当前工作分支：**`master-jdk17`**，tag `v2026.08(jdk17/21)`
-  - 其他分支：`master`（jdk8/11）、`master-jdk25`
-- **JDK 17 + Spring Boot 3.5.15**
-- ⚠️ 命名空间用 **`jakarta.*`**（`jakarta.annotation.Resource`、`jakarta.validation.*`），不是 `javax.*`
-  - 若切回 `master` 分支则要用 `javax.*`，写代码前先确认分支
+### device.task 异步任务（拉取→执行→回报，external-task 模式）
+- 表 flow_device_task；状态 PENDING/CLAIMED/DONE/FAILED/CANCELLED；CAS 认领防多机重复
+- 认领：deviceCode 必传 × actionCode 可选，经 device-api listActionCodesByDevice 反查能力集匹配
+- 接口 /app-api/flow/device-task claim/complete（@PermitAll）；admin /page
+- 设备类型用 system_dict_type 字典（dict_type='device_type'，不建表），能力挂类型、实例继承
+- 前端节点徽标 deviceTaskStatus（待领取/执行中/完成/失败/已取消）
 
-## 构建
-```bash
-JAVA_HOME=/Users/yinan/Library/Java/JavaVirtualMachines/ms-17.0.18/Contents/Home \
-  mvn -pl boheng-module-wms -am -DskipTests -Dmaven.test.skip=true compile
-```
-- Maven 3.9.12；**localRepository = `/Users/yinan/workspace/tools/apache-maven-3.9.12/repo`**（不是 `~/.m2/repository`）
-- 本机无 JDK 8/11；可用 JDK 17 / 25 / 27，**必须用 17**
-- ⚠️ **macOS BSD grep 不支持 BRE 的 `\|` 分支**：`grep "a\|b"` 会静默不匹配（假阴性）。
-  校验文本一律用 `grep -nE "a|b"`
+### 样本域（WMS 内 sample 子域）
+- 三层：wms_content_def → wms_sample_info → wms_material_instance.sample_id
+- 八态 SampleStatusEnum（REGISTERED/LOADED/IN_PROCESS/SPLIT/COMPLETED/ARCHIVED/REJECTED/LOST）与实例六态正交
+- 契约层 boheng-module-wms-api（SampleApi + SampleStatus），flow 只依赖契约层
+- 谱系五件套：parentSampleId/rootSampleId/generation/deriveType(ORIGINAL/SPLIT/ALIQUOT/MERGE/ADD_REAGENT)
+- SQL wms-sample-migrate.sql（增量幂等，菜单 12834-12838）
 
-## 底座约定（写代码必须遵守）
-- 实体基类：
-  - 租户表 → `cn.boheng.frame.framework.tenant.core.db.TenantBaseDO`（含 tenantId），**不加** `@TenantIgnore`
-  - 非租户表 → `BaseDO` + `@TenantIgnore`（boheng 自己的 ConfigDO/JobDO/FileDO 都这么写）
-  - 判定逻辑在 `TenantDatabaseInterceptor.computeIgnoreTable()`
-- 审计字段（表列名固定）：`creator` varchar(64) / `create_time` datetime / `updater` varchar(64) / `update_time` datetime / `deleted` bit(1) 默认 b'0'
-- MP 全局：`logic-delete-value: 1`，`logic-not-delete-value: 0`，`id-type: NONE`
-- **主键**：要雪花就显式写 `@TableId(type = IdType.ASSIGN_ID)`（MySQL 下默认会走 AUTO）
-- **唯一键**：整个 boheng DDL 里 0 个 UNIQUE —— 一律用普通索引 + Service 层唯一性校验
-- Mapper：继承 `BaseMapperX`，条件用 `LambdaQueryWrapperX`，分页 `selectPage(reqVO, wrapper)`
-- VO：`SaveReqVO` / `PageReqVO extends PageParam`（含 `LocalDateTime[] createTime` + `@DateTimeFormat`）/ `RespVO`
-- 工具：`BeanUtils.toBean`、`exception(ErrorCode)`、`VisibleForTesting`
-- 错误码段位：infra `1-001-000-000`，system `1-002-000-000`，**wms `1-003-000-000`**
-- 控制器：`/admin-api` 前缀由框架加；`@PreAuthorize("@ss.hasPermission('模块:业务:动作')")`
-- 模块装配：模块 pom 加进根 `pom.xml` 的 `<modules>` + `boheng-server/pom.xml` 依赖；
-  组件扫描覆盖 `cn.boheng.frame.module`，Mapper 由 `@MapperScan` 自动扫描
+### WMS（18 表，DDL v1.4）
+- 空间域：wms_zone_info 树 + wms_zone_material_type + wms_slot_info；slot 不存占用方/锁（真相源=instance.root_slot_id）
+- 实例域三表：container_type/content_def/material_instance；**位置也是实例**，内容物 1:1 内联
+- 实例六态 AVAILABLE/RESERVED/IN_USE/USED/EXPIRED/DISCARDED
+- ⚠️ Java 侧欠账停在 v1.2 字段（wms_codegen.py 未加实例域表），代码不能留 wms_instance_content
+- 代码生成器 .workbuddy/tools/wms_codegen.py；原设计存档 .workbuddy/reference/
 
-## WMS 模块（已落地）
-- 模块 `boheng-module-wms`，包 `cn.boheng.frame.module.wms`
-- **18 张表** `wms_*`，DDL 在 `sql/mysql/wms.sql`（**v1.4**）
-- Java 已生成的 domain（121 文件）：zone / slot / material / batch / inventory / order
-  - ⚠️ **Java 侧欠三轮账**，停在 v1.2 字段：`wms_codegen.py` 未加实例域表；
-    代码里还有已删的 `wms_instance_content`、`occupiedMaterial*`、`lock*`
-  - ⚠️ **代码里不能留 `wms_instance_content`**（v1.4 已删除该表）
-- **空间域**（v1.1 立，v1.3 字段收敛）：`wms_zone_info` 树 + `wms_zone_material_type` 关联表 + `wms_slot_info`
-  - 区域物料类型：**独立表管关系，字典管值域**（`wms_material_type`）；子区域未配置则沿 parent_zone_code 继承
-  - slot 双状态正交：`status`(可用态 0启用/1停用) 与 `slot_status`(使用态 FREE/OCCUPIED/LOCKED/CHECKING)
-  - **slot 不存占用方**（v1.3）：「谁占用」真相源 = `wms_material_instance.root_slot_id`，按它反查；
-    slot 只留 `occupied_qty`（已占标准位数，与 slot_status 同源，=0 ⟺ FREE）
-  - **slot 不存锁**（v1.3）：`lock_source/ref_id/time/expire` 整组删除，锁归**调度域**；
-    slot 只用 `slot_status` 的 LOCKED/CHECKING 表达「暂不可用」，不带元信息
-  - 设备位置：`device_code` + `device_position_no`（v1.3 由 `device_slot_no` 更名）
-  - 温区不落 slot：按 `zone_code` 向上取第一个配置了 temp_min/temp_max 的区域
-- **实例域**（v1.4 **按原设计重写**）：三张表 = **容器类型 / 内容物定义 / 物料实例**
-  - 原设计存档：`.workbuddy/reference/lab-instance-domain-ddl-original.sql`
-    （`lab_container_type` / `lab_material_def` / `lab_material_instance`，含完整映射说明）
-  - ★★ **核心：位置也是实例**。`hierarchy_role = WELL` 的孔/格位**也是实例**，不是坐标；
-    因此内容物 **1:1 内联**在实例表上，**没有独立的实例内容物表**（v1.2 的
-    `wms_instance_content` 已在 v1.4 删除）
-    - 一块 96 孔板 = 1 行载体实例 + 96 行孔实例；空孔也建行，`content_type = EMPTY`
-    - `content_type = EMPTY`（能装但现在是空的）≠ `NULL`（CARRIER，不装东西）
-    - 代价：行数膨胀（一块板 97 行）
-  - 职责三分：容器类型管「能装什么」/ 内容物定义管「物质是什么」/ 实例管「这一件实物」
-  - **16 `wms_container_type`**（32 列）：`category` 物理形态 × `hierarchy_role` 层级角色是
-    **两个正交维度**；容量只给 CONTAINER/WELL（`max_vol_ul`），CARRIER 留空并填
-    `well_count/rows/cols` + `child_type_code`
-    - **嵌套合法性唯一依据 = 目标容器.child_type_code = 子实例的类型编码**（不只靠 nestable）
-    - 机械字段：`size_x/y/z_mm`、`well_spacing_mm`（机械臂/多通道移液必需）
-    - `device_labware_name` = Tecan i-control 板型映射点
-  - **17 `wms_content_def`**（24 列）：只描述「物质」不描述「包装」
-    - 「50mL 75% 乙醇瓶」= container_type(BOTTLE_50ML) × content_def(ETHANOL-75PCT)
-    - `content_type` = REAGENT/STANDARD/BUFFER/SAMPLE/WASTE/MEDIA/SOLVENT/OTHER
-    - `storage_cond` 用枚举（RT/C2_8/F20/Ultra80/FROZTHAW）以便与 zone 温区**程序化匹配**
-    - `shelf_life_days`（入库起算）+ `open_life_days`（开封起算）**两个效期并存**
-    - `hazard_level` / `cas_no` / `catalog_no` / `supplier` / `require_batch` / `fefo`
-  - **18 `wms_material_instance`**（36 列）：
-    - 内联内容物组：`content_def_id|code` / `content_type` / `batch_no` / `lot_no` /
-      `current_vol_ul` / `current_count` / `concentration`
-    - **`batch_no`（内部批次）与 `lot_no`（厂商批号）必须分开**
-    - `instance_status` **六态** = AVAILABLE/RESERVED/IN_USE/USED/EXPIRED/DISCARDED
-      （`RESERVED` = 步骤已申请未取用，调度依赖）
-    - 日期三件套 `received_at` / `opened_at` / `expired_at`
-    - 溯源 `source_execution_id` / `source_node_id`（varchar 64，跨模块只认编码）
-    - **无 `status` 启用位**（终态是 DISCARDED 不是停用）
-    - 树：边 = `parent_instance_id` + `parent_position_code`；`instance_path` 物化路径
-      （前缀索引 64）；`root_slot_id` 可空（未落位）；`depth` 上限 16
-    - ⚠️ **移动整树必须用路径前缀 UPDATE**（root_slot_id/root_instance_id/path/depth 是整树冗余），
-      禁止绕过它单改某一层；跨父搬迁要同事务重写 path 与 depth
-    - **不冗余 `zone_code`**（区域属槽位，整盒移动会变），按区查走 root_slot_code
-  - **两套位置别混**：`slot` = 空间位置（架子第 3 格，**只有顶层实例有值**）；
-    `parent_position_code` = 容器内位置（板子 A1 孔，**本身就是子实例的位置码**）。
-    一块 96 孔板占 1 个 slot；内部 96 孔是子实例，不落 slot 表
-  - 一期约定 **1 个实例 = 1 个标准位**（供 slot.occupied_qty 累加），跨位实例二期再引入 capacity_units
-- 代码生成器：`.workbuddy/tools/wms_codegen.py`（改 TABLES 元数据可整套重生成；**尚未加实例域表**）
-- 原设计存档（两份）：
-  - `.workbuddy/reference/lab-wms-ddl-v1.0-original.sql`（lab_ 前缀、14 表；无容器模型）
-  - `.workbuddy/reference/lab-instance-domain-ddl-original.sql`（实例域三表 + 映射说明）
-- 字典脚本：`sql/mysql/wms-dict.sql`（`wms_material_type`：REAGENT/CONSUMABLE/SAMPLE/STANDARD/TOOL）
-
-## WMS 待定项（v1.4 文末已列，后续轮次决策）
-- `wms_material_info`：**彻底退场**，还是收敛为「采购 / 出入库记账单元」（N:1 指向 content_def）
-- `wms_material_batch`：批次已在实例上（batch_no/lot_no/received_at/opened_at/expired_at），
-  本表是否还有必要
-- ⚠️ `wms_zone_material_type.material_type` 的字典 `wms_material_type`
-  与 `wms_content_def.content_type` **值域高度重合，必须统一**，否则出现两套物料类型值域
-- `wms_inventory` 聚合键 `slot × batch` 与「位置即实例」的关系需重新推导
-
+## 部署（预发 大兴）
+- deploy/boheng/：4 容器 boheng.web / boheng.server / boheng.mysql / boheng.redis，端口走 .env 变量 PORT_WEB/SERVER/MYSQL/REDIS
+- **28 段公网端口**（用户 .env）：PORT_WEB=28081 / PORT_SERVER=28088 / PORT_MYSQL=28086 / PORT_REDIS=28082
+- 目标 123.59.127.6:32223 (megarobo)，REMOTE_DIR=/home/megarobo/boheng；跨架构 buildx --platform linux/amd64
+- ★ 目标 CPU 是 Intel Core 2 Duo T7700（缺 POPCNT，仅 **x86-64-v1**）→ MySQL 锁 `mysql:8.0.32`（OL8.7+glibc2.28），不能用 mysql:8.0 最新 tag（OL9 要 x86-64-v2 会崩溃循环）
+- ★ 预发是**共享多租户机**：SSH 登录的是内网 10.10.2.100（无公网 IP），123.59.127.6 是公网网关
+- ★ 容器端口暴露规则：仅 web 对外暴露 28081:80，server/mysql/redis 默认不暴露公网（docker-compose.yml 里 ports 段默认注释）；后端 API 走 Nginx 反代 `/admin-api/`、`/app-api/` → boheng.server:48080
+- ★ 服务器侧公网**只开放 28081 一个端口**；28088/28086/28082（server/mysql/redis 的公网映射）服务器侧未开，公网探测均 Connection refused（正常）
+- ★ 构建坑：WorkBuddy 注入 `NODE_OPTIONS=--require=node-language-shim.cjs`，长构建大量 `write EPIPE` 失败 → 构建前 `unset NODE_OPTIONS`
+- ★ 镜像坑：`docker create ... sleep 1` 后 commit 会继承 `sleep 1` 为 CMD，容器秒退崩溃循环 → create 时用 `nginx -g 'daemon off;'` 或 commit 加 `--change 'CMD [...]'`
+- ★ 部署坑：`docker compose up -d` 在 image 没变时不重建容器，**端口变更不会刷新** → 改 yml 的 ports 后必须 `--force-recreate web`（症状：`docker compose config` 是 28081，但容器仍跑在老端口 48080）
+- 验证：admin/admin123 登录（userId=1 超管）→ wms sample 3/container-type 2/material-instance 53；device/info 11/action 13/device-task 10；flow/definition 4，全部 code:0
+- banner「[WMS - 已禁用]」是芋道基座 BannerApplicationRunner 对原版 cn.iocoder.yudao 包类存在性检查的**误报**（我们的 WMS 在 cn.boheng.frame.module.wms 包，类名对不上），实际路由全注册

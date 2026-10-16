@@ -24,7 +24,7 @@ import static cn.boheng.frame.framework.common.util.collection.CollectionUtils.c
 /**
  * 社交应用的 API 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated

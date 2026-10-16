@@ -55,7 +55,7 @@ import static cn.boheng.frame.module.system.enums.LogRecordConstants.*;
 /**
  * 后台用户 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service("adminUserService")
 @Slf4j

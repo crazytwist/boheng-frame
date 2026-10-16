@@ -28,6 +28,13 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- 契约层：样本对外 API（零 Spring / 零 DAL，供 flow 等模块依赖） -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-wms-api</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- 业务组件 -->
         <dependency>
             <groupId>cn.boheng</groupId>

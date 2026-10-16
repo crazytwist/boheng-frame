@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【PMS】项目模板" url="https://doc.iocoder.cn/pms/pm/project/" />
+  
 
   <!-- 搜索 -->
   <ContentWrap>

@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * 示例分类 Service 接口
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface Demo02CategoryService {
 

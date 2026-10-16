@@ -74,6 +74,10 @@ public class MaterialInstanceSaveReqVO {
     @Size(max = 32, message = "内容物类型快照（CARRIER 为空；空容器为 EMPTY）长度不能超过 32 个字符")
     private String contentType;
 
+    @Schema(description = "样本业务编号（关联 wms_sample_info.sample_id，样本类实例填写，试剂/空容器为 NULL）", example = "SP-20261011-001")
+    @Size(max = 64, message = "样本业务编号长度不能超过 64 个字符")
+    private String sampleId;
+
     @Schema(description = "当前体积（μL）", example = "200.00")
     private BigDecimal currentVolUl;
 

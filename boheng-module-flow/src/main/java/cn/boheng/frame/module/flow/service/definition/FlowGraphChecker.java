@@ -10,6 +10,8 @@ import cn.boheng.frame.module.flow.service.definition.model.FlowMapping;
 import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -17,6 +19,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -104,7 +107,76 @@ public final class FlowGraphChecker {
                         "子流程【" + node.getSubflowTargetKey() + "】不是已发布状态"));
             }
         }
+        checkOutputContract(issues, nodes);
         return issues;
+    }
+
+    /**
+     * 输出映射契约校验（发布期）：
+     * 1. 能力声明了输出（flow_step.output_schema 非空）时，output_mapping 的源字段必须落在声明里——
+     *    声明即契约，写错字段名运行期只会静默取到 null；
+     * 2. 两个源字段归一化到同一个上下文键 → 后者覆盖前者，是配置事故。
+     * 未声明输出的能力（含控制类节点、输出动态的能力）只做第 2 条，不做字段白名单。
+     */
+    private static void checkOutputContract(List<FlowIssue> issues, List<FlowNodeDraft> nodes) {
+        for (FlowNodeDraft node : nodes) {
+            if (node == null || StrUtil.isBlank(node.getOutputMapping())) {
+                continue;
+            }
+            JSONObject mapping;
+            try {
+                mapping = JSONUtil.parseObj(node.getOutputMapping());
+            } catch (RuntimeException ex) {
+                issues.add(new FlowIssue(node.getNodeId(),
+                        "节点【" + labelOf(node) + "】的输出映射不是合法 JSON"));
+                continue;
+            }
+            if (mapping.isEmpty()) {
+                continue;
+            }
+            Set<String> declared = declaredOutputFields(node.getOutputSchema());
+            Map<String, String> contextKeyOwner = new LinkedHashMap<>();
+            for (String field : mapping.keySet()) {
+                if (StrUtil.isBlank(field) || field.startsWith("__")) {
+                    continue;
+                }
+                // 1. 源字段必须是能力声明的输出
+                if (!declared.isEmpty() && !declared.contains(field)) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "节点【" + labelOf(node) + "】的输出映射字段【" + field + "】不在能力声明的输出里（声明："
+                                    + String.join("、", declared) + "）"));
+                }
+                // 2. 上下文键不能撞车
+                String contextKey = StrUtil.blankToDefault(mapping.getStr(field), field);
+                String previous = contextKeyOwner.put(contextKey, field);
+                if (previous != null) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "节点【" + labelOf(node) + "】的输出映射里【" + previous + "】与【" + field
+                                    + "】都归一化到上下文键【" + contextKey + "】，后者会覆盖前者"));
+                }
+            }
+        }
+    }
+
+    /**
+     * 读输出声明的字段名集合。空 / 坏数据返回空集（= 不做白名单校验）
+     */
+    private static Set<String> declaredOutputFields(String outputSchema) {
+        if (StrUtil.isBlank(outputSchema)) {
+            return Set.of();
+        }
+        try {
+            JSONObject declared = JSONUtil.parseObj(outputSchema);
+            Set<String> fields = new LinkedHashSet<>();
+            for (String key : declared.keySet()) {
+                if (StrUtil.isNotBlank(key) && !key.startsWith("__")) {
+                    fields.add(key);
+                }
+            }
+            return fields;
+        } catch (RuntimeException ex) {
+            return Set.of();
+        }
     }
 
     /**
@@ -123,7 +195,8 @@ public final class FlowGraphChecker {
                         .append(StrUtil.nullToEmpty(node.getJoinPolicy())).append('|')
                         .append(node.getTimeoutMs()).append('|')
                         .append(node.getMaxAttempts()).append('|')
-                        .append(StrUtil.nullToEmpty(node.getFailStrategy())).append('|');
+                        .append(StrUtil.nullToEmpty(node.getFailStrategy())).append('|')
+                        .append(StrUtil.nullToEmpty(node.getOutputMapping())).append('|');
                 if (node.getBranches() != null) {
                     List<String> keys = new ArrayList<>(node.getBranches().keySet());
                     keys.sort(String::compareTo);

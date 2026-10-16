@@ -1,8 +1,5 @@
 <template>
-  <doc-alert
-    title="【设置】币别、科目、辅助核算、初始余额"
-    url="https://doc.iocoder.cn/fms/config/accounting/"
-  />
+  
   <ContentWrap>
     <el-form class="-mb-15px" :inline="true" label-width="68px">
       <el-form-item label="科目类别">

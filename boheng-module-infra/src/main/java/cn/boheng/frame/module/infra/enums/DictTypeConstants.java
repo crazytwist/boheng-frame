@@ -3,7 +3,7 @@ package cn.boheng.frame.module.infra.enums;
 /**
  * Infra 字典类型的枚举类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface DictTypeConstants {
 

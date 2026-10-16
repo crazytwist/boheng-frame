@@ -63,6 +63,9 @@ public class MaterialInstancePageReqVO extends PageParam {
     @Schema(description = "内容物类型快照（CARRIER 为空；空容器为 EMPTY）", example = "BUFFER")
     private String contentType;
 
+    @Schema(description = "样本业务编号（关联 wms_sample_info.sample_id）", example = "SP-20261011-001")
+    private String sampleId;
+
     @Schema(description = "实例状态：AVAILABLE 可用/RESERVED 已预留/IN_USE 使用中/USED 已用完/EXPIRED 已过期/DISCARDED 已废弃", example = "AVAILABLE")
     private String instanceStatus;
 

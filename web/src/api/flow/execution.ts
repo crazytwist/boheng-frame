@@ -37,6 +37,7 @@ export interface FlowStepExecutionVO {
   skipReason?: string
   waitingFor?: string
   waitRef?: string
+  deviceTaskStatus?: string
   commandId?: number
   commandNo?: string
   selectedBranch?: string

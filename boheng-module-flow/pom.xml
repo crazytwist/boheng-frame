@@ -30,9 +30,20 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- 样本契约层：登记 / 读实验参数 / 驱动状态流转，不依赖 wms 实现 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-wms-api</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <dependency>
             <groupId>cn.boheng</groupId>
             <artifactId>boheng-spring-boot-starter-biz-tenant</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-spring-boot-starter-job</artifactId>
         </dependency>
         <dependency>
             <groupId>cn.boheng</groupId>

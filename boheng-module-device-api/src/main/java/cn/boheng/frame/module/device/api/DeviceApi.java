@@ -46,4 +46,16 @@ public interface DeviceApi {
      */
     boolean hasEnabledAction(String deviceTypeCode, String actionCode);
 
+    /**
+     * 取一台设备的能力集：该设备类型下所有启用动作的编码。
+     *
+     * <p>设备任务认领时，机器端声明自己操作哪台设备（deviceCode），平台按这个能力集
+     * 匹配「不限设备 + 我会做的类型」的任务。与 selectDevices（选设备）正交——
+     * 这个是「已知设备，反查它都会做什么」，供任务队列按能力路由用。
+     *
+     * @param deviceCode 设备编码
+     * @return 启用动作编码列表；设备不存在或没有启用动作时返回空列表
+     */
+    List<String> listActionCodesByDevice(String deviceCode);
+
 }

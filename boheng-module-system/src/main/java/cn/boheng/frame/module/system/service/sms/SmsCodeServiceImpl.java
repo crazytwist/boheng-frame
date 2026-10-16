@@ -24,7 +24,7 @@ import static cn.boheng.frame.module.system.enums.ErrorCodeConstants.*;
 /**
  * 短信验证码 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated
@@ -62,8 +62,8 @@ public class SmsCodeServiceImpl implements SmsCodeService {
                     lastSmsCode.getTodayIndex() >= smsCodeProperties.getSendMaximumQuantityPerDay()) { // 超过当天发送的上限。
                 throw exception(SMS_CODE_EXCEED_SEND_MAXIMUM_QUANTITY_PER_DAY);
             }
-            // TODO 芋艿：提升，每个 IP 每天可发送数量
-            // TODO 芋艿：提升，每个 IP 每小时可发送数量
+            // TODO 伯珩：提升，每个 IP 每天可发送数量
+            // TODO 伯珩：提升，每个 IP 每小时可发送数量
         }
 
         // 创建验证码记录

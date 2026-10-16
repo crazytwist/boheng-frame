@@ -3,7 +3,7 @@ package cn.boheng.frame.module.system.enums.oauth2;
 /**
  * OAuth2.0 客户端的通用枚举
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface OAuth2ClientConstants {
 

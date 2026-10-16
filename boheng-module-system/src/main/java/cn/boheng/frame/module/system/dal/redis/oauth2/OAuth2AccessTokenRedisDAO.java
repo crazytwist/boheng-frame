@@ -19,7 +19,7 @@ import static cn.boheng.frame.module.system.dal.redis.RedisKeyConstants.OAUTH2_A
 /**
  * {@link OAuth2AccessTokenDO} 的 RedisDAO
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Repository
 public class OAuth2AccessTokenRedisDAO {

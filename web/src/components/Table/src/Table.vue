@@ -104,7 +104,7 @@ export default defineComponent({
     })
 
     const pagination = computed(() => {
-      // update by 芋艿：保持和 Pagination 组件的逻辑一致
+      // update by 伯珩：保持和 Pagination 组件的逻辑一致
       return Object.assign(
         {
           small: false,
@@ -284,7 +284,7 @@ export default defineComponent({
           }}
         </ElTable>
         {unref(getProps).pagination ? (
-          // update by 芋艿：保持和 Pagination 组件一致
+          // update by 伯珩：保持和 Pagination 组件一致
           <ElPagination
             v-model:pageSize={pageSizeRef.value}
             v-model:currentPage={currentPageRef.value}

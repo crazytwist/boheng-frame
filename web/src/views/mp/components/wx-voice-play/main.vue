@@ -2,7 +2,7 @@
   - Copyright (C) 2018-2019
   - All rights reserved, Designed By www.joolun.com
   【微信消息 - 语音】
-   芋道源码：
+   伯珩：
   ① bug 修复：
     1）joolun 的做法：使用 mediaId 从微信公众号，下载对应的 mp4 素材，从而播放内容；
       存在的问题：mediaId 有效期是 3 天，超过时间后无法播放
@@ -31,7 +31,7 @@ defineOptions({ name: 'WxVoicePlayer' })
 
 const props = defineProps({
   url: {
-    type: String, // 语音地址，例如说：https://www.iocoder.cn/xxx.amr
+    type: String, // 语音地址
     required: true
   },
   content: {
@@ -84,7 +84,7 @@ const amrStop = () => {
   playing.value = false
   amr.value.stop()
 }
-// TODO 芋艿：下面样式有点问题
+// TODO 伯珩：下面样式有点问题
 </script>
 <style lang="scss" scoped>
 .wx-voice-div {

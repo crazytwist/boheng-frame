@@ -13,7 +13,7 @@ import static cn.boheng.frame.framework.common.util.collection.CollectionUtils.c
 /**
  * Array 工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class ArrayUtils {
 

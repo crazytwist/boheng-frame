@@ -1,6 +1,6 @@
 <!-- MES 生产工单列表 -->
 <template>
-  <doc-alert title="【生产】生产工单" url="https://doc.iocoder.cn/mes/pro/work-order/" />
+  
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -210,7 +210,7 @@
             取消
           </el-button>
           <!-- 工单条码 -->
-          <!-- DONE @芋艿：这里应该是打印；后面在跟进把；（AI 未修复原因：需要对接打印功能，标注为后续处理，需人工介入） -->
+          <!-- DONE @伯珩：这里应该是打印；后面在跟进把；（AI 未修复原因：需要对接打印功能，标注为后续处理，需人工介入） -->
           <el-button
             link
             type="primary"

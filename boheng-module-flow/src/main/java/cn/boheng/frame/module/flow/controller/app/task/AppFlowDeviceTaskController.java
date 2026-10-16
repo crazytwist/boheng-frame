@@ -32,7 +32,7 @@ import static cn.boheng.frame.framework.common.pojo.CommonResult.success;
 @RestController
 @RequestMapping("/flow/device-task")
 @Validated
-public class FlowDeviceTaskController {
+public class AppFlowDeviceTaskController {
 
     /**
      * 任务队列服务
@@ -52,7 +52,8 @@ public class FlowDeviceTaskController {
     @PostMapping("/claim")
     @PermitAll
     @Operation(summary = "认领一条待执行任务",
-            description = "按设备 / 任务类型（均可空，可组合）拉取，靠 tenant-id 请求头限定租户")
+            description = "deviceCode 必传（声明要操作哪台设备），平台按设备能力集匹配任务；"
+                    + "actionCode 可选限定类型；靠 tenant-id 请求头限定租户")
     public CommonResult<FlowDeviceTaskRespVO> claim(@Valid @RequestBody FlowDeviceTaskClaimReqVO reqVO) {
         FlowDeviceTaskDO task = deviceTaskService.claim(reqVO.getDeviceCode(), reqVO.getActionCode(),
                 reqVO.getWorkerId());

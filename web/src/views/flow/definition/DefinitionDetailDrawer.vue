@@ -40,7 +40,9 @@
           <el-table-column label="汇合" width="90" align="center">
             <template #default="scope">{{ joinLabel(scope.row.joinPolicy) }}</template>
           </el-table-column>
-          <el-table-column label="等待(秒)" prop="timeoutSec" width="85" align="center" />
+          <el-table-column label="等待(秒)" prop="timeoutSec" width="85" align="center">
+            <template #default="scope">{{ scope.row.timeoutSec < 0 ? '永不超时' : scope.row.timeoutSec }}</template>
+          </el-table-column>
         </el-table>
       </section>
     </template>

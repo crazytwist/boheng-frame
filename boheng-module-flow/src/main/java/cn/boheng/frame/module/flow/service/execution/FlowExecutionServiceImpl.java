@@ -3,6 +3,7 @@ package cn.boheng.frame.module.flow.service.execution;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
 import cn.boheng.frame.framework.security.core.util.SecurityFrameworkUtils;
+import cn.boheng.frame.framework.tenant.core.util.TenantUtils;
 import cn.boheng.frame.module.flow.controller.admin.execution.vo.FlowBranchDecisionRespVO;
 import cn.boheng.frame.module.flow.controller.admin.execution.vo.FlowExecutionPageReqVO;
 import cn.boheng.frame.module.flow.controller.admin.execution.vo.FlowExecutionRespVO;
@@ -12,10 +13,12 @@ import cn.boheng.frame.module.flow.controller.admin.execution.vo.FlowStepExecuti
 import cn.boheng.frame.module.flow.controller.admin.execution.vo.FlowStepExecutionRespVO;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowDefinitionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowBranchDecisionDO;
+import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowDeviceTaskDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowExecutionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowStepExecutionDO;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowDefinitionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowBranchDecisionMapper;
+import cn.boheng.frame.module.flow.dal.mysql.execution.FlowDeviceTaskMapper;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowExecutionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowStepExecutionMapper;
 import cn.boheng.frame.module.flow.engine.execution.FlowExecutionEngine;
@@ -79,6 +82,12 @@ public class FlowExecutionServiceImpl implements FlowExecutionService {
     private FlowSignalDispatcher signalDispatcher;
 
     /**
+     * 设备异步任务表。详情里反查 device.task 节点的任务状态
+     */
+    @Resource
+    private FlowDeviceTaskMapper deviceTaskMapper;
+
+    /**
      * 启动。只有已发布版本能启动；顶层运行没有父节点信息。
      */
     @Override
@@ -92,6 +101,24 @@ public class FlowExecutionServiceImpl implements FlowExecutionService {
         return engine.start(definition, StrUtil.trimToNull(reqVO.getInputParams()),
                 "MANUAL", String.valueOf(SecurityFrameworkUtils.getLoginUserId()),
                 StrUtil.trimToNull(reqVO.getBusinessKey()), null, null, null, null);
+    }
+
+    /**
+     * 定时启动。由 JobHandler 按 cron 触发，入参里带租户编号；
+     * 在指定租户上下文里查定义、确认已发布后启动，运行来源标 CRON。
+     */
+    @Override
+    public Long startScheduled(Long definitionId, String inputParams, String businessKey, Long tenantId) {
+        return TenantUtils.execute(tenantId, () -> {
+            FlowDefinitionDO definition = definitionMapper.selectById(definitionId);
+            if (definition == null || !FlowConstants.STATUS_PUBLISHED.equals(definition.getStatus())) {
+                throw exception(FLOW_EXECUTION_DEFINITION_NOT_PUBLISHED,
+                        definition == null ? "" : definition.getPipelineKey(),
+                        definition == null ? 0 : definition.getVersion());
+            }
+            return engine.start(definition, StrUtil.trimToNull(inputParams),
+                    "CRON", "job", StrUtil.trimToNull(businessKey), null, null, null, null);
+        });
     }
 
     /**
@@ -129,11 +156,30 @@ public class FlowExecutionServiceImpl implements FlowExecutionService {
         FlowExecutionRespVO resp = BeanUtils.toBean(execution, FlowExecutionRespVO.class);
         List<FlowStepExecutionDO> steps = stepExecutionMapper.selectByExecutionId(id);
         resp.setSteps(steps.stream()
-                .map(step -> BeanUtils.toBean(step, FlowStepExecutionRespVO.class)).toList());
+                .map(step -> {
+                    FlowStepExecutionRespVO vo = BeanUtils.toBean(step, FlowStepExecutionRespVO.class);
+                    enrichDeviceTaskStatus(step, vo);
+                    return vo;
+                }).toList());
         List<FlowBranchDecisionDO> decisions = branchDecisionMapper.selectByExecutionId(id);
         resp.setBranchDecisions(decisions.stream()
                 .map(decision -> BeanUtils.toBean(decision, FlowBranchDecisionRespVO.class)).toList());
         return resp;
+    }
+
+    /**
+     * device.task 节点的任务状态：节点挂起时 waitRef 就是任务号（taskNo），
+     * 用它反查任务队列，把 PENDING / CLAIMED / DONE / FAILED / CANCELLED 带出到预览图。
+     */
+    private void enrichDeviceTaskStatus(FlowStepExecutionDO step, FlowStepExecutionRespVO vo) {
+        if (!FlowConstants.STEP_DEVICE_TASK.equals(step.getStepType())
+                || StrUtil.isBlank(step.getWaitRef())) {
+            return;
+        }
+        FlowDeviceTaskDO task = deviceTaskMapper.selectByTaskNo(step.getWaitRef());
+        if (task != null) {
+            vo.setDeviceTaskStatus(task.getStatus());
+        }
     }
 
     /**

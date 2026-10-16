@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="PMS 手册（功能开启）" url="https://doc.iocoder.cn/pms/build/" />
+  
 
   <!-- 搜索工作栏 -->
   <ContentWrap>

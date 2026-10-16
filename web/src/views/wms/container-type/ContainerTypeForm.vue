@@ -95,8 +95,8 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="允许被装入">
-            <el-switch v-model="formData.nestable" active-text="是" inactive-text="否" />
+          <el-form-item label="最大数量">
+            <el-input-number v-model="formData.maxCount" :min="0" controls-position="right" class="!w-1/1" placeholder="如枪头盒 96，空为不限" />
           </el-form-item>
         </el-col>
       </el-row>
@@ -109,6 +109,11 @@
       </el-form-item>
 
       <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="允许被装入">
+            <el-switch v-model="formData.nestable" active-text="是" inactive-text="否" />
+          </el-form-item>
+        </el-col>
         <el-col :span="12">
           <el-form-item label="状态" prop="status">
             <el-radio-group v-model="formData.status">
@@ -163,6 +168,7 @@ const createEmptyFormData = (): ContainerTypeVO => ({
   nestable: true,
   usageType: 'REUSABLE',
   lifeCycles: undefined,
+  maxCount: undefined,
   status: 0,
   description: undefined
 })

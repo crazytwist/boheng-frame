@@ -19,7 +19,7 @@ import static java.util.Arrays.asList;
 /**
  * Collection 工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class CollectionUtils {
 

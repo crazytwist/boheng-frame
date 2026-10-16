@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【薪资】月度工资、工资条" url="https://doc.iocoder.cn/hrm/salary/payroll/" />
+  
 
   <!-- 搜索工作栏 -->
   <ContentWrap>

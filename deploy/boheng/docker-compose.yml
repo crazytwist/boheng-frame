@@ -1,0 +1,128 @@
+# =============================================================================
+# boheng 预发环境 · Docker Compose 编排
+# 容器命名统一：boheng.<组件>
+# 网络：boheng-net；数据卷：boheng-mysql-data / boheng-redis-data
+#
+# 端口规则（与 .env 对齐 · 28 段公网端口）：
+#   - 仅 web 对外暴露（默认 PORT_WEB=28081 → 容器 80）
+#   - server/mysql/redis 默认不暴露公网（仅在 boheng-net 内部互访）
+#   - 调试时可解开 server/mysql/redis 的 ports 注释让公网直连
+# =============================================================================
+
+name: boheng
+
+services:
+  # ----------------------------- 前端（Nginx：托管静态 + 反代 /admin-api） -----------------------------
+  # 公网访问：${PORT_WEB:-28081} → 容器 80
+  web:
+    image: boheng/web:latest
+    container_name: boheng.web
+    restart: always
+    ports:
+      - "${PORT_WEB:-28081}:80"
+    networks:
+      - boheng-net
+    depends_on:
+      - server
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------- 后端（Spring Boot，JDK17） -----------------------------
+  # 内部服务：仅经 boheng-net 由 web 反代访问，不暴露公网
+  # 如需外部直连调试（如 HexHub / Postman 打 admin-api），取消下一行注释
+  server:
+    image: boheng/server:latest
+    container_name: boheng.server
+    restart: always
+    # ports:
+    #   - "${PORT_SERVER:-28088}:48080"   # 仅调试用：公网可不开
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: local
+      # 数据源指向容器内的 MySQL
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL: "jdbc:mysql://boheng.mysql:3306/boheng-frame?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true"
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME: "${MYSQL_ROOT_USER:-root}"
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_SLAVE_URL: "jdbc:mysql://boheng.mysql:3306/boheng-frame?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true"
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_SLAVE_USERNAME: "${MYSQL_ROOT_USER:-root}"
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_SLAVE_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      SPRING_DATA_REDIS_HOST: boheng.redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_DATABASE: "0"
+      JAVA_OPTS: "-Xms512m -Xmx1024m -Djava.security.egd=file:/dev/./urandom"
+    networks:
+      - boheng-net
+    depends_on:
+      - mysql
+      - redis
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------- MySQL -----------------------------
+  # 内部服务：仅由 server 通过 boheng-net 访问，不暴露公网
+  # 注意：目标机 CPU 仅支持 x86-64-v1（Core2 Duo），mysql:8.0 最新 tag 基于 Oracle Linux 9
+  # （要求 x86-64-v2）会报 "Fatal glibc error: CPU does not support x86-64-v2"，故锁定 OL8 基座的 8.0.32
+  # 如需外部直连调试（如 HexHub 连远端 MySQL），取消下一行注释
+  mysql:
+    image: mysql:8.0.32
+    container_name: boheng.mysql
+    restart: always
+    # ports:
+    #   - "${PORT_MYSQL:-28086}:3306"   # 仅调试用：公网可不开
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: boheng-frame
+      MYSQL_ROOT_HOST: "%"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_bin
+      - --lower_case_table_names=1
+    volumes:
+      - boheng-mysql-data:/var/lib/mysql
+      # 首次初始化：把要导入的 .sql 放进本目录 mysql-init/，容器首次启动自动执行
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - boheng-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------- Redis -----------------------------
+  # 内部服务：仅由 server 通过 boheng-net 访问，不暴露公网
+  # 如需外部直连调试（如 redis-cli），取消下一行注释
+  redis:
+    image: redis:7-alpine
+    container_name: boheng.redis
+    restart: always
+    # ports:
+    #   - "${PORT_REDIS:-28082}:6379"   # 仅调试用：公网可不开
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - boheng-redis-data:/data
+    networks:
+      - boheng-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  boheng-net:
+    name: boheng-net
+    driver: bridge
+
+volumes:
+  boheng-mysql-data:
+    name: boheng-mysql-data
+  boheng-redis-data:
+    name: boheng-redis-data

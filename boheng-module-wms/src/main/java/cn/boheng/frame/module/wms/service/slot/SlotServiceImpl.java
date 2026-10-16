@@ -10,6 +10,7 @@ import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
 import cn.boheng.frame.module.wms.dal.dataobject.zone.ZoneDO;
 import cn.boheng.frame.module.wms.dal.mysql.slot.SlotMapper;
 import cn.boheng.frame.module.wms.dal.mysql.zone.ZoneMapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
@@ -139,6 +140,19 @@ public class SlotServiceImpl implements SlotService {
             }
         }
         return count;
+    }
+
+    @Override
+    public void updateSlotSuitableMaterials(List<Long> ids, String suitableMaterials) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        // 校验存在
+        ids.forEach(this::validateSlotExists);
+        // 仅更新适用物料字段（用 LambdaUpdateWrapper 显式 set，空值也可写库清空）
+        slotMapper.update(null, new LambdaUpdateWrapper<SlotDO>()
+                .in(SlotDO::getId, ids)
+                .set(SlotDO::getSuitableMaterials, suitableMaterials));
     }
 
     @VisibleForTesting

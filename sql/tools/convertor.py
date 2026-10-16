@@ -1,5 +1,5 @@
 # encoding=utf8
-"""芋道系统数据库迁移工具
+"""伯珩系统数据库迁移工具
 
 Author: dhb52 (https://gitee.com/dhb52)
 
@@ -1033,7 +1033,7 @@ class HighGoConvertor(PostgreSQLConvertor):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="芋道系统数据库转换工具")
+    parser = argparse.ArgumentParser(description="伯珩系统数据库转换工具")
     parser.add_argument(
         "type",
         type=str,

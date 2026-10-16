@@ -1,6 +1,7 @@
 package cn.boheng.frame.module.wms.service.instance;
 
 import cn.boheng.frame.framework.common.pojo.PageResult;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceBatchPutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeByContainerReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
@@ -71,12 +72,30 @@ public interface MaterialInstanceService {
     // ==================== 落位操作（上架 / 下架 / 转移） ====================
 
     /**
+     * 批量铺货上架：选中一批空闲槽位，按同一种物料（试剂 / 容器）批量生成实例并落位。
+     * 每个槽位各生成 1 个顶层实例，实例编码由后端自动生成。
+     *
+     * @param reqVO 批量铺货信息
+     * @return 生成的实例编号列表
+     */
+    List<Long> batchPutIn(@Valid MaterialInstanceBatchPutInReqVO reqVO);
+
+    /**
      * 上架：把顶层实例放到目标槽位（未落位 → 落位；已在别的槽位 → 请用转移）
      *
      * @param reqVO 上架信息
      * @return 流水编号
      */
     Long putIn(@Valid MaterialInstancePutInReqVO reqVO);
+
+    /**
+     * 批量下架：删除选中槽位上的顶层实例并解绑槽位（槽位占用由删除逻辑内自动释放）。
+     * 空槽位自动跳过；实例存在子实例时因删除校验失败而整批回滚。
+     *
+     * @param slotIds 槽位编号列表
+     * @return 实际删除的实例数量
+     */
+    int batchTakeOut(List<Long> slotIds);
 
     /**
      * 下架：把在架实例从槽位取下（root_slot_id 置空）
@@ -140,6 +159,14 @@ public interface MaterialInstanceService {
      * @return 物料实例列表
      */
     List<MaterialInstanceDO> getMaterialInstanceList();
+
+    /**
+     * 按样本业务编号获得物料实例列表（样本详情反查其已生成的实例）
+     *
+     * @param sampleId 样本业务编号
+     * @return 该样本关联的物料实例列表
+     */
+    List<MaterialInstanceDO> getMaterialInstanceListBySampleId(String sampleId);
 
     /**
      * 获得未落位的顶层实例列表（供「上架」弹窗选择源）

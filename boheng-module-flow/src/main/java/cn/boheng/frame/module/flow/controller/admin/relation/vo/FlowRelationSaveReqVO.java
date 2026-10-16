@@ -46,4 +46,10 @@ public class FlowRelationSaveReqVO {
     @Schema(description = "前置节点编码。空 = 无前置（起点）")
     private List<String> dependsOn = new ArrayList<>();
 
+    @Schema(description = "画布横坐标。拖入时给个初始位置，空则由前端自动布局")
+    private Integer x;
+
+    @Schema(description = "画布纵坐标。拖入时给个初始位置，空则由前端自动布局")
+    private Integer y;
+
 }

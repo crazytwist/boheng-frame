@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * 客户端工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public class ServletUtils {
 

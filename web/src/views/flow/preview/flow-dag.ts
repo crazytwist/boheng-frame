@@ -60,6 +60,8 @@ export interface PlacedNode {
   latest?: FlowStepExecutionVO
   /** 运行态生效状态（取最新轮） */
   status?: string
+  /** 运行态：device.task 节点的任务状态（PENDING/CLAIMED/DONE/FAILED/CANCELLED） */
+  deviceTaskStatus?: string
   /** 运行态：执行过的轮数（>1 显示徽标） */
   iterationCount: number
 }
@@ -203,11 +205,11 @@ export function buildDag(nodes: FlowNodeVO[], runtime?: FlowStepExecutionVO[]): 
   const bodyEdges: PlacedEdge[] = []
   topNodes.forEach((n) => {
     const p = pos.get(n.nodeId)!
-    const attach = (id: string): { runs: FlowStepExecutionVO[]; status?: string; iterationCount: number } => {
+    const attach = (id: string): { runs: FlowStepExecutionVO[]; status?: string; deviceTaskStatus?: string; iterationCount: number } => {
       const runs = runsByNode.get(id) ?? []
       const latest = latestOf(runs)
       const iterationCount = new Set(runs.map((r) => r.iterationNo ?? 0)).size
-      return { runs, status: latest?.status, iterationCount }
+      return { runs, status: latest?.status, deviceTaskStatus: latest?.deviceTaskStatus, iterationCount }
     }
     if (isLoopContainer(n, bodyIdsOf)) {
       const bodyIds = bodyIdsOf.get(n.nodeId)!

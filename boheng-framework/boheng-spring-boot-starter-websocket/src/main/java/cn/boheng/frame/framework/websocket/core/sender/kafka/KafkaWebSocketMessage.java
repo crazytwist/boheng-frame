@@ -5,7 +5,7 @@ import lombok.Data;
 /**
  * Kafka 广播 WebSocket 的消息
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Data
 public class KafkaWebSocketMessage {

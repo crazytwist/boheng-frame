@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【PMS】文档与协作" url="https://doc.iocoder.cn/pms/kb/document/" />
+  
 
   <ContentWrap>
     <el-tabs v-model="activeType" @tab-change="handleTypeChange">

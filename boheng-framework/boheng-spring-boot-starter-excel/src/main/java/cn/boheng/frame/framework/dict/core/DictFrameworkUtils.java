@@ -18,7 +18,7 @@ import static cn.boheng.frame.framework.common.util.collection.CollectionUtils.c
 /**
  * 字典工具类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Slf4j
 public class DictFrameworkUtils {

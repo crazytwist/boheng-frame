@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.flow.service.task;
 
+import cn.boheng.frame.module.device.api.DeviceApi;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowDeviceTaskDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowDeviceTaskEventDO;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowDeviceTaskEventMapper;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -55,6 +57,12 @@ public class FlowDeviceTaskService {
     private FlowDeviceTaskEventMapper eventMapper;
 
     /**
+     * 设备契约。认领时反查设备能力集（设备编码 → 类型 → 启用动作）
+     */
+    @Resource
+    private DeviceApi deviceApi;
+
+    /**
      * 入队一条任务
      *
      * @return 对外任务号
@@ -80,14 +88,27 @@ public class FlowDeviceTaskService {
     }
 
     /**
-     * 机器端认领一条待执行任务。deviceCode / actionCode 空则不筛，
-     * 机器端可按设备、按任务类型、或组合拉取。CAS 认领防多机重复执行。
+     * 机器端认领一条待执行任务。deviceCode 必传（声明要操作哪台设备），
+     * 平台按它的设备类型反查能力集，匹配「不限设备 + 能力集内类型」的任务；
+     * actionCode 可选，进一步限定只要某一种任务。CAS 认领防多机重复执行。
      *
      * @return 认领到的任务（含 callbackToken，回报时带回），没有则返回 null
      */
     public FlowDeviceTaskDO claim(String deviceCode, String actionCode, String workerId) {
+        // 反查设备能力集。设备不存在或没有启用动作时无任务可认领
+        List<String> actionCodes = deviceApi.listActionCodesByDevice(deviceCode);
+        if (actionCodes.isEmpty()) {
+            return null;
+        }
+        // 可选限定任务类型：非空时要求它在本设备能力集内，否则这台设备不会做，拒绝认领
+        if (StrUtil.isNotBlank(actionCode)) {
+            if (!actionCodes.contains(actionCode)) {
+                return null;
+            }
+            actionCodes = List.of(actionCode);
+        }
         for (int i = 0; i < 3; i++) {
-            FlowDeviceTaskDO task = deviceTaskMapper.selectClaimable(deviceCode, actionCode);
+            FlowDeviceTaskDO task = deviceTaskMapper.selectClaimable(deviceCode, actionCodes);
             if (task == null) {
                 return null;
             }
@@ -104,41 +125,43 @@ public class FlowDeviceTaskService {
     }
 
     /**
-     * 机器端回报：任务推进到终态（DONE / FAILED）
+     * 机器端回报：只从 CLAIMED 推进到终态。没抢到返回 false，调用方不要再结算步骤。
      */
-    public FlowDeviceTaskDO finish(String taskNo, boolean success, String resultJson, String errorMessage) {
+    public boolean finish(String taskNo, boolean success, String resultJson, String errorMessage) {
         FlowDeviceTaskDO task = deviceTaskMapper.selectByTaskNo(taskNo);
         if (task == null) {
-            return null;
+            return false;
         }
         Long executeMs = task.getClaimedAt() == null ? null
                 : Duration.between(task.getClaimedAt(), LocalDateTime.now()).toMillis();
-        deviceTaskMapper.finish(task.getId(), success ? STATUS_DONE : STATUS_FAILED,
-                resultJson, errorMessage, executeMs);
-        FlowDeviceTaskDO finished = deviceTaskMapper.selectById(task.getId());
-        writeEvent(finished, task.getStatus(), finished.getStatus(),
-                success ? EVENT_DONE : EVENT_FAILED, finished.getClaimedBy(), resultJson);
-        return finished;
+        String toStatus = success ? STATUS_DONE : STATUS_FAILED;
+        if (deviceTaskMapper.finish(task.getId(), toStatus, resultJson, errorMessage, executeMs) != 1) {
+            return false;
+        }
+        writeEvent(task, task.getStatus(), toStatus,
+                success ? EVENT_DONE : EVENT_FAILED, task.getClaimedBy(), resultJson);
+        return true;
     }
 
     /**
-     * 超时标记：把仍在 PENDING / CLAIMED 的任务置 FAILED
+     * 超时标记：只从 PENDING / CLAIMED 置为 FAILED。没抢到返回 false。
      */
-    public void timeout(Long executionId, String nodeId, Integer attempt) {
+    public boolean timeout(Long executionId, String nodeId, Integer attempt) {
         FlowDeviceTaskDO task = deviceTaskMapper.selectByExecutionNode(executionId, nodeId, attempt);
         if (task == null) {
-            return;
+            return false;
         }
-        if (STATUS_PENDING.equals(task.getStatus()) || STATUS_CLAIMED.equals(task.getStatus())) {
-            String fromStatus = task.getStatus();
-            task.setStatus(STATUS_FAILED);
-            task.setErrorMessage("设备任务超时");
-            if (task.getClaimedAt() != null) {
-                task.setExecuteMs(Duration.between(task.getClaimedAt(), LocalDateTime.now()).toMillis());
-            }
-            deviceTaskMapper.updateById(task);
-            writeEvent(task, fromStatus, STATUS_FAILED, EVENT_FAILED, task.getClaimedBy(), "{\"timeout\":true}");
+        if (!STATUS_PENDING.equals(task.getStatus()) && !STATUS_CLAIMED.equals(task.getStatus())) {
+            return false;
         }
+        Long executeMs = task.getClaimedAt() == null ? null
+                : Duration.between(task.getClaimedAt(), LocalDateTime.now()).toMillis();
+        String fromStatus = task.getStatus();
+        if (deviceTaskMapper.timeoutIfOpen(task.getId(), executeMs) != 1) {
+            return false;
+        }
+        writeEvent(task, fromStatus, STATUS_FAILED, EVENT_FAILED, task.getClaimedBy(), "{\"timeout\":true}");
+        return true;
     }
 
     /**

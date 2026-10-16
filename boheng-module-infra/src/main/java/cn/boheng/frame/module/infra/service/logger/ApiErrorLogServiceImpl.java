@@ -25,7 +25,7 @@ import static cn.boheng.frame.module.infra.enums.ErrorCodeConstants.API_ERROR_LO
 /**
  * API 错误日志 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Validated

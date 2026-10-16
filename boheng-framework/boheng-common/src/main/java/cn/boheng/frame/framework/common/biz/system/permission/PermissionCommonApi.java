@@ -5,7 +5,7 @@ import cn.boheng.frame.framework.common.biz.system.permission.dto.DeptDataPermis
 /**
  * 权限 API 接口
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 public interface PermissionCommonApi {
 

@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【账簿】账簿管理" url="https://doc.iocoder.cn/fms/ledger/" />
+  
   <!-- 搜索工作栏 -->
   <ContentWrap>
     <el-form class="-mb-15px" :inline="true" label-width="68px">

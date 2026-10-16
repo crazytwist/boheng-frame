@@ -110,7 +110,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
-     * 只改草稿的名称和说明。节点编排不从这里提交。
+     * 只改草稿的名称、说明和入参声明。节点编排不从这里提交。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -118,6 +118,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         FlowDefinitionDO definition = requireDraft(reqVO.getId());
         definition.setName(reqVO.getName().trim());
         definition.setRemark(StrUtil.trimToNull(reqVO.getRemark()));
+        definition.setInputParams(StrUtil.trimToNull(reqVO.getInputParams()));
         flowDefinitionMapper.updateById(definition);
     }
 
@@ -241,6 +242,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
                 .version(flowDefinitionMapper.selectMaxVersion(source.getPipelineKey()) + 1)
                 .name(source.getName())
                 .remark(source.getRemark())
+                .inputParams(source.getInputParams())
                 .status(FlowConstants.STATUS_DRAFT)
                 .build();
         flowDefinitionMapper.insert(draft);
@@ -348,7 +350,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         resp.setJoinFailurePolicy(draft.getJoinFailurePolicy());
         resp.setBranches(draft.getBranches());
         resp.setOutputMapping(row.getOutputMapping());
-        resp.setTimeoutSec(draft.getTimeoutMs() == null ? null : (int) (draft.getTimeoutMs() / 1000));
+        resp.setTimeoutSec(FlowConstants.toTimeoutSec(draft.getTimeoutMs()));
         resp.setMaxAttempts(draft.getMaxAttempts());
         resp.setFailStrategy(draft.getFailStrategy());
         resp.setMappings(draft.getMappings().stream().map(mapping -> {

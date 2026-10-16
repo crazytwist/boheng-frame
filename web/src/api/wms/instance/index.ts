@@ -17,6 +17,7 @@ export interface MaterialInstanceVO {
   contentDefId?: number
   contentDefCode?: string
   contentType?: string
+  sampleId?: string
   currentVolUl?: number
   currentCount?: number
   extData?: string
@@ -69,14 +70,40 @@ export const MaterialInstanceApi = {
     return await request.get({ url: '/wms/material-instance/list-unplaced' })
   },
 
+  // 按样本业务编号查实例列表（样本详情反查已生成实例）
+  getMaterialInstanceListBySample: async (sampleId: string) => {
+    return await request.get({ url: '/wms/material-instance/list-by-sample', params: { sampleId } })
+  },
+
   // 上架
   putIn: async (data: { instanceId: number; slotId: number; remark?: string }) => {
     return await request.post({ url: '/wms/material-instance/put-in', data })
   },
 
+  // 批量铺货上架：选一批空闲槽位，按同一种物料批量生成实例并落位
+  batchPutIn: async (data: {
+    slotIds: number[]
+    materialKind: 'CONTENT' | 'CONTAINER'
+    materialId: number
+    containerTypeId?: number
+    containerTypeCode?: string
+    instanceStatus?: string
+    currentVolUl?: number
+    currentCount?: number
+    barcode?: string
+    description?: string
+  }) => {
+    return await request.post({ url: '/wms/material-instance/batch-put-in', data })
+  },
+
   // 下架
   takeOut: async (data: { instanceId: number; remark?: string; afterStatus?: string }) => {
     return await request.post({ url: '/wms/material-instance/take-out', data })
+  },
+
+  // 批量下架：删除选中槽位上的实例并解绑槽位（空槽位自动跳过）
+  batchTakeOut: async (slotIds: number[]) => {
+    return await request.post({ url: '/wms/material-instance/batch-take-out', data: slotIds })
   },
 
   // 转移

@@ -123,7 +123,7 @@ const openByBusiness = async (
 defineExpose({ open, openByBusiness })
 
 /** 打印条码 */
-// TODO @芋艿（目前暂时不处理）：后续支持打印的自定义；
+// TODO @伯珩（目前暂时不处理）：后续支持打印的自定义；
 const handlePrint = () => {
   if (!barcodeRef.value) {
     message.warning('条码组件未加载')

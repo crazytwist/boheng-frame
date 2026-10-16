@@ -1,6 +1,6 @@
 <!-- MES 来料检验单（IQC）列表 -->
 <template>
-  <doc-alert title="【质量】来料检验（IQC）" url="https://doc.iocoder.cn/mes/qc/iqc/" />
+  
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -177,7 +177,7 @@
           >
             删除
           </el-button>
-          <!-- TODO @芋艿：【对齐】查看报表 -->
+          <!-- TODO @伯珩：【对齐】查看报表 -->
         </template>
       </el-table-column>
     </el-table>

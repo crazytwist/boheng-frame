@@ -58,69 +58,6 @@
 
   <el-row class="mt-8px" :gutter="8" justify="space-between">
     <el-col :xl="16" :lg="16" :md="24" :sm="24" :xs="24" class="mb-8px">
-      <el-card shadow="never">
-        <template #header>
-          <div class="h-3 flex justify-between">
-            <span>{{ t('workplace.project') }}</span>
-            <el-link
-              type="primary"
-              :underline="false"
-              href="https://github.com/yudaocode"
-              target="_blank"
-            >
-              {{ t('action.more') }}
-            </el-link>
-          </div>
-        </template>
-        <el-skeleton :loading="loading" animated>
-          <el-row :gutter="8" class="gap-y-8px">
-            <el-col
-              v-for="(item, index) in projects"
-              :key="`card-${index}`"
-              :xl="8"
-              :lg="8"
-              :md="8"
-              :sm="24"
-              :xs="24"
-              class="!flex"
-            >
-              <el-card
-                shadow="hover"
-                class="flex-1 cursor-pointer"
-                body-class="flex h-full flex-col"
-                @click="handleProjectClick(item.message)"
-              >
-                <div class="flex items-center">
-                  <Icon
-                    :icon="item.icon"
-                    :size="25"
-                    class="mr-8px flex-none"
-                    :style="{ color: item.color }"
-                  />
-                  <span class="min-w-0 line-clamp-2 text-16px" :title="item.name">{{
-                    item.name
-                  }}</span>
-                </div>
-                <div
-                  class="mt-12px break-all line-clamp-2 text-12px text-gray-400"
-                  :title="t(item.message)"
-                >
-                  {{ t(item.message) }}
-                </div>
-                <div
-                  class="mt-auto flex items-center justify-between gap-8px pt-12px text-12px text-gray-400"
-                >
-                  <span class="min-w-0 truncate" :title="item.personal">{{ item.personal }}</span>
-                  <span class="shrink-0 whitespace-nowrap">
-                    {{ formatTime(item.time, 'yyyy-MM-dd') }}
-                  </span>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </el-skeleton>
-      </el-card>
-
       <el-card shadow="never" class="mt-8px">
         <el-skeleton :loading="loading" animated>
           <el-row :gutter="20" justify="space-between">
@@ -200,7 +137,7 @@ import { formatTime } from '@/utils'
 
 import { useUserStore } from '@/store/modules/user'
 // import { useWatermark } from '@/hooks/web/useWatermark'
-import type { WorkplaceTotal, Project, Notice, Shortcut } from './types'
+import type { WorkplaceTotal, Notice, Shortcut } from './types'
 import { pieOptions, barOptions } from './echarts-data'
 import { useRouter } from 'vue-router'
 
@@ -228,62 +165,6 @@ const getCount = async () => {
     todo: 10
   }
   totalSate = Object.assign(totalSate, data)
-}
-
-// 获取项目数
-let projects = reactive<Project[]>([])
-const getProject = async () => {
-  const data = [
-    {
-      name: 'ruoyi-vue-pro',
-      icon: 'simple-icons:springboot',
-      message: 'github.com/YunaiV/ruoyi-vue-pro',
-      personal: 'Spring Boot 单体架构',
-      time: new Date('2025-01-02'),
-      color: '#6DB33F'
-    },
-    {
-      name: 'yudao-ui-admin-vue3',
-      icon: 'ep:element-plus',
-      message: 'github.com/yudaocode/yudao-ui-admin-vue3',
-      personal: 'Vue3 + element-plus 管理后台',
-      time: new Date('2025-02-03'),
-      color: '#409EFF'
-    },
-    {
-      name: 'yudao-ui-mall-uniapp',
-      icon: 'icon-park-outline:mall-bag',
-      message: 'github.com/yudaocode/yudao-ui-mall-uniapp',
-      personal: 'Vue3 + uniapp 商城手机端',
-      time: new Date('2025-03-04'),
-      color: '#ff4d4f'
-    },
-    {
-      name: 'yudao-cloud',
-      icon: 'material-symbols:cloud-outline',
-      message: 'github.com/YunaiV/yudao-cloud',
-      personal: 'Spring Cloud 微服务架构',
-      time: new Date('2025-04-05'),
-      color: '#1890ff'
-    },
-    {
-      name: 'yudao-ui-admin-vben',
-      icon: 'devicon:antdesign',
-      message: 'github.com/yudaocode/yudao-ui-admin-vben',
-      personal: 'Vue3 + vben5(antd) 管理后台',
-      time: new Date('2025-05-06'),
-      color: '#e18525'
-    },
-    {
-      name: 'yudao-ui-admin-uniapp',
-      icon: 'ant-design:mobile',
-      message: 'github.com/yudaocode/yudao-ui-admin-uniapp',
-      personal: 'Vue3 + uniapp 管理手机端',
-      time: new Date('2025-06-01'),
-      color: '#2979ff'
-    }
-  ]
-  projects = Object.assign(projects, data)
 }
 
 // 获取通知公告
@@ -414,17 +295,12 @@ const getWeeklyUserActivity = async () => {
 const getAllApi = async () => {
   await Promise.all([
     getCount(),
-    getProject(),
     getNotice(),
     getShortcut(),
     getUserAccessSource(),
     getWeeklyUserActivity()
   ])
   loading.value = false
-}
-
-const handleProjectClick = (message: string) => {
-  window.open(`https://${message}`, '_blank')
 }
 
 const handleShortcutClick = (url: string) => {

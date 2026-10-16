@@ -1,8 +1,5 @@
 <template>
-  <doc-alert
-    title="【PMS】项目中心、工作台与项目管理"
-    url="https://doc.iocoder.cn/pms/pm/project/"
-  />
+  
 
   <ContentWrap>
     <el-table v-loading="loading" :data="projectList" :show-overflow-tooltip="true">

@@ -100,6 +100,31 @@ public class DeviceApiImpl implements DeviceApi {
     }
 
     /**
+     * 设备能力集：设备编码 -> 类型 -> 启用动作编码列表。任务队列按能力路由用。
+     * 设备不存在、没有动作、或动作全停用时返回空列表，不抛业务异常。
+     */
+    @Override
+    public List<String> listActionCodesByDevice(String deviceCode) {
+        if (StrUtil.isBlank(deviceCode)) {
+            return List.of();
+        }
+        DeviceInfoDO device = deviceInfoMapper.selectByDeviceCode(deviceCode.trim());
+        if (device == null) {
+            return List.of();
+        }
+        List<DeviceActionDO> actions = deviceActionMapper.selectListByTypeCode(device.getDeviceTypeCode());
+        if (actions == null || actions.isEmpty()) {
+            return List.of();
+        }
+        return actions.stream()
+                .filter(action -> action.getStatus() == null || action.getStatus() == 0)
+                .map(DeviceActionDO::getActionCode)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
+    }
+
+    /**
      * 把台账行收成跨模块摘要，不带接入地址和登录信息。
      */
     private DeviceSummaryDTO toSummary(DeviceInfoDO device) {

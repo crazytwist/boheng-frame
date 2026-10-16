@@ -11,7 +11,7 @@
       <el-table-column label="单位" align="center" prop="unitMeasureName" width="80" />
       <el-table-column label="装箱数量" align="center" prop="quantity" width="100" />
       <el-table-column label="生产工单编号" align="center" prop="workOrderCode" min-width="140" />
-      <!-- DONE @芋艿：批次号？到底怎么设置好？（AI 未修复原因：需产品经理确认批次号的设置方式） -->
+      <!-- DONE @伯珩：批次号？到底怎么设置好？（AI 未修复原因：需产品经理确认批次号的设置方式） -->
       <el-table-column label="批次号" align="center" prop="batchCode" min-width="120" />
       <el-table-column
         label="有效期"
@@ -70,7 +70,7 @@
           </el-form-item>
         </el-col>
       </el-row>
-      <!-- DONE @芋艿：批次号？到底怎么设置好？（AI 未修复原因：需产品经理确认批次号的设置方式） -->
+      <!-- DONE @伯珩：批次号？到底怎么设置好？（AI 未修复原因：需产品经理确认批次号的设置方式） -->
       <el-row>
         <el-col :span="8">
           <el-form-item label="有效期" prop="expireDate">
@@ -132,7 +132,7 @@ const queryParams = reactive({
 const getList = async () => {
   loading.value = true
   try {
-    // TODO @芋艿：需确认“父箱详情 -> 装箱清单”是否要和【对齐】一样，自动汇总当前箱及其子孙箱明细；
+    // TODO @伯珩：需确认“父箱详情 -> 装箱清单”是否要和【对齐】一样，自动汇总当前箱及其子孙箱明细；
     // 目前前端仅传当前 packageId，最终查询范围取决于后端 package-line/page 的实现。
     queryParams.packageId = props.packageId
     const data = await WmPackageLineApi.getPackageLinePage(queryParams)

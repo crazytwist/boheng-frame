@@ -83,4 +83,12 @@ public interface SlotService {
      * @return 生成的槽位数量
      */
     Integer generateSlotsByZone(String zoneCode);
+
+    /**
+     * 更新槽位的「适用物料」字段（仅更新该字段，不影响其他字段；支持批量）
+     *
+     * @param ids               槽位编号列表
+     * @param suitableMaterials 适用物料（JSON 数组字符串，可为空表示清空）
+     */
+    void updateSlotSuitableMaterials(List<Long> ids, String suitableMaterials);
 }

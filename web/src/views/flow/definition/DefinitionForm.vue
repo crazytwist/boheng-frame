@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { FlowDefinitionApi } from '@/api/flow/definition'
+import JsonKeyValueEditor from '@/components/flow/JsonKeyValueEditor.vue'
 
 defineOptions({ name: 'FlowDefinitionForm' })
 
@@ -15,7 +16,8 @@ const formData = ref({
   id: undefined as number | undefined,
   pipelineKey: '',
   name: '',
-  remark: ''
+  remark: '',
+  inputParams: ''
 })
 
 const formRules = reactive({
@@ -31,7 +33,7 @@ const open = async (type: string, id?: number) => {
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
   formType.value = type
-  formData.value = { id: undefined, pipelineKey: '', name: '', remark: '' }
+  formData.value = { id: undefined, pipelineKey: '', name: '', remark: '', inputParams: '' }
   formRef.value?.clearValidate()
   if (!id) return
   formLoading.value = true
@@ -41,7 +43,8 @@ const open = async (type: string, id?: number) => {
       id: data.id,
       pipelineKey: data.pipelineKey || '',
       name: data.name || '',
-      remark: data.remark || ''
+      remark: data.remark || '',
+      inputParams: data.inputParams || ''
     }
   } finally {
     formLoading.value = false
@@ -57,14 +60,16 @@ const submitForm = async () => {
       await FlowDefinitionApi.create({
         pipelineKey: formData.value.pipelineKey.trim(),
         name: formData.value.name.trim(),
-        remark: formData.value.remark
+        remark: formData.value.remark,
+        inputParams: formData.value.inputParams?.trim() || undefined
       })
       message.success(t('common.createSuccess'))
     } else {
       await FlowDefinitionApi.save({
         id: formData.value.id!,
         name: formData.value.name.trim(),
-        remark: formData.value.remark
+        remark: formData.value.remark,
+        inputParams: formData.value.inputParams?.trim() || undefined
       })
       message.success(t('common.updateSuccess'))
     }
@@ -80,7 +85,7 @@ const emit = defineEmits<{ success: [] }>()
 </script>
 
 <template>
-  <Dialog v-model="dialogVisible" :title="dialogTitle" width="560px">
+  <Dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
     <el-form ref="formRef" v-loading="formLoading" :model="formData" :rules="formRules" label-width="100px">
       <el-form-item label="流程编码" prop="pipelineKey">
         <el-input v-model="formData.pipelineKey" maxlength="64" placeholder="小写字母开头，如 plate_read" :disabled="formType !== 'create'" />
@@ -89,7 +94,11 @@ const emit = defineEmits<{ success: [] }>()
         <el-input v-model="formData.name" maxlength="128" placeholder="请输入流程名称，如 离心后读板" />
       </el-form-item>
       <el-form-item label="说明">
-        <el-input v-model="formData.remark" type="textarea" :rows="3" maxlength="512" placeholder="选填" />
+        <el-input v-model="formData.remark" type="textarea" :rows="2" maxlength="512" placeholder="选填" />
+      </el-form-item>
+      <el-form-item label="入参声明">
+        <JsonKeyValueEditor v-model="formData.inputParams" />
+        <div class="field-tip">声明启动这条流程要传的参数（值即默认值）。启动时未填会用它兜底，参数映射里的「入参」来源也按它给字段候选。</div>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -98,3 +107,13 @@ const emit = defineEmits<{ success: [] }>()
     </template>
   </Dialog>
 </template>
+
+<style lang="scss" scoped>
+.field-tip {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #909399;
+}
+</style>
+

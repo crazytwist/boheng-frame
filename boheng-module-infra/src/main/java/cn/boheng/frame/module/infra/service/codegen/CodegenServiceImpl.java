@@ -42,7 +42,7 @@ import static cn.boheng.frame.module.infra.enums.ErrorCodeConstants.*;
 /**
  * 代码生成 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 public class CodegenServiceImpl implements CodegenService {

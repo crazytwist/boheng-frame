@@ -5,7 +5,7 @@ import lombok.Data;
 /**
  * 微信小程序的手机信息 Response DTO
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Data
 public class SocialWxPhoneNumberInfoRespDTO {

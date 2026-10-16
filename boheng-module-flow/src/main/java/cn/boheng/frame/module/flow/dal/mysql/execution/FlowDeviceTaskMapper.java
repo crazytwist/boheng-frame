@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 设备异步任务队列表。
@@ -48,13 +49,16 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
     }
 
     /**
-     * 取一条待认领任务。deviceCode / actionCode 空则不筛（机器端可按设备、按任务类型、或组合拉）
+     * 取一条待认领任务。按「设备能力集」匹配：
+     * 不限设备（device_code 空）或指定给本设备，且任务类型在本设备能力集内。
+     * actionCodes 由服务层反查设备能力集后传入（可能收窄成单元素）。
      */
-    default FlowDeviceTaskDO selectClaimable(String deviceCode, String actionCode) {
+    default FlowDeviceTaskDO selectClaimable(String deviceCode, List<String> actionCodes) {
         return selectOne(new LambdaQueryWrapperX<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getStatus, "PENDING")
-                .eqIfPresent(FlowDeviceTaskDO::getDeviceCode, deviceCode)
-                .eqIfPresent(FlowDeviceTaskDO::getActionCode, actionCode)
+                .and(w -> w.isNull(FlowDeviceTaskDO::getDeviceCode)
+                        .or().eq(FlowDeviceTaskDO::getDeviceCode, deviceCode))
+                .in(FlowDeviceTaskDO::getActionCode, actionCodes)
                 .orderByAsc(FlowDeviceTaskDO::getId)
                 .last("LIMIT 1"));
     }
@@ -85,6 +89,19 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
         return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getId, id)
                 .eq(FlowDeviceTaskDO::getStatus, "CLAIMED"));
+    }
+
+    /**
+     * 超时收口：只允许从 PENDING / CLAIMED 进入 FAILED。返回 1 表示抢到，0 表示已被回报。
+     */
+    default int timeoutIfOpen(Long id, Long executeMs) {
+        FlowDeviceTaskDO patch = new FlowDeviceTaskDO();
+        patch.setStatus("FAILED");
+        patch.setErrorMessage("设备任务超时");
+        patch.setExecuteMs(executeMs);
+        return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
+                .eq(FlowDeviceTaskDO::getId, id)
+                .in(FlowDeviceTaskDO::getStatus, "PENDING", "CLAIMED"));
     }
 
 }

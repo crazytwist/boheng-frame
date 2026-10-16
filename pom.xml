@@ -25,6 +25,7 @@
 <!--        <module>boheng-module-erp</module>-->
 <!--        <module>boheng-module-iot</module>-->
 <!--        <module>boheng-module-mes</module>-->
+        <module>boheng-module-wms-api</module>
         <module>boheng-module-wms</module>
         <module>boheng-module-device-api</module>
         <module>boheng-module-device</module>
@@ -37,7 +38,7 @@
     </modules>
 
     <name>${project.artifactId}</name>
-    <description>芋道项目基础脚手架</description>
+    <description>伯珩项目基础脚手架</description>
     <url>https://github.com/YunaiV/ruoyi-vue-pro</url>
 
     <properties>

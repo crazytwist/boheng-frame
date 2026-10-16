@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
 import cn.boheng.frame.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceBatchPutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeByContainerReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
@@ -14,10 +15,15 @@ import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceS
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceTakeOutReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceTransferReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MovementTraceBaseReqVO;
+import cn.boheng.frame.module.wms.dal.dataobject.container.ContainerTypeDO;
+import cn.boheng.frame.module.wms.dal.dataobject.content.ContentDefDO;
 import cn.boheng.frame.module.wms.dal.dataobject.instance.MaterialInstanceDO;
 import cn.boheng.frame.module.wms.dal.dataobject.movement.MaterialMovementDO;
 import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
+import cn.boheng.frame.module.wms.dal.mysql.container.ContainerTypeMapper;
+import cn.boheng.frame.module.wms.dal.mysql.content.ContentDefMapper;
 import cn.boheng.frame.module.wms.dal.mysql.instance.MaterialInstanceMapper;
+import cn.boheng.frame.module.wms.dal.mysql.sample.SampleInfoMapper;
 import cn.boheng.frame.module.wms.dal.mysql.slot.SlotMapper;
 import cn.boheng.frame.module.wms.service.movement.MaterialMovementService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -99,7 +105,16 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
     private SlotMapper slotMapper;
 
     @Resource
+    private SampleInfoMapper sampleInfoMapper;
+
+    @Resource
     private MaterialMovementService materialMovementService;
+
+    @Resource
+    private ContentDefMapper contentDefMapper;
+
+    @Resource
+    private ContainerTypeMapper containerTypeMapper;
 
 
     // ==================== 创建 / 更新 / 删除 ====================
@@ -146,6 +161,8 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
     private Long doCreateMaterialInstance(MaterialInstanceSaveReqVO createReqVO, String operationId, Long movementId) {
         // 校验实例编码的唯一性
         validateInstanceCodeUnique(createReqVO.getId(), createReqVO.getInstanceCode());
+        // 样本类实例：校验关联样本存在
+        validateSampleIdIfPresent(createReqVO.getSampleId());
 
         // 插入
         MaterialInstanceDO materialInstance = BeanUtils.toBean(createReqVO, MaterialInstanceDO.class);
@@ -203,6 +220,8 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         MaterialInstanceDO oldInstance = validateMaterialInstanceExists(updateReqVO.getId());
         // 校验实例编码的唯一性
         validateInstanceCodeUnique(updateReqVO.getId(), updateReqVO.getInstanceCode());
+        // 样本类实例：校验关联样本存在
+        validateSampleIdIfPresent(updateReqVO.getSampleId());
 
         // 落位不允许走更新接口：否则会绕过物料流水，导致「位置变了但没记录」。
         // 传了与原值相同的槽位视为前端回填整个对象，静默忽略即可；传了不同的则明确报错。
@@ -260,6 +279,199 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public List<Long> batchPutIn(MaterialInstanceBatchPutInReqVO reqVO) {
+        // 1. 槽位列表非空
+        if (CollUtil.isEmpty(reqVO.getSlotIds())) {
+            throw exception(BATCH_PUT_IN_SLOTS_EMPTY);
+        }
+        // 2. 解析物料 → 确定容器类型 / 内容物定义信息
+        String kind = reqVO.getMaterialKind();
+        String materialCode;
+        String materialName;
+        Long contentDefId = null;
+        String contentDefCode = null;
+        String contentType = null;
+        Long containerTypeId = reqVO.getContainerTypeId();
+        String containerTypeCode = reqVO.getContainerTypeCode();
+        // 容器类型设置的最大数量（枪头盒/吸头等），非空时批量上架默认当前数量取该值
+        Integer maxCount = null;
+        // 容器最大容积：试剂（CONTENT）上架时默认当前体积取该值
+        BigDecimal defaultVolUl = null;
+        // 当前物料的容器类型（CONTENT 为装载容器，CONTAINER 为容器本身），用于 RACK 子集判断
+        ContainerTypeDO containerType = null;
+
+        if ("CONTENT".equalsIgnoreCase(kind)) {
+            ContentDefDO cd = contentDefMapper.selectById(reqVO.getMaterialId());
+            if (cd == null) {
+                throw exception(CONTENT_DEF_NOT_EXISTS);
+            }
+            materialCode = cd.getContentCode();
+            materialName = cd.getContentName();
+            contentDefId = cd.getId();
+            contentDefCode = cd.getContentCode();
+            contentType = cd.getContentType();
+            // 试剂类物料必须指定装载容器
+            if (containerTypeId == null) {
+                throw exception(BATCH_PUT_IN_CONTAINER_REQUIRED);
+            }
+            ContainerTypeDO ct = containerTypeMapper.selectById(containerTypeId);
+            if (ct == null) {
+                throw exception(CONTAINER_TYPE_NOT_EXISTS);
+            }
+            containerType = ct;
+            containerTypeCode = ct.getTypeCode();
+            maxCount = ct.getMaxCount();
+            defaultVolUl = ct.getMaxVolUl();
+        } else if ("CONTAINER".equalsIgnoreCase(kind)) {
+            ContainerTypeDO ct = containerTypeMapper.selectById(reqVO.getMaterialId());
+            if (ct == null) {
+                throw exception(CONTAINER_TYPE_NOT_EXISTS);
+            }
+            materialCode = ct.getTypeCode();
+            materialName = ct.getTypeName();
+            containerTypeId = ct.getId();
+            containerTypeCode = ct.getTypeCode();
+            containerType = ct;
+            maxCount = ct.getMaxCount();
+            // 空容器：内容物留空
+        } else {
+            throw exception(BATCH_PUT_IN_MATERIAL_KIND_INVALID, kind);
+        }
+
+        String status = StrUtil.blankToDefault(reqVO.getInstanceStatus(), STATUS_AVAILABLE);
+
+        // 3. 托盘架（RACK）自动生成子集：载体 + 子单元类型 + 位数都齐备时才展开，否则只生成 1 个顶层实例
+        ContainerTypeDO childType = resolveChildContainerType(containerType);
+        int perSlotCount = childType != null && containerType.getWellCount() != null
+                ? 1 + containerType.getWellCount() : 1;
+        if ((long) reqVO.getSlotIds().size() * perSlotCount > MAX_BATCH_SIZE) {
+            throw exception(MATERIAL_INSTANCE_BATCH_SIZE_LIMIT, MAX_BATCH_SIZE);
+        }
+
+        // 4. 每个槽位各组装 1 个顶层实例（RACK 时再展开 wellCount 个子实例），共享 operationId 归组流水
+        String operationId = IdUtil.fastSimpleUUID();
+        List<Long> ids = new ArrayList<>(reqVO.getSlotIds().size() * perSlotCount);
+        for (Long slotId : reqVO.getSlotIds()) {
+            SlotDO slot = slotMapper.selectById(slotId);
+            if (slot == null) {
+                throw exception(SLOT_NOT_EXISTS);
+            }
+            // 顶层实例（一槽一实例）
+            MaterialInstanceSaveReqVO top = new MaterialInstanceSaveReqVO();
+            top.setInstanceCode(buildInstanceCode(materialCode));
+            top.setInstanceName(materialName);
+            top.setContainerTypeId(containerTypeId);
+            top.setContainerTypeCode(containerTypeCode);
+            top.setContentDefId(contentDefId);
+            top.setContentDefCode(contentDefCode);
+            top.setContentType(contentType);
+            top.setRootSlotId(slotId);
+            top.setInstanceStatus(status);
+            // 试剂上架：当前体积默认取容器最大容积；否则用请求传入值
+            top.setCurrentVolUl(defaultVolUl != null ? defaultVolUl : reqVO.getCurrentVolUl());
+            // 容器类型设置了最大数量时，实例当前数量默认取最大值（否则用请求传入值，再否则为空=单件）
+            top.setCurrentCount(maxCount != null ? maxCount : reqVO.getCurrentCount());
+            top.setBarcode(reqVO.getBarcode());
+            top.setDescription(reqVO.getDescription());
+            Long topId = doCreateMaterialInstance(top, operationId, null);
+            ids.add(topId);
+
+            // 子实例：挂在顶层之下，占位到 A1..C2 等孔位，不占槽位、不单独记流水
+            if (childType != null) {
+                for (String pos : buildPositionCodes(containerType)) {
+                    MaterialInstanceSaveReqVO child = new MaterialInstanceSaveReqVO();
+                    child.setInstanceCode(buildInstanceCode(childType.getTypeCode()));
+                    child.setInstanceName(childType.getTypeName());
+                    child.setContainerTypeId(childType.getId());
+                    child.setContainerTypeCode(childType.getTypeCode());
+                    child.setContentType("EMPTY"); // 空容器
+                    child.setParentInstanceId(topId);
+                    child.setParentPositionCode(pos);
+                    child.setInstanceStatus(status);
+                    child.setDescription(reqVO.getDescription());
+                    ids.add(doCreateMaterialInstance(child, operationId, null));
+                }
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * 反查托盘的子单元容器类型：仅当载体的物理形态是 RACK（托盘架）且配置了 childTypeCode 时才返回，
+     * 否则返回 null（表示不自动生成子集）。
+     */
+    private ContainerTypeDO resolveChildContainerType(ContainerTypeDO carrier) {
+        if (carrier == null || !"RACK".equalsIgnoreCase(carrier.getCategory())) {
+            return null;
+        }
+        if (StrUtil.isBlank(carrier.getChildTypeCode())) {
+            return null;
+        }
+        return containerTypeMapper.selectOne(ContainerTypeDO::getTypeCode, carrier.getChildTypeCode());
+    }
+
+    /**
+     * 生成托盘的子孔位位置码列表。
+     * ROW_COL 按「行字母 + 列数字」展开（wellRows 行 × wellCols 列，行优先），
+     * SEQ / 其他按 1..wellCount 顺序号。
+     */
+    private List<String> buildPositionCodes(ContainerTypeDO carrier) {
+        List<String> codes = new ArrayList<>();
+        int total = carrier.getWellCount() == null ? 0 : carrier.getWellCount();
+        if (total <= 0) {
+            return codes;
+        }
+        if ("SEQ".equalsIgnoreCase(carrier.getPositionNaming())) {
+            for (int i = 1; i <= total; i++) {
+                codes.add(String.valueOf(i));
+            }
+            return codes;
+        }
+        // 默认 ROW_COL：行字母（A、B、…）+ 列数字（1、2、…）
+        int rows = carrier.getWellRows() == null ? 1 : carrier.getWellRows();
+        int cols = carrier.getWellCols() == null ? 1 : carrier.getWellCols();
+        if (rows * cols < total) {
+            // 行列乘积不足以表达总位数时退化为顺序号，避免丢位
+            for (int i = 1; i <= total; i++) {
+                codes.add(String.valueOf(i));
+            }
+            return codes;
+        }
+        for (int r = 0; r < rows; r++) {
+            for (int c = 1; c <= cols; c++) {
+                codes.add(toExcelColumn(r) + c);
+            }
+        }
+        return codes;
+    }
+
+    /**
+     * 0 基索引 → Excel 列字母（0→A、1→B、…、25→Z、26→AA）
+     */
+    private String toExcelColumn(int index) {
+        StringBuilder sb = new StringBuilder();
+        int n = index + 1;
+        while (n > 0) {
+            n--;
+            sb.append((char) ('A' + n % 26));
+            n /= 26;
+        }
+        return sb.reverse().toString();
+    }
+
+    /**
+     * 生成实例编码：物料编码 + 雪花后缀，保证唯一且不超过 64 字符
+     */
+    private String buildInstanceCode(String materialCode) {
+        String prefix = StrUtil.isBlank(materialCode) ? "INST" : materialCode;
+        if (prefix.length() > 40) {
+            prefix = prefix.substring(0, 40);
+        }
+        return prefix + "_" + IdUtil.getSnowflakeNextIdStr();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long putIn(MaterialInstancePutInReqVO reqVO) {
         MaterialInstanceDO instance = validateMaterialInstanceExists(reqVO.getInstanceId());
         // 仅顶层实例可落位
@@ -287,6 +499,29 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         // 3) 重算槽位占用
         refreshSlotOccupancy(slot.getId());
         return movementId;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int batchTakeOut(List<Long> slotIds) {
+        if (CollUtil.isEmpty(slotIds)) {
+            return 0;
+        }
+        int count = 0;
+        for (Long slotId : slotIds) {
+            // 找该槽位上的顶层实例（一槽一实例，selectList 取首条以防脏数据多条）
+            List<MaterialInstanceDO> insts = materialInstanceMapper.selectList(
+                    new LambdaQueryWrapperX<MaterialInstanceDO>()
+                            .eq(MaterialInstanceDO::getRootSlotId, slotId)
+                            .isNull(MaterialInstanceDO::getParentInstanceId));
+            if (CollUtil.isEmpty(insts)) {
+                continue; // 空槽位跳过
+            }
+            // 复用删除逻辑：校验无子实例 + 删除 + 释放槽位占用
+            deleteMaterialInstance(insts.get(0).getId());
+            count++;
+        }
+        return count;
     }
 
     @Override
@@ -372,11 +607,14 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<Long> consumeByContainer(MaterialInstanceConsumeByContainerReqVO reqVO) {
-        MaterialInstanceDO container = validateMaterialInstanceExists(reqVO.getRootInstanceId());
-        // 取全部子实例后内存里挑：单容器子实例量级很小（≤96），一次查完比多次 count 更省
-        List<MaterialInstanceDO> children = materialInstanceMapper.selectList(
-                new LambdaQueryWrapperX<MaterialInstanceDO>()
-                        .eq(MaterialInstanceDO::getParentInstanceId, reqVO.getRootInstanceId()));
+        // 先锁容器行，两笔按容器消耗会在这里排开；锁到之后再读子实例，避免用加锁前的快照挑选
+        MaterialInstanceDO container = materialInstanceMapper.selectOneForUpdate(
+                MaterialInstanceDO::getId, reqVO.getRootInstanceId());
+        if (container == null) {
+            throw exception(MATERIAL_INSTANCE_NOT_EXISTS);
+        }
+        // 子实例按主键顺序加锁。位置序仍在内存里做（A10 不能排在 A2 前面），但用的是加锁后的行
+        List<MaterialInstanceDO> children = materialInstanceMapper.selectChildrenForUpdate(reqVO.getRootInstanceId());
         if (CollUtil.isEmpty(children)) {
             throw exception(INSTANCE_CONSUME_NO_CHILD, container.getInstanceCode());
         }
@@ -449,7 +687,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         String beforeStatus = instance.getInstanceStatus();
         String finalStatus = StrUtil.blankToDefault(afterStatus, deriveStatusAfterConsume(byVolume, afterQty, afterVol));
 
-        // 4. 写流水（幂等键按明细序号派生，保证一次请求内多条流水各有唯一键）
+        // 组装流水，但要等库存条件更新成功后再落库（幂等键按明细序号派生）
         MaterialMovementDO movement = buildMovement(MT_CONSUME, instance, null, null);
         applyTrace(movement, trace, operationId, index);
         movement.setRemark(remark);
@@ -464,19 +702,31 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             movement.setChangeQty(afterQty - beforeQty);
             movement.setAfterQty(afterQty);
         }
-        Long movementId = materialMovementService.recordMovement(movement);
-
-        // 5. 回写实例：数量 / 体积 / 状态
+        // 4. 先改库存。条件里带上读到的数量 / 体积 / 状态，抢不到就整笔回滚，不能先写流水
         LambdaUpdateWrapper<MaterialInstanceDO> update = new LambdaUpdateWrapper<MaterialInstanceDO>()
                 .eq(MaterialInstanceDO::getId, instance.getId())
+                .eq(MaterialInstanceDO::getInstanceStatus, beforeStatus)
                 .set(MaterialInstanceDO::getInstanceStatus, finalStatus);
         if (byVolume) {
+            if (beforeVol == null) {
+                update.isNull(MaterialInstanceDO::getCurrentVolUl);
+            } else {
+                update.eq(MaterialInstanceDO::getCurrentVolUl, beforeVol);
+            }
             update.set(MaterialInstanceDO::getCurrentVolUl, afterVol);
+        } else if (instance.getCurrentCount() == null) {
+            update.isNull(MaterialInstanceDO::getCurrentCount);
+            update.set(MaterialInstanceDO::getCurrentCount, afterQty);
         } else {
+            update.eq(MaterialInstanceDO::getCurrentCount, beforeQty);
             update.set(MaterialInstanceDO::getCurrentCount, afterQty);
         }
-        materialInstanceMapper.update(null, update);
-        return movementId;
+        if (materialInstanceMapper.update(null, update) != 1) {
+            throw exception(INSTANCE_CONSUME_CONFLICT, instance.getInstanceCode());
+        }
+
+        // 5. 库存已经改成功，再记流水。流水失败会把上面的更新一起回滚
+        return materialMovementService.recordMovement(movement);
     }
 
     /**
@@ -608,6 +858,11 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
     }
 
     @Override
+    public List<MaterialInstanceDO> getMaterialInstanceListBySampleId(String sampleId) {
+        return materialInstanceMapper.selectListBySampleId(sampleId);
+    }
+
+    @Override
     public List<MaterialInstanceDO> getUnplacedList() {
         // 未落位的顶层实例（只有顶层才能上架）
         return materialInstanceMapper.selectList(new LambdaQueryWrapperX<MaterialInstanceDO>()
@@ -724,6 +979,19 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         // 如果 id 为空，说明不用比较是否为相同 id 的记录
         if (id == null || !materialInstance.getId().equals(id)) {
             throw exception(MATERIAL_INSTANCE_CODE_DUPLICATE, instanceCode);
+        }
+    }
+
+    /**
+     * 校验样本业务编号存在（实例绑定样本前，确保样本已登记）。
+     * sampleId 为空表示试剂 / 空容器，不校验。
+     */
+    private void validateSampleIdIfPresent(String sampleId) {
+        if (StrUtil.isBlank(sampleId)) {
+            return;
+        }
+        if (sampleInfoMapper.selectBySampleId(sampleId) == null) {
+            throw exception(SAMPLE_NOT_EXISTS);
         }
     }
 }

@@ -12,8 +12,7 @@
         '&pointy=' +
         locationX +
         '&name=' +
-        label +
-        '&ref=yudao'
+        label
       "
     >
       <el-col>

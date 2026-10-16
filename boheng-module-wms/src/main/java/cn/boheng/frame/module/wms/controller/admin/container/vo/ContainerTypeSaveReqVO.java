@@ -83,6 +83,9 @@ public class ContainerTypeSaveReqVO {
     @Schema(description = "复用次数上限（为空不限）", example = "100")
     private Integer lifeCycles;
 
+    @Schema(description = "最大数量（如枪头盒 96；批量上架时实例当前数量默认取该值，为空不限定）", example = "96")
+    private Integer maxCount;
+
     @Schema(description = "状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "0")
     @NotNull(message = "状态不能为空")
     @InEnum(value = CommonStatusEnum.class, message = "修改状态必须是 {value}")

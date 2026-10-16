@@ -53,5 +53,16 @@ public interface ErrorCodeConstants {
     ErrorCode INSTANCE_CONSUME_NO_CHILD = new ErrorCode(1_003_005_006, "容器【{}】没有子实例，无法按容器消耗");
     ErrorCode INSTANCE_CONSUME_STATUS_ILLEGAL = new ErrorCode(1_003_005_007, "实例【{}】当前状态为【{}】，不允许消耗");
     ErrorCode MOVEMENT_IDEMPOTENT_DUPLICATE = new ErrorCode(1_003_005_008, "重复的操作请求（幂等键【{}】已处理过）");
+    ErrorCode INSTANCE_CONSUME_CONFLICT = new ErrorCode(1_003_005_009, "实例【{}】已被其他请求消耗，请刷新后重试");
+    ErrorCode BATCH_PUT_IN_SLOTS_EMPTY = new ErrorCode(1_003_005_010, "批量铺货的目标槽位列表不能为空");
+    ErrorCode BATCH_PUT_IN_MATERIAL_KIND_INVALID = new ErrorCode(1_003_005_011, "物料类型【{}】非法，仅支持 CONTENT / CONTAINER");
+    ErrorCode BATCH_PUT_IN_CONTAINER_REQUIRED = new ErrorCode(1_003_005_012, "铺货试剂类物料必须指定容器类型");
+
+    // ========== 样本 1-003-006-000 ==========
+    ErrorCode SAMPLE_NOT_EXISTS = new ErrorCode(1_003_006_000, "样本不存在");
+    ErrorCode SAMPLE_ID_DUPLICATE = new ErrorCode(1_003_006_001, "已经存在样本编号为【{}】的样本");
+    ErrorCode SAMPLE_HAS_INSTANCES = new ErrorCode(1_003_006_002, "样本【{}】已生成 {} 个实例，不允许删除");
+    ErrorCode SAMPLE_DERIVE_TYPE_INVALID = new ErrorCode(1_003_006_003, "衍生样本必须指定衍生类型（SPLIT/ALIQUOT/MERGE/ADD_REAGENT）");
+    ErrorCode SAMPLE_STATUS_TRANSITION_INVALID = new ErrorCode(1_003_006_004, "样本【{}】不能从【{}】流转到【{}】");
 
 }

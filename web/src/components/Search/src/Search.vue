@@ -100,7 +100,7 @@ const setVisible = () => {
 </script>
 
 <template>
-  <!-- update by 芋艿：class="-mb-15px" 用于降低和 ContentWrap 组件的底部距离，避免空隙过大 -->
+  <!-- update by 伯珩：class="-mb-15px" 用于降低和 ContentWrap 组件的底部距离，避免空隙过大 -->
   <Form
     :inline="inline"
     :is-col="isCol"
@@ -113,11 +113,11 @@ const setVisible = () => {
   >
     <template #action>
       <div v-if="layout === 'inline'">
-        <!-- update by 芋艿：去除搜索的 type="primary"，颜色变淡一点 -->
+        <!-- update by 伯珩：去除搜索的 type="primary"，颜色变淡一点 -->
         <el-button v-if="showSearch" @click="search">
           <Icon class="mr-5px" icon="ep:search" /> {{ t('common.query') }}
         </el-button>
-        <!-- update by 芋艿：将 icon="ep:refresh-right" 修改成 icon="ep:refresh"，和 ruoyi-vue 搜索保持一致  -->
+        <!-- update by 伯珩：将 icon="ep:refresh-right" 修改成 icon="ep:refresh"，和 ruoyi-vue 搜索保持一致  -->
         <el-button v-if="showReset" @click="reset">
           <Icon class="mr-5px" icon="ep:refresh" /> {{ t('common.reset') }}
         </el-button>
@@ -125,7 +125,7 @@ const setVisible = () => {
           {{ t(visible ? 'common.shrink' : 'common.expand') }}
           <Icon :icon="visible ? 'ep:arrow-up' : 'ep:arrow-down'" />
         </el-button>
-        <!-- add by 芋艿：补充在搜索后的按钮 -->
+        <!-- add by 伯珩：补充在搜索后的按钮 -->
         <slot name="actionMore"></slot>
       </div>
     </template>
@@ -146,7 +146,7 @@ const setVisible = () => {
         {{ t(visible ? 'common.shrink' : 'common.expand') }}
         <Icon :icon="visible ? 'ep:arrow-up' : 'ep:arrow-down'" />
       </el-button>
-      <!-- add by 芋艿：补充在搜索后的按钮 -->
+      <!-- add by 伯珩：补充在搜索后的按钮 -->
       <slot name="actionMore"></slot>
     </div>
   </template>

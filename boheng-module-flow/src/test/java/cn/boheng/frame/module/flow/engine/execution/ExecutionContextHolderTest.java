@@ -55,6 +55,44 @@ class ExecutionContextHolderTest {
     }
 
     /**
+     * 能力目录默认参数作为基底：节点未配映射时直接生效
+     */
+    @Test
+    void defaultParamsActsAsBaseWhenNoMapping() {
+        RuntimeNode node = node(List.of());
+        node.setDefaultParams("{\"Seconds\":\"1000\",\"Mode\":\"A\"}");
+        Map<String, Object> params = holder.resolveParams(node, env(Map.of(), Map.of()));
+        assertEquals("1000", params.get("Seconds"));
+        assertEquals("A", params.get("Mode"));
+    }
+
+    /**
+     * 节点映射同名覆盖默认参数，不同名保留
+     */
+    @Test
+    void nodeMappingOverridesDefaultParams() {
+        RuntimeNode node = node(List.of(
+                mapping("Seconds", FlowConstants.SOURCE_LITERAL, null, null, "1000")));
+        node.setDefaultParams("{\"Seconds\":\"500\",\"Mode\":\"A\"}");
+        Map<String, Object> params = holder.resolveParams(node, env(Map.of(), Map.of()));
+        assertEquals(1000L, params.get("Seconds"));
+        assertEquals("A", params.get("Mode"));
+    }
+
+    /**
+     * 默认参数 JSON 非法时忽略，不抛异常，映射照常
+     */
+    @Test
+    void invalidDefaultParamsIgnored() {
+        RuntimeNode node = node(List.of(
+                mapping("retry", FlowConstants.SOURCE_LITERAL, null, null, "3")));
+        node.setDefaultParams("not-json");
+        Map<String, Object> params = holder.resolveParams(node, env(Map.of(), Map.of()));
+        assertEquals(3L, params.get("retry"));
+        assertEquals(1, params.size());
+    }
+
+    /**
      * 路径取值：点分下钻 + 数组下标 + 越界/缺失安全返回 null
      */
     @Test

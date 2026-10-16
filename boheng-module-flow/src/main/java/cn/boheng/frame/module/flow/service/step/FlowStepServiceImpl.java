@@ -194,7 +194,8 @@ public class FlowStepServiceImpl implements FlowStepService {
                 .stepType(reqVO.getStepType().trim())
                 .typeConfig(StrUtil.trimToNull(reqVO.getTypeConfig()))
                 .defaultParams(StrUtil.trimToNull(reqVO.getDefaultParams()))
-                .timeoutMs(reqVO.getTimeoutSec() * 1000L)
+                .outputSchema(StrUtil.trimToNull(reqVO.getOutputSchema()))
+                .timeoutMs(reqVO.getTimeoutSec() < 0 ? FlowConstants.NO_TIMEOUT_MS : reqVO.getTimeoutSec() * 1000L)
                 .maxAttempts(reqVO.getMaxAttempts())
                 .remark(StrUtil.trimToNull(reqVO.getRemark()))
                 .status(reqVO.getStatus())
@@ -212,7 +213,8 @@ public class FlowStepServiceImpl implements FlowStepService {
         resp.setStepType(row.getStepType());
         resp.setTypeConfig(row.getTypeConfig());
         resp.setDefaultParams(row.getDefaultParams());
-        resp.setTimeoutSec(row.getTimeoutMs() == null ? null : (int) (row.getTimeoutMs() / 1000));
+        resp.setOutputSchema(row.getOutputSchema());
+        resp.setTimeoutSec(FlowConstants.toTimeoutSec(row.getTimeoutMs()));
         resp.setMaxAttempts(row.getMaxAttempts());
         resp.setRemark(row.getRemark());
         resp.setStatus(row.getStatus());

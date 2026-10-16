@@ -39,7 +39,7 @@ import static cn.boheng.frame.framework.common.util.collection.CollectionUtils.c
 /**
  * OAuth2.0 Token Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 public class OAuth2TokenServiceImpl implements OAuth2TokenService {

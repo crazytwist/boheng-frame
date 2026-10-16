@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="FMS 手册（功能开启）" url="https://doc.iocoder.cn/fms/build/" />
+  
 
   <div class="flex flex-col gap-16px">
     <FmsHomeShortcuts />

@@ -78,7 +78,7 @@ import static java.util.Collections.singletonList;
 /**
  * 社交应用 Service 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 @Slf4j

@@ -11,7 +11,7 @@
 --      本 DDL 属实现侧 DAL，表前缀 device_（与 wms_ 同构）。
 --   2. 平台只认两种协议：HTTP + MQTT；其余协议经 Node-RED 收敛为这两种之一。
 --      connection_type 决定走哪条 Transport——★ 传输层由 device 模块自定义 SPI（DeviceTransport），
---      外部网关（芋道 iot-gateway 等）只作为「可选适配器模块」接入，主模块零依赖。
+--      外部网关（伯珩 iot-gateway 等）只作为「可选适配器模块」接入，主模块零依赖。
 --   3. 三种调用方式 = 同一个命令的两个正交维度（不是三个接口）:
 --        dispatch_mode（SYNC/ASYNC 下发方式）× result_mode（SYNC_RETURN/CALLBACK/POLL 回收方式）
 --      三态共用 device_command 一张表、一个状态机、一套幂等键、一套锁。

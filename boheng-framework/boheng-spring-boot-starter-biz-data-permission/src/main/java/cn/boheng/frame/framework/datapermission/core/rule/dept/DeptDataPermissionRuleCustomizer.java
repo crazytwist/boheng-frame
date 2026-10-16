@@ -3,7 +3,7 @@ package cn.boheng.frame.framework.datapermission.core.rule.dept;
 /**
  * {@link DeptDataPermissionRule} 的自定义配置接口
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @FunctionalInterface
 public interface DeptDataPermissionRuleCustomizer {

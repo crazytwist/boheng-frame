@@ -50,4 +50,13 @@ public class FlowRelationUpdateReqVO {
     @Valid
     private List<FlowMappingReqVO> mappings;
 
+    @Schema(description = "节点输出归一化映射：{输出字段: 上下文键}。空表清空")
+    private Map<String, String> outputMapping;
+
+    @Schema(description = "画布横坐标。拖动节点时回写")
+    private Integer x;
+
+    @Schema(description = "画布纵坐标。拖动节点时回写")
+    private Integer y;
+
 }

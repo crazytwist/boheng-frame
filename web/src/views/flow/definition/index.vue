@@ -26,6 +26,11 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
+      <template #empty>
+        <el-empty description="还没有流程定义">
+          <el-button type="primary" @click="openForm('create')" v-hasPermi="['flow:definition:create']">新建流程</el-button>
+        </el-empty>
+      </template>
       <el-table-column label="流程编码" align="center" prop="pipelineKey" min-width="140" :show-overflow-tooltip="true" />
       <el-table-column label="流程名称" align="center" prop="name" min-width="160" :show-overflow-tooltip="true" />
       <el-table-column label="版本" align="center" width="80">
@@ -40,6 +45,7 @@
       <el-table-column label="发布时间" align="center" prop="publishedAt" width="180" :formatter="dateFormatter" />
       <el-table-column label="操作" align="center" width="320" fixed="right">
         <template #default="scope">
+          <el-button v-hasPermi="['flow:definition:query']" link type="primary" @click="handleValidate(scope.row)">校验</el-button>
           <el-button v-hasPermi="['flow:definition:query']" link type="primary" @click="openDetail(scope.row.id)">详情</el-button>
           <el-button v-hasPermi="['flow:relation:query']" link type="primary" @click="openRelation(scope.row.id)">步骤</el-button>
           <el-button
@@ -96,6 +102,7 @@
 
   <DefinitionForm ref="formRef" @success="getList" />
   <DefinitionDetailDrawer ref="detailRef" />
+  <FlowIssuePanel ref="issueRef" />
 </template>
 
 <script lang="ts" setup>
@@ -103,6 +110,7 @@ import { FlowDefinitionApi, FlowDefinitionVO } from '@/api/flow/definition'
 import { dateFormatter } from '@/utils/formatTime'
 import DefinitionForm from './DefinitionForm.vue'
 import DefinitionDetailDrawer from './DefinitionDetailDrawer.vue'
+import FlowIssuePanel from '@/components/flow/FlowIssuePanel.vue'
 
 defineOptions({ name: 'FlowDefinition' })
 
@@ -157,6 +165,7 @@ const resetQuery = () => {
 
 const formRef = ref()
 const detailRef = ref()
+const issueRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
@@ -167,6 +176,20 @@ const openRelation = (id: number) => {
   router.push({ path: '/flow/relation', query: { definitionId: id } })
 }
 
+/** 不发布只校验。打开结构化问题清单，发现问题可一键去编排 */
+const handleValidate = async (row: FlowDefinitionVO) => {
+  const issues = await FlowDefinitionApi.validate(row.id!)
+  issueRef.value?.open(issues || [], {
+    title: `校验：${row.name} v${row.version}`,
+    emptyText: '所有检查通过，可以发布。',
+    onPick: (issue) => {
+      if (issue.nodeId) {
+        router.push({ path: '/flow/relation', query: { definitionId: row.id, focusNode: issue.nodeId } })
+      }
+    }
+  })
+}
+
 const handlePublish = async (row: FlowDefinitionVO) => {
   try {
     await message.confirm(`发布「${row.name}」v${row.version} 后不能再改。确定发布？`)
@@ -175,7 +198,15 @@ const handlePublish = async (row: FlowDefinitionVO) => {
   }
   const issues = await FlowDefinitionApi.validate(row.id!)
   if (issues?.length) {
-    message.warning(issues.map((item) => item.message).join('；'))
+    // 发布前的最后一次校验：问题清单 + 跳到编排定位
+    issueRef.value?.open(issues, {
+      title: `「${row.name}」v${row.version} 还有 ${issues.length} 个问题未处理`,
+      onPick: (issue) => {
+        if (issue.nodeId) {
+          router.push({ path: '/flow/relation', query: { definitionId: row.id, focusNode: issue.nodeId } })
+        }
+      }
+    })
     return
   }
   await FlowDefinitionApi.publish(row.id!)

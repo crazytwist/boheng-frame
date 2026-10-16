@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【PMS】文档与协作" url="https://doc.iocoder.cn/pms/kb/document/" />
+  
 
   <el-row :gutter="20">
     <!-- 左侧标签列表 -->

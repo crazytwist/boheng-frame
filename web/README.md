@@ -10,15 +10,10 @@
 ## 🐶 新手必读
 
 * nodejs > 16.18.0 && pnpm > 8.6.0 (强制使用pnpm)
-* 演示地址【Vue3 + element-plus】：<http://dashboard-vue3.yudao.iocoder.cn>
-* 演示地址【Vue3 + vben5.0(ant-design-vue)】：<http://dashboard-vben.yudao.iocoder.cn>
-* 演示地址【Vue2 + element-ui】：<http://dashboard.yudao.iocoder.cn>
-* 启动文档：<https://doc.iocoder.cn/quick-start/>
-* 视频教程：<https://doc.iocoder.cn/video/>
 
 ## 🐯 平台简介
 
-**芋道**，以开发者为中心，打造中国第一流的快速开发平台，全部开源，个人与企业可 100% 免费使用。
+**伯珩**，以开发者为中心，打造中国第一流的快速开发平台，全部开源，个人与企业可 100% 免费使用。
 
 * 采用 [vue-element-plus-admin](https://gitee.com/kailong110120130/vue-element-plus-admin) 实现
 * 改换 saas，自动引入等功能
@@ -69,13 +64,9 @@
 
 支持 Spring Boot、Spring Cloud 两种架构：
 
-① Spring Boot 单体架构：<https://doc.iocoder.cn>
 
-![架构图](/.image/common/ruoyi-vue-pro-architecture.png)
 
-② Spring Cloud 微服务架构：<https://cloud.iocoder.cn>
 
-![架构图](/.image/common/yudao-cloud-architecture.png)
 
 ## 内置功能
 
@@ -83,7 +74,6 @@
 
 系统内置多种多种业务功能，可以用于快速你的业务系统：
 
-![功能分层](/.image/common/ruoyi-vue-pro-biz.png)
 
 * 通用模块（必选）：系统功能、基础设施
 * 通用模块（可选）：工作流程、支付系统、数据报表、会员中心
@@ -216,7 +206,6 @@
 
 ### 商城系统
 
-演示地址：<https://doc.iocoder.cn/mall-preview/>
 
 ![功能图](/.image/common/mall-feature.png)
 
@@ -234,13 +223,11 @@
 
 ### ERP 系统
 
-演示地址：<https://doc.iocoder.cn/erp-preview/>
 
 ![功能图](/.image/common/erp-feature.png)
 
 ### WMS 系统
 
-演示地址：<https://doc.iocoder.cn/wms-preview/>
 
 ![功能图](/.image/common/wms-feature.png)
 
@@ -248,13 +235,11 @@
 
 ### CRM 系统
 
-演示地址：<https://doc.iocoder.cn/crm-preview/>
 
 ![功能图](/.image/common/crm-feature.png)
 
 ### MES 系统
 
-演示地址：<https://doc.iocoder.cn/mes-preview/>
 
 ![功能图](/.image/common/mes-feature.png)
 
@@ -262,7 +247,6 @@
 
 ### HRM 人力资源管理系统
 
-演示地址：<https://doc.iocoder.cn/hrm-preview/>
 
 ![功能图](/.image/common/hrm-feature.png)
 
@@ -270,7 +254,6 @@
 
 ### FMS 财务管理系统
 
-演示地址：<https://doc.iocoder.cn/fms-preview/>
 
 ![功能图](/.image/common/fms-feature.png)
 
@@ -278,7 +261,6 @@
 
 ### PMS 项目管理系统
 
-演示地址：<https://doc.iocoder.cn/pms-preview/>
 
 ![功能图](/.image/common/pms-feature.png)
 
@@ -286,7 +268,6 @@
 
 ### OA 协同办公
 
-演示地址：<https://doc.iocoder.cn/oa-preview/>
 
 ![功能图](/.image/common/oa-feature.png)
 
@@ -294,7 +275,6 @@
 
 ### AI 大模型
 
-演示地址：<https://doc.iocoder.cn/ai-preview/>
 
 ![功能图](/.image/common/ai-feature.png)
 
@@ -302,7 +282,6 @@
 
 ### IoT 物联网
 
-演示地址：<https://doc.iocoder.cn/iot/build>
 
 ![功能图](/.image/common/iot-feature.png)
 
@@ -310,9 +289,7 @@
 
 ### IM 即时通讯
 
-演示地址（Vue3 + Element Plus）：<http://dashboard-vue3.yudao.iocoder.cn>
 
-使用文档：<https://doc.iocoder.cn/im-preview/>
 
 
 ![功能图](/.image/common/im-feature.png)

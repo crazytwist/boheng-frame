@@ -23,7 +23,7 @@ import static cn.boheng.frame.framework.common.util.collection.CollectionUtils.c
 /**
  * Admin 用户 API 实现类
  *
- * @author 芋道源码
+ * @author 伯珩
  */
 @Service
 public class AdminUserApiImpl implements AdminUserApi {

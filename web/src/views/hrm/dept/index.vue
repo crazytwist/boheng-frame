@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【组织】工作台、组织架构" url="https://doc.iocoder.cn/hrm/organization/" />
+  
 
   <!-- 搜索工作栏 -->
   <ContentWrap>

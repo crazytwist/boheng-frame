@@ -35,7 +35,7 @@ export default defineComponent({
       default: () => []
     },
     // 是否需要栅格布局
-    // update by 芋艿：将 true 改成 false，因为项目更常用这种方式
+    // update by 伯珩：将 true 改成 false，因为项目更常用这种方式
     isCol: propTypes.bool.def(false),
     // 表单数据对象
     model: {
@@ -48,7 +48,7 @@ export default defineComponent({
     isCustom: propTypes.bool.def(false),
     // 表单label宽度
     labelWidth: propTypes.oneOfType([String, Number]).def('auto'),
-    // 是否 loading 数据中 add by 芋艿
+    // 是否 loading 数据中 add by 伯珩
     vLoading: propTypes.bool.def(false)
   },
   emits: ['register'],

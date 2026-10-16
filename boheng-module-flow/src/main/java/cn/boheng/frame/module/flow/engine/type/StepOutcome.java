@@ -93,7 +93,15 @@ public final class StepOutcome {
      * 路由节点选出出口
      */
     public static StepOutcome branch(String branchKey) {
-        return new StepOutcome(Kind.BRANCH, null, null, null, branchKey, null);
+        return branch(branchKey, null);
+    }
+
+    /**
+     * 路由 / 校验节点选出出口，并附带产出 JSON（如校验不通过的原因）。
+     * 产出会写进上下文的 NODE 命名空间，供该出口下游读取。
+     */
+    public static StepOutcome branch(String branchKey, String outputJson) {
+        return new StepOutcome(Kind.BRANCH, outputJson, null, null, branchKey, null);
     }
 
     public Kind getKind() {

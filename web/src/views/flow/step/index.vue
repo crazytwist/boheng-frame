@@ -32,6 +32,11 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
+      <template #empty>
+        <el-empty description="还没有能力步骤">
+          <el-button type="primary" @click="openForm('create')" v-hasPermi="['flow:step:create']">新建能力</el-button>
+        </el-empty>
+      </template>
       <el-table-column label="步骤编码" align="center" prop="stepKey" min-width="120" :show-overflow-tooltip="true" />
       <el-table-column label="步骤名称" align="center" prop="name" min-width="140" :show-overflow-tooltip="true" />
       <el-table-column label="步骤类型" align="center" min-width="110">
@@ -42,7 +47,9 @@
       <el-table-column label="类型配置" align="center" prop="typeConfig" min-width="200" :show-overflow-tooltip="true">
         <template #default="scope">{{ scope.row.typeConfig || '—' }}</template>
       </el-table-column>
-      <el-table-column label="等待(秒)" align="center" prop="timeoutSec" width="100" />
+      <el-table-column label="等待(秒)" align="center" prop="timeoutSec" width="100">
+        <template #default="{ row }">{{ row.timeoutSec < 0 ? '永不超时' : row.timeoutSec }}</template>
+      </el-table-column>
       <el-table-column label="尝试次数" align="center" prop="maxAttempts" width="100" />
       <el-table-column label="状态" align="center" width="90">
         <template #default="scope">

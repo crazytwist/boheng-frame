@@ -42,6 +42,9 @@ public class FlowStepExecutionRespVO {
     @Schema(description = "等待引用：设备命令号、到期时刻等")
     private String waitRef;
 
+    @Schema(description = "设备任务状态（device.task 节点专用）：PENDING / CLAIMED / DONE / FAILED / CANCELLED")
+    private String deviceTaskStatus;
+
     @Schema(description = "关联的设备命令编号")
     private Long commandId;
 

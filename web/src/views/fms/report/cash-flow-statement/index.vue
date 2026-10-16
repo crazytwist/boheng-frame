@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【报表】财务报表" url="https://doc.iocoder.cn/fms/report/" />
+  
   <!-- 工具栏 -->
   <ContentWrap>
     <el-form v-if="statementAdjustmentMode || adjustmentMode" class="-mb-15px" :inline="true">
