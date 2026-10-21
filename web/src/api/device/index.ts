@@ -65,6 +65,16 @@ export interface DevicePortrait {
   paramSets?: DeviceFacet[]
 }
 
+export interface DeviceInvokeResult {
+  status?: number
+  body?: string
+  contentType?: string
+  retriedLogin?: boolean
+  commandId?: number
+  commandNo?: string
+  commandStatus?: 'WAITING' | 'SUCCEEDED' | 'FAILED'
+}
+
 // 设备台账 API
 export const DeviceInfoApi = {
   // 查询设备台账分页
@@ -102,9 +112,12 @@ export const DeviceInfoApi = {
     return await request.delete({ url: '/device/info/delete?id=' + id })
   },
 
-  // 调用设备动作。已配置登录时先登录，token 失效后重新登录再试一次
-  // 仿真的异步等待和轮询会在一次请求里等结果，所以超时放宽到 11 分钟
-  invoke: async (data: { deviceId: number; actionCode: string; paramsJson?: string }) => {
-    return await request.post({ url: '/device/info/invoke', data, timeout: 11 * 60 * 1000 })
+  // 调用设备动作。回调动作被设备受理后立即返回 WAITING，结果到命令记录中查看
+  invoke: async (data: {
+    deviceId: number
+    actionCode: string
+    paramsJson?: string
+  }): Promise<DeviceInvokeResult> => {
+    return await request.post({ url: '/device/info/invoke', data })
   }
 }

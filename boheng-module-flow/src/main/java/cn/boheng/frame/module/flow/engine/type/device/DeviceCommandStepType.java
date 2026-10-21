@@ -21,8 +21,8 @@ import java.util.Map;
 
 /**
  * device.command 调一次设备动作。只依赖设备契约 {@link DeviceCommandApi}，
- * 不反向依赖设备实现模块。send 阻塞等终态（设备域内部等回调），
- * 因此对 Flow 而言设备步骤是「同步」的：Worker 线程池承担阻塞。
+ * 不反向依赖设备实现模块。回调动作下发并被设备受理后进入持久化等待，
+ * 后台扫描命令终态后再由信号分发器结算流程节点。
  */
 @Component
 public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
@@ -48,8 +48,7 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
 
     @Override
     public CompletionMode completionMode() {
-        // 设备域的 send 阻塞等回调，Flow 侧表现为同步结算
-        return CompletionMode.SYNC;
+        return CompletionMode.CALLBACK;
     }
 
     @Override
@@ -73,7 +72,7 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
     }
 
     /**
-     * 执行：下发并等终态。参数映射由 ParamResolver 解析进 params，
+     * 执行：下发命令。参数映射由 ParamResolver 解析进 params，
      * 这里按设备域要求序列化成 JSON 传过去
      */
     @Override
@@ -91,6 +90,9 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
             String error = result == null ? "设备无响应" : result.getErrorMessage();
             return StepOutcome.failed(StrUtil.blankToDefault(error, "设备命令失败"));
+        }
+        if ("WAITING".equals(result.getStatus())) {
+            return StepOutcome.waiting("DEVICE_COMMAND_CALLBACK", String.valueOf(result.getCommandId()));
         }
         Map<String, Object> output = new java.util.LinkedHashMap<>();
         output.put("commandId", result.getCommandId());

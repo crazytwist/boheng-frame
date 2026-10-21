@@ -63,11 +63,7 @@ public interface ErrorCodeConstants {
     ErrorCode DEVICE_SIMULATE_POLL_TIMEOUT = new ErrorCode(1_004_007_003, "轮询仿真设备【{}】超时，已轮询 {} 次");
 
     // ========== 设备回调 1-004-008-000 ==========
-    /** 等回调的时间到了，设备还没有回调 */
-    ErrorCode DEVICE_CALLBACK_TIMEOUT = new ErrorCode(1_004_008_000, "设备【{}】在 {} 秒内未回调执行结果");
     /** 动作要等回调，但台账没开启回调 */
     ErrorCode DEVICE_CALLBACK_DISABLED = new ErrorCode(1_004_008_001, "设备【{}】未开启结果回调，无法以回调方式获取结果");
-    /** 等待回调的线程被打断 */
-    ErrorCode DEVICE_CALLBACK_INTERRUPTED = new ErrorCode(1_004_008_002, "等待设备【{}】回调时被中断");
 
 }

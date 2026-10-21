@@ -115,6 +115,10 @@ public class FlowExecutionSweeper {
         List<FlowStepExecutionDO> waiting = stepExecutionMapper.selectWaiting(execution.getId());
         LocalDateTime now = LocalDateTime.now();
         for (FlowStepExecutionDO row : waiting) {
+            if ("DEVICE_COMMAND_CALLBACK".equals(row.getWaitingFor())) {
+                signalDispatcher.deviceCommandSignal(row);
+                continue;
+            }
             if (row.getDeadlineAt() == null) {
                 continue; // MANUAL 等人，没有期限
             }

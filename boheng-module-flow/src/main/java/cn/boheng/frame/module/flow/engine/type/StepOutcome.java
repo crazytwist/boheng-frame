@@ -36,7 +36,7 @@ public final class StepOutcome {
     private final String outputJson;
 
     /**
-     * 等待什么：DEVICE_CALLBACK / MANUAL / TIMER / CHILD
+     * 等待什么：DEVICE_CALLBACK / DEVICE_COMMAND_CALLBACK / MANUAL / TIMER / CHILD
      */
     private final String waitingFor;
 

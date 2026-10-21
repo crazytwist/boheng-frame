@@ -1,5 +1,7 @@
 package cn.boheng.frame.module.flow.engine.signal;
 
+import cn.boheng.frame.module.device.api.DeviceCommandApi;
+import cn.boheng.frame.module.device.api.dto.DeviceCommandResultDTO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowExecutionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowStepExecutionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowStepSignalDO;
@@ -12,6 +14,7 @@ import cn.boheng.frame.module.flow.service.task.FlowDeviceTaskService;
 import cn.boheng.frame.module.flow.engine.type.StepOutcome;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +22,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 信号分发。人工确认、定时到点、子流程终态都从统一入口进来：
@@ -60,6 +65,12 @@ public class FlowSignalDispatcher {
      */
     @Resource
     private FlowDeviceTaskService deviceTaskService;
+
+    /**
+     * 设备命令契约。用于查询完全异步下发命令的持久化终态
+     */
+    @Resource
+    private DeviceCommandApi deviceCommandApi;
 
     /**
      * 人工确认信号。页面上确认 / 拒绝都走这里
@@ -197,6 +208,56 @@ public class FlowSignalDispatcher {
             return;
         }
         save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "EXTERNAL", null, false);
+    }
+
+    /**
+     * 检查异步设备命令是否进入终态，并据此结算等待中的 device.command 节点。
+     * 该入口可重复调用，信号编号和节点 CAS 共同保证幂等。
+     *
+     * @param row 等待设备命令回调的步骤执行行
+     */
+    public void deviceCommandSignal(FlowStepExecutionDO row) {
+        if (row == null || !"WAITING".equals(row.getStatus())
+                || !"DEVICE_COMMAND_CALLBACK".equals(row.getWaitingFor())
+                || StrUtil.isBlank(row.getWaitRef())) {
+            return;
+        }
+        Long commandId;
+        try {
+            commandId = Long.valueOf(row.getWaitRef());
+        } catch (NumberFormatException ex) {
+            log.warn("[flow][signal] 设备命令引用不合法: {}", row.getWaitRef());
+            return;
+        }
+        DeviceCommandResultDTO result = deviceCommandApi.getResult(commandId);
+        if (result == null || "ACQUIRED".equals(result.getStatus()) || "SENT".equals(result.getStatus())
+                || "WAITING".equals(result.getStatus())) {
+            return;
+        }
+        String signalId = "devicecommand_" + commandId;
+        if (signalMapper.selectBySignalId(signalId) != null) {
+            return;
+        }
+        FlowExecutionDO execution = executionMapper.selectById(row.getExecutionId());
+        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+            return;
+        }
+        boolean success = "SUCCEEDED".equals(result.getStatus());
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("commandId", result.getCommandId());
+        output.put("commandNo", result.getCommandNo());
+        output.put("status", result.getStatus());
+        output.put("body", result.getOutputJson());
+        String payload = JSONUtil.toJsonStr(output);
+        boolean settled = engine.settle(row, success
+                ? StepOutcome.success(payload)
+                : StepOutcome.failed(StrUtil.blankToDefault(result.getErrorMessage(),
+                        "设备命令结束：" + result.getStatus())));
+        if (!settled) {
+            return;
+        }
+        save(signalId, row.getExecutionId(), row.getNodeId(), row.getAttempt(), row.getIterationNo(),
+                "EXTERNAL", payload, success);
     }
 
     /**
