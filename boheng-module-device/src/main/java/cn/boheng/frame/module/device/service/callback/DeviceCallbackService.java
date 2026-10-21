@@ -31,7 +31,7 @@ public class DeviceCallbackService {
     public static final int DEFAULT_TIMEOUT_SEC = 300;
 
     /**
-     * 等回调的上限。调用方的请求一直挂着，不能无限等
+     * 回调截止时间上限，防止异常配置让命令长期占用设备
      */
     public static final int MAX_TIMEOUT_SEC = 600;
 
@@ -74,12 +74,6 @@ public class DeviceCallbackService {
     private DevicePlatformUrl platformUrl;
 
     /**
-     * 等回调的请求
-     */
-    @Resource
-    private DeviceCallbackWaiter waiter;
-
-    /**
      * 签发这条命令的回调地址和令牌。仿真设备在本进程，台账没配地址时用本机地址。
      */
     public DeviceCallbackTicket issue(DeviceInfoDO device, DeviceActionDO action, String commandNo, boolean simulated) {
@@ -113,13 +107,6 @@ public class DeviceCallbackService {
     }
 
     /**
-     * 停在这里等回调，到期没等到会抛超时
-     */
-    public void await(Long commandId, String deviceCode, DeviceCallbackTicket ticket) {
-        waiter.await(commandId, deviceCode, ticket);
-    }
-
-    /**
      * 收下一次设备回调。令牌对得上、命令还在等，才写入结果。
      */
     public DeviceCallbackReceipt receive(String commandNo, String token, String body, String contentType) {
@@ -141,7 +128,6 @@ public class DeviceCallbackService {
             String status = TenantUtils.execute(tenantId, () -> deviceCommandService.getStatus(command.getId()));
             return new DeviceCallbackReceipt(409, "命令已结束（" + status + "），本次回调没有写入", commandNo);
         }
-        waiter.signal(command.getId());
         log.info("[receive][设备({}) 命令({}) 回调已收下]", command.getDeviceCode(), commandNo);
         return new DeviceCallbackReceipt(200, "ok", commandNo);
     }

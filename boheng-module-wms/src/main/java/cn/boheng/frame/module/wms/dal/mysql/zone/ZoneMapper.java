@@ -30,4 +30,11 @@ public interface ZoneMapper extends BaseMapperX<ZoneDO> {
     default ZoneDO selectByZoneCode(String zoneCode) {
         return selectOne(ZoneDO::getZoneCode, zoneCode);
     }
+
+    default List<ZoneDO> selectListByParentZoneCode(String parentZoneCode) {
+        return selectList(new LambdaQueryWrapperX<ZoneDO>()
+                .eq(ZoneDO::getParentZoneCode, parentZoneCode)
+                .orderByAsc(ZoneDO::getSortNo)
+                .orderByAsc(ZoneDO::getId));
+    }
 }

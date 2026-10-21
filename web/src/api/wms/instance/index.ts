@@ -18,6 +18,9 @@ export interface MaterialInstanceVO {
   contentDefCode?: string
   contentType?: string
   sampleId?: string
+  sampleName?: string
+  sampleType?: string
+  sampleStatus?: string
   currentVolUl?: number
   currentCount?: number
   extData?: string

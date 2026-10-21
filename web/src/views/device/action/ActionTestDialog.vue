@@ -55,6 +55,7 @@
     <div v-if="result" class="test-result">
       <div class="test-result__head">
         <el-tag :type="statusType" effect="dark" size="small">HTTP {{ result.status ?? '—' }}</el-tag>
+        <el-tag v-if="result.commandStatus === 'WAITING'" type="warning" size="small">等待设备回调</el-tag>
         <span v-if="result.contentType" class="test-result__meta">{{ result.contentType }}</span>
         <el-tag v-if="result.retriedLogin" type="warning" size="small">已重新登录</el-tag>
         <span v-if="result.commandNo" class="test-result__meta">命令编号：{{ result.commandNo }}</span>
@@ -70,7 +71,7 @@
 
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
-import { DeviceInfoApi, DeviceVO } from '@/api/device'
+import { DeviceInfoApi, DeviceInvokeResult, DeviceVO } from '@/api/device'
 import { parseSchema, SchemaField } from '../labels'
 
 const message = useMessage()
@@ -83,7 +84,7 @@ const deviceId = ref<number>()
 const fields = ref<SchemaField[]>([])
 const values = reactive<Record<string, any>>({})
 const rawParams = ref('')
-const result = ref<{ status?: number; body?: string; contentType?: string; retriedLogin?: boolean; commandNo?: string }>()
+const result = ref<DeviceInvokeResult>()
 
 const formatNames: Record<string, string> = { JSON: 'JSON', FORM: '表单', TEXT: '纯文本', XML: 'XML' }
 
@@ -101,9 +102,9 @@ let elapsedTimer: ReturnType<typeof setInterval> | undefined
 const waitingText = computed(() => {
   const head =
     action.value?.resultMode === 'CALLBACK'
-      ? '设备已受理请求，正在等待设备回调执行结果'
+      ? '正在向设备下发回调命令'
       : '正在等待设备返回结果，回调或轮询方式耗时较长'
-  return `${head}（已等待 ${elapsed.value} 秒），请勿关闭窗口`
+  return `${head}（已等待 ${elapsed.value} 秒）`
 })
 
 const startElapsed = () => {
@@ -128,6 +129,9 @@ const statusType = computed(() => {
 })
 
 const prettyBody = computed(() => {
+  if (result.value?.commandStatus === 'WAITING') {
+    return '设备已受理命令，执行结果将通过 callback 写入命令记录。可以关闭当前窗口。'
+  }
   const body = result.value?.body
   if (!body) return '无响应体'
   const type = result.value?.contentType || ''

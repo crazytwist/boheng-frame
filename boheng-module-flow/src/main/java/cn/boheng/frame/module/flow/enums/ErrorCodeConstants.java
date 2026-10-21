@@ -140,4 +140,16 @@ public interface ErrorCodeConstants {
     /** 白名单外的 Bean 调用 */
     ErrorCode FLOW_BEAN_NOT_REGISTERED = new ErrorCode(1_005_004_007, "Bean【{}】没有注册为流程可调用动作");
 
+    /** 设备任务不存在或 taskId 无法匹配 */
+    ErrorCode FLOW_DEVICE_TASK_NOT_EXISTS = new ErrorCode(1_005_004_008, "设备任务不存在");
+
+    /** 设备任务状态不允许本次操作 */
+    ErrorCode FLOW_DEVICE_TASK_STATUS_INVALID = new ErrorCode(1_005_004_009, "设备任务状态不允许本次操作");
+
+    /** 外部状态码不合法 */
+    ErrorCode FLOW_DEVICE_TASK_EXTERNAL_STATUS_INVALID = new ErrorCode(1_005_004_010, "任务状态码不合法");
+
+    /** 任务完成信号未被接受（节点不在等待或已回报） */
+    ErrorCode FLOW_DEVICE_TASK_SIGNAL_REJECTED = new ErrorCode(1_005_004_011, "任务状态更新失败，节点不在等待或已结束");
+
 }

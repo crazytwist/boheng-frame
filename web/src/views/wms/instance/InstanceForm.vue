@@ -421,6 +421,7 @@ const openFromSample = async (sample: SampleVO) => {
   try {
     await loadOptions()
     formData.value.sampleId = sample.sampleId
+    formData.value.instanceName = sample.sampleName || sample.sampleId
     // 容器类型（先：容器决定能否装内容物，按样本期望容器类型编码反查）
     if (sample.containerTypeCode) {
       const ct = containerTypes.value.find((c) => c.typeCode === sample.containerTypeCode)

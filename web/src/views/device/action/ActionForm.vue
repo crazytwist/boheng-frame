@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import { DeviceCodecApi, DeviceCodecVO } from '@/api/device/codec'
+import { useDeviceTypeDictOptions } from '../labels'
 
 defineOptions({ name: 'DeviceActionForm' })
 
@@ -46,14 +47,7 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const deviceTypeOptions = [
-  { label: '酶标仪/读板机', value: 'PLATE_READER' },
-  { label: '液体处理工作站', value: 'LIQUID_HANDLER' },
-  { label: '机械臂', value: 'ROBOTIC_ARM' },
-  { label: '培养箱', value: 'INCUBATOR' },
-  { label: '离心机', value: 'CENTRIFUGE' },
-  { label: '其他', value: 'OTHER' }
-]
+const deviceTypeOptions = useDeviceTypeDictOptions()
 
 const sourceOptions = [
   { label: '手工录入', value: 'MANUAL' },

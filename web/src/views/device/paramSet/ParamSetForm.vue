@@ -71,6 +71,7 @@
 <script lang="ts" setup>
 import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
+import { useDeviceTypeDictOptions } from '../labels'
 
 defineOptions({ name: 'DeviceParamSetForm' })
 
@@ -106,14 +107,7 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const deviceTypeOptions = [
-  { label: '酶标仪/读板机', value: 'PLATE_READER' },
-  { label: '液体处理工作站', value: 'LIQUID_HANDLER' },
-  { label: '机械臂', value: 'ROBOTIC_ARM' },
-  { label: '培养箱', value: 'INCUBATOR' },
-  { label: '离心机', value: 'CENTRIFUGE' },
-  { label: '其他', value: 'OTHER' }
-]
+const deviceTypeOptions = useDeviceTypeDictOptions()
 
 // 按设备类型拉取动作，供「关联动作」下拉
 const actionOptions = ref<DeviceActionVO[]>([])

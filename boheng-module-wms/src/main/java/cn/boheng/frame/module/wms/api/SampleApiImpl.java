@@ -5,7 +5,6 @@ import cn.boheng.frame.module.wms.api.dto.SampleSummaryDTO;
 import cn.boheng.frame.module.wms.controller.admin.sample.vo.SampleInfoSaveReqVO;
 import cn.boheng.frame.module.wms.dal.dataobject.sample.SampleInfoDO;
 import cn.boheng.frame.module.wms.service.sample.SampleInfoService;
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
 
@@ -33,9 +32,7 @@ public class SampleApiImpl implements SampleApi {
     @Override
     public String registerSample(SampleRegisterReqDTO reqDTO) {
         SampleInfoSaveReqVO saveReqVO = new SampleInfoSaveReqVO();
-        // 样本编号：调用方不传由 wms 生成（雪花，保证租户内唯一）
-        saveReqVO.setSampleId(StrUtil.isBlank(reqDTO.getSampleId())
-                ? "SP-" + IdUtil.getSnowflakeNextIdStr() : reqDTO.getSampleId());
+        saveReqVO.setSampleId(reqDTO.getSampleId());
         saveReqVO.setParentSampleId(reqDTO.getParentSampleId());
         saveReqVO.setDeriveType(reqDTO.getDeriveType());
         saveReqVO.setSampleName(reqDTO.getSampleName());

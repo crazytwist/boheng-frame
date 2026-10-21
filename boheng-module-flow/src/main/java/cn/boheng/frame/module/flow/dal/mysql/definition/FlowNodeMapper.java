@@ -27,6 +27,15 @@ public interface FlowNodeMapper extends BaseMapperX<FlowNodeDO> {
     }
 
     /**
+     * 某版本下的单个节点（按 node_id 业务编码）。
+     */
+    default FlowNodeDO selectByDefinitionIdAndNodeId(Long definitionId, String nodeId) {
+        return selectOne(new LambdaQueryWrapperX<FlowNodeDO>()
+                .eq(FlowNodeDO::getDefinitionId, definitionId)
+                .eq(FlowNodeDO::getNodeId, nodeId));
+    }
+
+    /**
      * 列表页一次查出本页各版本的步骤，用来数步数，避免逐行查询。
      */
     default List<FlowNodeDO> selectByDefinitionIds(Collection<Long> definitionIds) {

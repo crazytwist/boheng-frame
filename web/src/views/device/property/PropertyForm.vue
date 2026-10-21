@@ -77,6 +77,7 @@
 
 <script lang="ts" setup>
 import { DevicePropertyApi, DevicePropertyVO } from '@/api/device/property'
+import { useDeviceTypeDictOptions } from '../labels'
 
 defineOptions({ name: 'DevicePropertyForm' })
 
@@ -112,14 +113,7 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const deviceTypeOptions = [
-  { label: '酶标仪/读板机', value: 'PLATE_READER' },
-  { label: '液体处理工作站', value: 'LIQUID_HANDLER' },
-  { label: '机械臂', value: 'ROBOTIC_ARM' },
-  { label: '培养箱', value: 'INCUBATOR' },
-  { label: '离心机', value: 'CENTRIFUGE' },
-  { label: '其他', value: 'OTHER' }
-]
+const deviceTypeOptions = useDeviceTypeDictOptions()
 
 const dataTypeOptions = [
   { label: '字符串', value: 'STRING' },

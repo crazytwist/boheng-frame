@@ -111,6 +111,7 @@ import { SampleApi, SampleVO } from '@/api/wms/sample'
 import { MaterialInstanceApi, MaterialInstanceVO } from '@/api/wms/instance'
 import CategoryDrawer from '@/views/device/components/CategoryDrawer.vue'
 import { formatDate } from '@/utils/formatTime'
+import { sampleTypeLabel } from './labels'
 
 defineOptions({ name: 'WmsSampleDetailDrawer' })
 
@@ -120,19 +121,6 @@ const item = ref<SampleVO>()
 const instances = ref<MaterialInstanceVO[]>([])
 
 const fmtDate = (v?: Date | string) => (v ? formatDate(v) : '—')
-
-const SAMPLE_TYPE: Record<string, string> = {
-  WATER: '水样',
-  BLOOD: '血样',
-  URINE: '尿样',
-  TISSUE: '组织',
-  SOIL: '土样',
-  AIR: '气样',
-  FOOD: '食品',
-  MIXTURE: '混合物',
-  OTHER: '其他'
-}
-const sampleTypeLabel = (v?: string) => SAMPLE_TYPE[v || ''] || v || '—'
 
 const STATUS_META: Record<string, { label: string; type: 'info' | 'primary' | 'warning' | 'success' | 'danger' }> = {
   REGISTERED: { label: '已登记', type: 'info' },

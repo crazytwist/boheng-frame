@@ -64,7 +64,7 @@ public interface DeviceCommandService {
     /**
      * 发请求之前把命令转入等回调，记下令牌摘要和截止时刻
      */
-    void awaitCallback(Long commandId, String tokenHash, LocalDateTime timeoutAt);
+    void markWaitingCallback(Long commandId, String tokenHash, LocalDateTime timeoutAt);
 
     /**
      * 请求发出后记下请求报文和设备的受理应答

@@ -49,6 +49,28 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
     }
 
     /**
+     * 按设备编码列出待领取任务（清华 listTaskByArea：area → device_code，仅 PENDING）
+     */
+    default List<FlowDeviceTaskDO> selectListPendingByDeviceCode(String deviceCode) {
+        return selectList(new LambdaQueryWrapperX<FlowDeviceTaskDO>()
+                .eq(FlowDeviceTaskDO::getDeviceCode, deviceCode)
+                .eq(FlowDeviceTaskDO::getStatus, "PENDING")
+                .orderByAsc(FlowDeviceTaskDO::getId));
+    }
+
+    /**
+     * 按 {@code listTaskByArea} 对外 taskId 反查任务（params.externalTaskId / 主键 / id 低 31 位）。
+     */
+    default FlowDeviceTaskDO selectByExternalTaskId(int externalTaskId) {
+        return selectOne(new LambdaQueryWrapperX<FlowDeviceTaskDO>()
+                .and(w -> w.eq(FlowDeviceTaskDO::getId, (long) externalTaskId)
+                        .or().apply("JSON_EXTRACT(params_json, '$.externalTaskId') = {0}", externalTaskId)
+                        .or().apply("(id & 2147483647) = {0}", externalTaskId))
+                .orderByDesc(FlowDeviceTaskDO::getId)
+                .last("LIMIT 1"));
+    }
+
+    /**
      * 取一条待认领任务。按「设备能力集」匹配：
      * 不限设备（device_code 空）或指定给本设备，且任务类型在本设备能力集内。
      * actionCodes 由服务层反查设备能力集后传入（可能收窄成单元素）。

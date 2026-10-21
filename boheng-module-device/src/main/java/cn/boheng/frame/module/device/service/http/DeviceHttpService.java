@@ -1,6 +1,5 @@
 package cn.boheng.frame.module.device.service.http;
 
-import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandRespVO;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceInvokeReqVO;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceInvokeRespVO;
 import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
@@ -125,20 +124,26 @@ public class DeviceHttpService {
         String codecCode = StrUtil.blankToDefault(reqVO.getCodecCode(), action.getCodecCode());
         DeviceCommandDO command = deviceCommandService.open(device, action, reqVO.getParamsJson(), codecCode);
         boolean occupied = occupy(device, action, command, callback);
+        boolean keepOccupied = false;
         DeviceCallbackTicket ticket = null;
         try {
             if (callback) {
                 ticket = deviceCallbackService.issue(device, action, command.getCommandNo(), simulate);
-                deviceCommandService.awaitCallback(command.getId(), ticket.tokenHash(), ticket.timeoutAt());
+                deviceCommandService.markWaitingCallback(command.getId(), ticket.tokenHash(), ticket.timeoutAt());
             }
             DeviceInvokeRespVO resp = simulate
                     ? simulateHttpService.exchange(device, action, reqVO.getParamsJson(), command.getId(),
                             command.getCommandNo(), ticket)
                     : deviceHttpGateway.invoke(device, action, reqVO.getParamsJson(), command.getCommandNo(), ticket);
             if (callback) {
-                resp = waitCallback(device, command, ticket, resp);
+                acceptCallback(device, command, resp);
+                keepOccupied = occupied;
+                resp.setStatus(202);
+                resp.setCommandStatus("WAITING");
             } else {
                 deviceCommandService.complete(command.getId(), resp, codecCode);
+                resp.setCommandStatus(resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300
+                        ? "SUCCEEDED" : "FAILED");
             }
             resp.setCommandId(command.getId());
             resp.setCommandNo(command.getCommandNo());
@@ -147,7 +152,7 @@ public class DeviceHttpService {
             deviceCommandService.fail(command.getId(), ex.getMessage());
             throw ex;
         } finally {
-            if (occupied) {
+            if (occupied && !keepOccupied) {
                 deviceInfoMapper.releaseOccupy(device.getId(), command.getId());
             }
         }
@@ -199,27 +204,15 @@ public class DeviceHttpService {
     }
 
     /**
-     * 设备受理后停下来等回调。受理就被拒时直接按失败处理；等到后把回调正文当作这次调用的结果返回。
+     * 记录设备受理应答。受理成功后调用方立即返回，命令继续保持等待回调状态。
      */
-    private DeviceInvokeRespVO waitCallback(DeviceInfoDO device, DeviceCommandDO command, DeviceCallbackTicket ticket,
-                                            DeviceInvokeRespVO ack) {
+    private void acceptCallback(DeviceInfoDO device, DeviceCommandDO command, DeviceInvokeRespVO ack) {
         deviceCommandService.recordSent(command.getId(), ack);
         boolean accepted = ack.getStatus() != null && ack.getStatus() >= 200 && ack.getStatus() < 300;
         if (!accepted) {
             throw exception(DEVICE_HTTP_FAILED, device.getDeviceCode(),
                     "设备没有受理：" + StrUtil.blankToDefault(ack.getBody(), "HTTP " + ack.getStatus()));
         }
-        deviceCallbackService.await(command.getId(), device.getDeviceCode(), ticket);
-        DeviceCommandRespVO done = deviceCommandService.getCommand(command.getId());
-        DeviceInvokeRespVO resp = new DeviceInvokeRespVO();
-        resp.setStatus("SUCCEEDED".equals(done.getStatus()) ? 200 : 502);
-        resp.setBody(StrUtil.blankToDefault(done.getRawBody(), done.getErrorMsg()));
-        resp.setContentType(ack.getContentType());
-        resp.setRetriedLogin(ack.getRetriedLogin());
-        resp.setHttpMethod(ack.getHttpMethod());
-        resp.setRequestUrl(ack.getRequestUrl());
-        resp.setRequestBody(ack.getRequestBody());
-        return resp;
     }
 
 }

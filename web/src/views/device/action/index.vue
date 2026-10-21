@@ -98,6 +98,7 @@ import ActionForm from './ActionForm.vue'
 import ActionDetailDrawer from './ActionDetailDrawer.vue'
 import ActionTestDialog from './ActionTestDialog.vue'
 import ActionSimulateDialog from './ActionSimulateDialog.vue'
+import { deviceTypeLabel, useDeviceTypeDictOptions } from '../labels'
 
 defineOptions({ name: 'DeviceAction' })
 
@@ -116,15 +117,7 @@ const queryParams = reactive({
 })
 const queryFormRef = ref()
 
-const deviceTypeOptions = [
-  { label: '酶标仪/读板机', value: 'PLATE_READER' },
-  { label: '液体处理工作站', value: 'LIQUID_HANDLER' },
-  { label: '机械臂', value: 'ROBOTIC_ARM' },
-  { label: '培养箱', value: 'INCUBATOR' },
-  { label: '离心机', value: 'CENTRIFUGE' },
-  { label: '其他', value: 'OTHER' }
-]
-const deviceTypeLabel = (v?: string) => deviceTypeOptions.find((i) => i.value === v)?.label || v || '—'
+const deviceTypeOptions = useDeviceTypeDictOptions()
 
 const sourceLabel = (v?: string) => ({ MANUAL: '手工录入', DEVICE_DECLARED: '驱动上报' }[v || ''] || v || '—')
 

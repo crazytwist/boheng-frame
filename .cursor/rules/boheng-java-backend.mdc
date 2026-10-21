@@ -1,0 +1,13 @@
+---
+description: Java 后端模块约定（Spring、DO/VO、Mapper）
+globs: boheng-module-*/**/*.java
+alwaysApply: false
+---
+
+# Java 后端
+
+- 匹配现有分层：Controller → Service → Mapper/DO；跨模块只走 `*-api` 接口 + Impl 在实现模块。
+- 新增对外契约放 `*-api`；DTO/VO 命名与包结构与同模块现有类一致。
+- 机器端接口：`controller.app` 下常用 `@PermitAll`，租户靠 `tenant-id` 头，在 Operation 描述里写清。
+- 设备模块 Java：修改 `boheng-module-device` 时必须遵守项目 skill `device-java-comments`（类/字段/方法中文注释）。
+- 流程设备任务：状态以 `flow_device_task` + `FlowSignalDispatcher` 为准；对外清华字段用 app VO + assembler，不把 `ExternalTaskTypeEnum` 硬编码进内核。

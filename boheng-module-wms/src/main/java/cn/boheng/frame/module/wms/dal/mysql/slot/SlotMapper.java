@@ -6,6 +6,8 @@ import cn.boheng.frame.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotPageReqVO;
 import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
 import org.apache.ibatis.annotations.Mapper;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -35,6 +37,15 @@ public interface SlotMapper extends BaseMapperX<SlotDO> {
     default List<SlotDO> selectListByZoneCode(String zoneCode) {
         return selectList(new LambdaQueryWrapperX<SlotDO>()
                 .eqIfPresent(SlotDO::getZoneCode, zoneCode)
+                .orderByAsc(SlotDO::getId));
+    }
+
+    default List<SlotDO> selectListByZoneCodes(Collection<String> zoneCodes) {
+        if (zoneCodes == null || zoneCodes.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<SlotDO>()
+                .in(SlotDO::getZoneCode, zoneCodes)
                 .orderByAsc(SlotDO::getId));
     }
 }

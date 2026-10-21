@@ -11,6 +11,7 @@ import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceC
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePutInReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceSaveReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceTakeOutReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceTransferReqVO;
@@ -18,6 +19,7 @@ import cn.boheng.frame.module.wms.controller.admin.instance.vo.MovementTraceBase
 import cn.boheng.frame.module.wms.dal.dataobject.container.ContainerTypeDO;
 import cn.boheng.frame.module.wms.dal.dataobject.content.ContentDefDO;
 import cn.boheng.frame.module.wms.dal.dataobject.instance.MaterialInstanceDO;
+import cn.boheng.frame.module.wms.dal.dataobject.sample.SampleInfoDO;
 import cn.boheng.frame.module.wms.dal.dataobject.movement.MaterialMovementDO;
 import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
 import cn.boheng.frame.module.wms.dal.mysql.container.ContainerTypeMapper;
@@ -39,10 +41,13 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.*;
@@ -163,6 +168,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         validateInstanceCodeUnique(createReqVO.getId(), createReqVO.getInstanceCode());
         // 样本类实例：校验关联样本存在
         validateSampleIdIfPresent(createReqVO.getSampleId());
+        applyDefaultInstanceNameFromSample(createReqVO);
 
         // 插入
         MaterialInstanceDO materialInstance = BeanUtils.toBean(createReqVO, MaterialInstanceDO.class);
@@ -871,6 +877,51 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
                 .orderByDesc(MaterialInstanceDO::getId));
     }
 
+    @Override
+    public void fillSampleInfo(List<MaterialInstanceRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<String> sampleIds = list.stream()
+                .map(MaterialInstanceRespVO::getSampleId)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
+        if (sampleIds.isEmpty()) {
+            return;
+        }
+        List<SampleInfoDO> samples = sampleInfoMapper.selectList(
+                new LambdaQueryWrapperX<SampleInfoDO>().in(SampleInfoDO::getSampleId, sampleIds));
+        Map<String, SampleInfoDO> bySampleId = new HashMap<>(samples.size());
+        for (SampleInfoDO sample : samples) {
+            bySampleId.put(sample.getSampleId(), sample);
+        }
+        for (MaterialInstanceRespVO vo : list) {
+            if (StrUtil.isBlank(vo.getSampleId())) {
+                continue;
+            }
+            SampleInfoDO sample = bySampleId.get(vo.getSampleId());
+            if (sample == null) {
+                continue;
+            }
+            vo.setSampleName(sample.getSampleName());
+            vo.setSampleType(sample.getSampleType());
+            vo.setSampleStatus(sample.getStatus());
+        }
+    }
+
+    /**
+     * 样本物化实例时，未填实例名称则默认用样本名称（再兜底样本编号）。
+     */
+    private void applyDefaultInstanceNameFromSample(MaterialInstanceSaveReqVO reqVO) {
+        if (StrUtil.isNotBlank(reqVO.getInstanceName()) || StrUtil.isBlank(reqVO.getSampleId())) {
+            return;
+        }
+        SampleInfoDO sample = sampleInfoMapper.selectBySampleId(reqVO.getSampleId());
+        if (sample == null) {
+            return;
+        }
+        reqVO.setInstanceName(StrUtil.blankToDefault(sample.getSampleName(), sample.getSampleId()));
+    }
 
     // ==================== 校验与槽位回写 ====================
 

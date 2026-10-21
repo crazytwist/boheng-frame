@@ -1,0 +1,13 @@
+---
+description: Vue3 前端（web）约定
+globs: web/**/*.{vue,ts,tsx}
+alwaysApply: false
+---
+
+# Web 前端
+
+- 技术栈：Vue3 + Element Plus；字典用 `web/src/utils/dict.ts` 与模块 `labels.ts`，避免业务枚举硬编码在表单里。
+- API：只通过 `web/src/api/**` 调用后端；类型与字段名与后端 VO 一致。
+- 环境：`VITE_BASE_URL` 在 `.env.local` / `.env.test` 配置，勿把生产密钥写进仓库。
+- UI 新页或大改：优先读 `frontend-design` skill（用户目录），但**不换 UI 栈**，沿用本项目布局与组件习惯。
+- 与后端同需求时：先对齐接口再改页面，避免前端 mock 字段与 VO 漂移。

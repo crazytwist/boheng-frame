@@ -24,6 +24,7 @@ public interface ErrorCodeConstants {
     ErrorCode SLOT_GENERATE_NO_LAYOUT = new ErrorCode(1_003_001_003, "区域【{}】未配置货架布局尺寸，无法生成槽位");
     ErrorCode SLOT_DISABLED = new ErrorCode(1_003_001_004, "槽位【{}】已停用，不允许上架");
     ErrorCode SLOT_ALREADY_OCCUPIED = new ErrorCode(1_003_001_005, "槽位【{}】已被占用，不允许重复上架");
+    ErrorCode SLOT_PLACE_NOT_FOUND = new ErrorCode(1_003_001_007, "放置位置【{}】不存在或未找到可用槽位");
 
     // ========== 容器类型 1-003-002-000 ==========
     ErrorCode CONTAINER_TYPE_NOT_EXISTS = new ErrorCode(1_003_002_000, "容器类型不存在");
@@ -43,6 +44,8 @@ public interface ErrorCodeConstants {
     ErrorCode MATERIAL_INSTANCE_SLOT_ONLY_TOP = new ErrorCode(1_003_004_006, "仅顶层实例允许落位槽位，子实例不允许落位");
     ErrorCode MATERIAL_INSTANCE_SLOT_ONLY_VIA_OPERATION = new ErrorCode(1_003_004_007,
             "落位请使用上架 / 下架 / 转移接口，更新接口不接受槽位字段（否则会绕过物料流水）");
+    ErrorCode TIP_INSTANCE_REQUIRED = new ErrorCode(1_003_004_010, "实例【{}】不是 Tip 盒类型");
+    ErrorCode TIP_RESOURCE_NOT_FOUND = new ErrorCode(1_003_004_011, "区域【{}】未找到 Tip 盒资源");
 
     // ========== 物料实例 · 上下架 / 转移 / 消耗 1-003-005-000 ==========
     ErrorCode INSTANCE_NOT_PLACED = new ErrorCode(1_003_005_000, "实例【{}】当前未落位，无法执行该操作");

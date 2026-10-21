@@ -2,6 +2,8 @@ package cn.boheng.frame.module.flow.service.task;
 
 import cn.boheng.frame.module.device.api.DeviceApi;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowDeviceTaskDO;
+import cn.boheng.frame.module.flow.engine.signal.FlowSignalDispatcher;
+import cn.boheng.frame.module.flow.enums.external.ExternalTaskStatusEnum;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowDeviceTaskEventDO;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowDeviceTaskEventMapper;
 import cn.boheng.frame.module.flow.dal.mysql.execution.FlowDeviceTaskMapper;
@@ -9,7 +11,9 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import java.nio.charset.StandardCharsets;
@@ -18,6 +22,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+
+import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEVICE_TASK_EXTERNAL_STATUS_INVALID;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEVICE_TASK_NOT_EXISTS;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEVICE_TASK_SIGNAL_REJECTED;
+import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_DEVICE_TASK_STATUS_INVALID;
 
 /**
  * 设备异步任务队列服务。任务不推给设备，而是入库等机器端拉取：
@@ -61,6 +71,10 @@ public class FlowDeviceTaskService {
      */
     @Resource
     private DeviceApi deviceApi;
+
+    @Resource
+    @Lazy
+    private FlowSignalDispatcher signalDispatcher;
 
     /**
      * 入队一条任务
@@ -181,6 +195,97 @@ public class FlowDeviceTaskService {
      */
     public FlowDeviceTaskDO selectByTaskNo(String taskNo) {
         return StrUtil.isBlank(taskNo) ? null : deviceTaskMapper.selectByTaskNo(taskNo);
+    }
+
+    /**
+     * 按区域（工位）查待执行任务。area 对应 {@code device_code}，只返回 {@code PENDING}。
+     */
+    public List<FlowDeviceTaskDO> listPendingByArea(String area) {
+        if (StrUtil.isBlank(area)) {
+            return List.of();
+        }
+        return deviceTaskMapper.selectListPendingByDeviceCode(area.trim());
+    }
+
+    /**
+     * 清华 {@code updateTaskStatus}：按对外 taskId 更新状态。
+     * <ul>
+     *   <li>{@link ExternalTaskStatusEnum#SS_Running} → 认领（PENDING→CLAIMED，等同 claim）</li>
+     *   <li>{@link ExternalTaskStatusEnum#SS_Finished} → 成功完成并推进流程</li>
+     *   <li>{@link ExternalTaskStatusEnum#SS_Error} → 失败完成</li>
+     * </ul>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateStatusByExternalTaskId(Integer taskId, Integer statusCode) {
+        if (taskId == null || statusCode == null) {
+            throw exception(FLOW_DEVICE_TASK_EXTERNAL_STATUS_INVALID);
+        }
+        final ExternalTaskStatusEnum externalStatus;
+        try {
+            externalStatus = ExternalTaskStatusEnum.fromCode(statusCode);
+        } catch (IllegalArgumentException e) {
+            throw exception(FLOW_DEVICE_TASK_EXTERNAL_STATUS_INVALID);
+        }
+        FlowDeviceTaskDO task = requireByExternalTaskId(taskId);
+        switch (externalStatus) {
+            case SS_Running -> claimKnownTask(task, null);
+            case SS_Finished -> finishKnownTask(task, true, "{}", null);
+            case SS_Error -> finishKnownTask(task, false, null, "设备任务执行错误");
+            case SS_Idle, SS_Pause, SS_Wait, SS_Occupy -> {
+                // 与清华一致仅更新业务态；队列态无对应项时不抛错
+            }
+        }
+    }
+
+    /**
+     * 按 listTaskByArea 返回的 taskId 查任务。
+     */
+    public FlowDeviceTaskDO requireByExternalTaskId(int externalTaskId) {
+        FlowDeviceTaskDO task = deviceTaskMapper.selectByExternalTaskId(externalTaskId);
+        if (task == null || !FlowDeviceTaskExternalIds.matches(task, externalTaskId)) {
+            throw exception(FLOW_DEVICE_TASK_NOT_EXISTS);
+        }
+        return task;
+    }
+
+    /**
+     * 认领指定任务行（非按设备扫描队列）。
+     */
+    public FlowDeviceTaskDO claimKnownTask(FlowDeviceTaskDO task, String workerId) {
+        if (STATUS_CLAIMED.equals(task.getStatus())) {
+            return deviceTaskMapper.selectById(task.getId());
+        }
+        if (!STATUS_PENDING.equals(task.getStatus())) {
+            throw exception(FLOW_DEVICE_TASK_STATUS_INVALID);
+        }
+        String claimedBy = StrUtil.blankToDefault(StrUtil.trim(workerId),
+                StrUtil.blankToDefault(task.getDeviceCode(), "external"));
+        Long waitMs = task.getCreateTime() == null ? null
+                : Duration.between(task.getCreateTime(), LocalDateTime.now()).toMillis();
+        if (deviceTaskMapper.claim(task.getId(), claimedBy, waitMs) != 1) {
+            throw exception(FLOW_DEVICE_TASK_STATUS_INVALID);
+        }
+        FlowDeviceTaskDO claimed = deviceTaskMapper.selectById(task.getId());
+        writeEvent(claimed, STATUS_PENDING, STATUS_CLAIMED, EVENT_CLAIMED, claimedBy, null);
+        return claimed;
+    }
+
+    private void finishKnownTask(FlowDeviceTaskDO task, boolean success, String resultJson, String errorMessage) {
+        FlowDeviceTaskDO current = deviceTaskMapper.selectById(task.getId());
+        if (STATUS_PENDING.equals(current.getStatus())) {
+            current = claimKnownTask(current, null);
+        }
+        if (!STATUS_CLAIMED.equals(current.getStatus())) {
+            if (STATUS_DONE.equals(current.getStatus()) || STATUS_FAILED.equals(current.getStatus())) {
+                return;
+            }
+            throw exception(FLOW_DEVICE_TASK_STATUS_INVALID);
+        }
+        boolean accepted = signalDispatcher.deviceTaskSignalTrusted(
+                current.getTaskNo(), success, resultJson, errorMessage);
+        if (!accepted) {
+            throw exception(FLOW_DEVICE_TASK_SIGNAL_REJECTED);
+        }
     }
 
     /**

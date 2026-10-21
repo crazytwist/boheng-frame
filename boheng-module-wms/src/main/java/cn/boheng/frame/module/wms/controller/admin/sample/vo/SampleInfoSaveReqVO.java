@@ -21,8 +21,7 @@ public class SampleInfoSaveReqVO {
     @Schema(description = "主键", example = "1024")
     private Long id;
 
-    @Schema(description = "样本业务编号（条码/二维码）", requiredMode = Schema.RequiredMode.REQUIRED, example = "SP-20261011-001")
-    @NotEmpty(message = "样本业务编号不能为空")
+    @Schema(description = "样本业务编号（条码/二维码）；创建时不传则自动生成 SP-{雪花ID}", example = "SP-20261011-001")
     @Size(max = 128, message = "样本业务编号长度不能超过 128 个字符")
     private String sampleId;
 

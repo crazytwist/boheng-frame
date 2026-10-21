@@ -36,7 +36,7 @@ public class FlowStepExecutionRespVO {
     @Schema(description = "跳过原因：BRANCH 出口未选中 / FAILURE 前置失败 / UPSTREAM 上游连带")
     private String skipReason;
 
-    @Schema(description = "等待什么：DEVICE_CALLBACK / MANUAL / TIMER / CHILD")
+    @Schema(description = "等待什么：DEVICE_CALLBACK / DEVICE_COMMAND_CALLBACK / MANUAL / TIMER / CHILD")
     private String waitingFor;
 
     @Schema(description = "等待引用：设备命令号、到期时刻等")

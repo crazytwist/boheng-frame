@@ -69,7 +69,7 @@ public class FlowStepExecutionDO extends TenantBaseDO {
     private String skipReason;
 
     /**
-     * 等什么：DEVICE_CALLBACK / MANUAL / TIMER / CHILD。仅 WAITING 时有值
+     * 等什么：DEVICE_CALLBACK / DEVICE_COMMAND_CALLBACK / MANUAL / TIMER / CHILD。仅 WAITING 时有值
      */
     private String waitingFor;
 

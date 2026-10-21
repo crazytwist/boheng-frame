@@ -5,6 +5,7 @@ import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceB
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeByContainerReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceSaveReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceTakeOutReqVO;
@@ -174,4 +175,9 @@ public interface MaterialInstanceService {
      * @return 未落位的顶层实例
      */
     List<MaterialInstanceDO> getUnplacedList();
+
+    /**
+     * 为实例响应 VO 批量填充关联样本摘要（名称 / 类型 / 状态）
+     */
+    void fillSampleInfo(List<MaterialInstanceRespVO> list);
 }

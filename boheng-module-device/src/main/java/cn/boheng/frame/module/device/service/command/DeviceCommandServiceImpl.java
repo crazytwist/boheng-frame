@@ -17,6 +17,7 @@ import cn.boheng.frame.module.device.dal.dataobject.raw.DeviceDataRawDO;
 import cn.boheng.frame.module.device.dal.mysql.analysis.DeviceAnalysisResultMapper;
 import cn.boheng.frame.module.device.dal.mysql.codec.DeviceCodecMapper;
 import cn.boheng.frame.module.device.dal.mysql.command.DeviceCommandMapper;
+import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
 import cn.boheng.frame.module.device.dal.mysql.measurement.DeviceMeasurementDataMapper;
 import cn.boheng.frame.module.device.dal.mysql.measurement.DeviceMeasurementMapper;
 import cn.boheng.frame.module.device.dal.mysql.raw.DeviceDataRawMapper;
@@ -72,6 +73,12 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      */
     @Resource
     private DeviceAnalysisResultMapper deviceAnalysisResultMapper;
+
+    /**
+     * 设备台账。异步命令进入终态后释放对应设备占用
+     */
+    @Resource
+    private DeviceInfoMapper deviceInfoMapper;
     /**
      * 调用开始时落一条已占用的命令
      */
@@ -145,7 +152,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      * 发请求之前就转入等回调，设备回调得比受理应答还快时也能对上
      */
     @Override
-    public void awaitCallback(Long commandId, String tokenHash, LocalDateTime timeoutAt) {
+    public void markWaitingCallback(Long commandId, String tokenHash, LocalDateTime timeoutAt) {
         DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
         if (command == null || isTerminal(command.getStatus())) {
             return;
@@ -204,6 +211,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         result.setDataRawId(command.getDataRawId());
         result.setErrorMsg(command.getErrorMsg());
         deviceCommandMapper.updateById(result);
+        deviceInfoMapper.releaseOccupy(command.getDeviceId(), command.getId());
         return true;
     }
 
@@ -212,13 +220,19 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      */
     @Override
     public void timeout(Long commandId, String message) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        if (command == null) {
+            return;
+        }
         DeviceCommandDO update = new DeviceCommandDO();
         update.setId(commandId);
         update.setStatus("TIMED_OUT");
         update.setWaitingFor("");
         update.setFinishedAt(LocalDateTime.now());
         update.setErrorMsg(limit(message, 1000));
-        deviceCommandMapper.updateIfStatus(update, "WAITING");
+        if (deviceCommandMapper.updateIfStatus(update, "WAITING")) {
+            deviceInfoMapper.releaseOccupy(command.getDeviceId(), command.getId());
+        }
     }
 
     /**

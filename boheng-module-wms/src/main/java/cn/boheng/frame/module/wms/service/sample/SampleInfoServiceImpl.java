@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.wms.service.sample;
 
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
@@ -73,13 +74,15 @@ public class SampleInfoServiceImpl implements SampleInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSample(SampleInfoSaveReqVO createReqVO) {
-        // 1. 校验样本编号唯一性
+        // 1. 样本编号未传则自动生成（与 SampleApi#registerSample 一致）
+        createReqVO.setSampleId(resolveSampleId(createReqVO.getSampleId()));
+        // 2. 校验样本编号唯一性
         validateSampleIdUnique(createReqVO.getId(), createReqVO.getSampleId());
 
-        // 2. 组装样本
+        // 3. 组装样本
         SampleInfoDO sample = BeanUtils.toBean(createReqVO, SampleInfoDO.class);
 
-        // 3. 谱系冗余计算：原始样本 root=自身、generation=0、deriveType=ORIGINAL；衍生样本沿父样本累加
+        // 4. 谱系冗余计算：原始样本 root=自身、generation=0、deriveType=ORIGINAL；衍生样本沿父样本累加
         if (StrUtil.isBlank(sample.getParentSampleId())) {
             sample.setRootSampleId(sample.getSampleId());
             sample.setGeneration(sample.getGeneration() == null ? 0 : sample.getGeneration());
@@ -98,11 +101,11 @@ public class SampleInfoServiceImpl implements SampleInfoService {
             sample.setGeneration((parent.getGeneration() == null ? 0 : parent.getGeneration()) + 1);
         }
 
-        // 4. 状态缺省为「已登记」
+        // 5. 状态缺省为「已登记」
         if (StrUtil.isBlank(sample.getStatus())) {
             sample.setStatus(SampleStatusEnum.REGISTERED.name());
         }
-        // 5. 来源缺省为「手动」
+        // 6. 来源缺省为「手动」
         if (StrUtil.isBlank(sample.getSource())) {
             sample.setSource("MANUAL");
         }
@@ -116,6 +119,11 @@ public class SampleInfoServiceImpl implements SampleInfoService {
     public void updateSample(SampleInfoSaveReqVO updateReqVO) {
         // 校验存在
         SampleInfoDO oldSample = validateSampleExists(updateReqVO.getId());
+        if (StrUtil.isBlank(updateReqVO.getSampleId())) {
+            updateReqVO.setSampleId(oldSample.getSampleId());
+        } else {
+            updateReqVO.setSampleId(updateReqVO.getSampleId().trim());
+        }
         // 校验样本编号唯一性
         validateSampleIdUnique(updateReqVO.getId(), updateReqVO.getSampleId());
 
@@ -187,6 +195,13 @@ public class SampleInfoServiceImpl implements SampleInfoService {
     @Override
     public List<SampleInfoDO> getSampleList() {
         return sampleInfoMapper.selectList();
+    }
+
+    /**
+     * 登记样本编号：空白则生成 {@code SP-} + 雪花 ID，保证租户内唯一。
+     */
+    private static String resolveSampleId(String sampleId) {
+        return StrUtil.isBlank(sampleId) ? "SP-" + IdUtil.getSnowflakeNextIdStr() : sampleId.trim();
     }
 
     // ==================== 校验 ====================

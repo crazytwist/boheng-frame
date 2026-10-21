@@ -265,7 +265,7 @@
           </div>
           <dl class="occupant-facts">
             <dt>名称</dt>
-            <dd>{{ slotOccupant.instanceName || '—' }}</dd>
+            <dd>{{ occupantDisplayName(slotOccupant) }}</dd>
             <dt>条码</dt>
             <dd>{{ slotOccupant.barcode || '—' }}</dd>
             <dt>容器类型</dt>
@@ -274,8 +274,20 @@
             <dd>{{ slotOccupant.contentDefCode || '—' }}</dd>
             <dt>内容物类型</dt>
             <dd>{{ slotOccupant.contentType || '—' }}</dd>
-            <dt>关联样本</dt>
-            <dd>{{ slotOccupant.sampleId || '—' }}</dd>
+            <template v-if="slotOccupant.sampleId">
+              <dt>关联样本</dt>
+              <dd>{{ slotOccupant.sampleId }}</dd>
+              <dt>样本名称</dt>
+              <dd>{{ slotOccupant.sampleName || '—' }}</dd>
+              <dt>样本类型</dt>
+              <dd>{{ sampleTypeLabel(slotOccupant.sampleType) }}</dd>
+              <dt>样本状态</dt>
+              <dd>{{ sampleStatusLabel(slotOccupant.sampleStatus) }}</dd>
+            </template>
+            <template v-else>
+              <dt>关联样本</dt>
+              <dd>—</dd>
+            </template>
             <dt>当前数量</dt>
             <dd>{{ slotOccupant.currentCount ?? '—' }}</dd>
             <dt>当前体积</dt>
@@ -530,6 +542,7 @@ import { MaterialMovementApi, MaterialMovementVO, MOVEMENT_TYPE_TAG } from '@/ap
 import { ContentDefApi, ContentDefVO } from '@/api/wms/content'
 import { ContainerTypeApi, ContainerTypeVO } from '@/api/wms/container'
 import { formatDate } from '@/utils/formatTime'
+import { sampleStatusLabel, sampleTypeLabel } from '../sample/labels'
 import ZoneForm from './ZoneForm.vue'
 
 defineOptions({ name: 'WmsSpace' })
@@ -770,6 +783,9 @@ const formatDateTime = (v?: Date | string) =>
   v ? formatDate(v as any, 'YYYY-MM-DD HH:mm:ss') || '—' : '—'
 
 const movementTag = (v?: string) => MOVEMENT_TYPE_TAG[v || ''] || 'info'
+
+const occupantDisplayName = (inst: MaterialInstanceVO) =>
+  inst.instanceName || inst.sampleName || inst.sampleId || '—'
 
 const instanceStatusLabel = (v?: string) => {
   const map: Record<string, string> = {

@@ -23,8 +23,7 @@ public class FlowDeviceTaskClaimReqVO {
     @Size(max = 64, message = "任务类型长度不能超过 64 个字符")
     private String actionCode;
 
-    @Schema(description = "机器端标识，写进认领记录用于追溯", requiredMode = Schema.RequiredMode.REQUIRED, example = "robot-arm-3")
-    @NotBlank(message = "机器端标识不能为空")
+    @Schema(description = "机器端标识，写进认领记录用于追溯；不传时默认与 deviceCode 相同", example = "robot-arm-3")
     @Size(max = 64, message = "机器端标识长度不能超过 64 个字符")
     private String workerId;
 

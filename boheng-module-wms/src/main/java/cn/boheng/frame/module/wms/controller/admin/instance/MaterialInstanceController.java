@@ -90,7 +90,9 @@ public class MaterialInstanceController {
     @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
     public CommonResult<PageResult<MaterialInstanceRespVO>> getMaterialInstancePage(@Valid MaterialInstancePageReqVO pageReqVO) {
         PageResult<MaterialInstanceDO> pageResult = materialInstanceService.getMaterialInstancePage(pageReqVO);
-        return success(BeanUtils.toBean(pageResult, MaterialInstanceRespVO.class));
+        PageResult<MaterialInstanceRespVO> resp = BeanUtils.toBean(pageResult, MaterialInstanceRespVO.class);
+        materialInstanceService.fillSampleInfo(resp.getList());
+        return success(resp);
     }
 
     @GetMapping("/get")
@@ -99,7 +101,9 @@ public class MaterialInstanceController {
     @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
     public CommonResult<MaterialInstanceRespVO> getMaterialInstance(@RequestParam("id") Long id) {
         MaterialInstanceDO materialInstance = materialInstanceService.getMaterialInstance(id);
-        return success(BeanUtils.toBean(materialInstance, MaterialInstanceRespVO.class));
+        MaterialInstanceRespVO resp = BeanUtils.toBean(materialInstance, MaterialInstanceRespVO.class);
+        materialInstanceService.fillSampleInfo(List.of(resp));
+        return success(resp);
     }
 
 
@@ -108,7 +112,9 @@ public class MaterialInstanceController {
     @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
     public CommonResult<List<MaterialInstanceRespVO>> getMaterialInstanceList() {
         List<MaterialInstanceDO> list = materialInstanceService.getMaterialInstanceList();
-        return success(BeanUtils.toBean(list, MaterialInstanceRespVO.class));
+        List<MaterialInstanceRespVO> resp = BeanUtils.toBean(list, MaterialInstanceRespVO.class);
+        materialInstanceService.fillSampleInfo(resp);
+        return success(resp);
     }
 
     @GetMapping("/list-unplaced")
@@ -116,7 +122,9 @@ public class MaterialInstanceController {
     @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
     public CommonResult<List<MaterialInstanceRespVO>> getUnplacedList() {
         List<MaterialInstanceDO> list = materialInstanceService.getUnplacedList();
-        return success(BeanUtils.toBean(list, MaterialInstanceRespVO.class));
+        List<MaterialInstanceRespVO> resp = BeanUtils.toBean(list, MaterialInstanceRespVO.class);
+        materialInstanceService.fillSampleInfo(resp);
+        return success(resp);
     }
 
     @GetMapping("/list-by-sample")
@@ -125,7 +133,9 @@ public class MaterialInstanceController {
     @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
     public CommonResult<List<MaterialInstanceRespVO>> getMaterialInstanceListBySampleId(@RequestParam("sampleId") String sampleId) {
         List<MaterialInstanceDO> list = materialInstanceService.getMaterialInstanceListBySampleId(sampleId);
-        return success(BeanUtils.toBean(list, MaterialInstanceRespVO.class));
+        List<MaterialInstanceRespVO> resp = BeanUtils.toBean(list, MaterialInstanceRespVO.class);
+        materialInstanceService.fillSampleInfo(resp);
+        return success(resp);
     }
 
 

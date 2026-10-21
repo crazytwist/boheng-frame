@@ -358,6 +358,10 @@ export enum DICT_TYPE {
   WMS_ORDER_STATUS = 'wms_order_status', // WMS 单据状态
   WMS_RECEIPT_ORDER_TYPE = 'wms_receipt_order_type', // WMS 入库单类型
   WMS_SHIPMENT_ORDER_TYPE = 'wms_shipment_order_type', // WMS 出库单类型
+  WMS_SAMPLE_TYPE = 'wms_sample_type', // WMS 样本类型（wms_sample_info.sample_type）
+
+  // ========== Device 设备模块 ==========
+  DEVICE_TYPE = 'device_type', // 设备类型编码（device_info / device_action 共用）
 
   // ========== AI - 人工智能模块  ==========
   AI_PLATFORM = 'ai_platform', // AI 平台

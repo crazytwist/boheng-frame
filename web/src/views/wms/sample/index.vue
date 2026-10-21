@@ -94,6 +94,7 @@ import SampleForm from './SampleForm.vue'
 import SampleDetailDrawer from './SampleDetailDrawer.vue'
 import InstanceForm from '../instance/InstanceForm.vue'
 import { formatDate } from '@/utils/formatTime'
+import { sampleTypeLabel, useSampleTypeDictOptions } from './labels'
 
 defineOptions({ name: 'WmsSample' })
 
@@ -112,18 +113,7 @@ const queryParams = reactive({
 })
 const queryFormRef = ref()
 
-const sampleTypeOptions = [
-  { label: '水样', value: 'WATER' },
-  { label: '血样', value: 'BLOOD' },
-  { label: '尿样', value: 'URINE' },
-  { label: '组织', value: 'TISSUE' },
-  { label: '土样', value: 'SOIL' },
-  { label: '气样', value: 'AIR' },
-  { label: '食品', value: 'FOOD' },
-  { label: '混合物', value: 'MIXTURE' },
-  { label: '其他', value: 'OTHER' }
-]
-const sampleTypeLabel = (v?: string) => sampleTypeOptions.find((i) => i.value === v)?.label || v || '—'
+const sampleTypeOptions = useSampleTypeDictOptions()
 
 const STATUS_META: Record<string, { label: string; type: 'info' | 'primary' | 'warning' | 'success' | 'danger' }> = {
   REGISTERED: { label: '已登记', type: 'info' },

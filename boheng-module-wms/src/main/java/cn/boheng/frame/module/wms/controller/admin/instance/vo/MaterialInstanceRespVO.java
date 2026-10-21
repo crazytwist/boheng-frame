@@ -63,6 +63,15 @@ public class MaterialInstanceRespVO {
     @Schema(description = "样本业务编号（关联 wms_sample_info.sample_id）", example = "SP-20261011-001")
     private String sampleId;
 
+    @Schema(description = "关联样本名称（查询时冗余，非表字段）", example = "地表水样 A1")
+    private String sampleName;
+
+    @Schema(description = "关联样本类型（字典 wms_sample_type，查询冗余）", example = "WATER")
+    private String sampleType;
+
+    @Schema(description = "关联样本状态（查询冗余）", example = "REGISTERED")
+    private String sampleStatus;
+
     @Schema(description = "当前体积（μL）", example = "200.00")
     private BigDecimal currentVolUl;
 

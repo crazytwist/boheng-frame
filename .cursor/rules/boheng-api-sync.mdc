@@ -1,0 +1,17 @@
+---
+description: 改 API 时前后端同步检查清单
+globs: "{boheng-module-*/**/controller/**/*.java,web/src/api/**/*.ts,web/src/views/**/*.vue}"
+alwaysApply: false
+---
+
+# API 前后端同步
+
+改接口或 VO 时，在同一轮改动中核对：
+
+1. **路径与方法**：admin-api vs app-api 前缀与 `@RequestMapping` 一致。
+2. **请求体**：JsonProperty（如清华 `TaskId`/`Area`）与前端 JSON 字段一致。
+3. **响应**：`CommonResult<T>` 的 `data` 结构与前端 TS 类型一致。
+4. **字典/展示**：列表/表单若展示枚举，用 dict + `labels.ts` 而非魔法字符串。
+5. **联调**：说明依赖的请求头（如 `tenant-id`）与本地端口（`.env.local`）。
+
+缺失 `web/src/api` 或 Vue 调用而只改 Controller 视为未完成。

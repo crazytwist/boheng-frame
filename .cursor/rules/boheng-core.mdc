@@ -1,0 +1,13 @@
+---
+description: 博恒全栈通用约束（模块边界、小 diff、Git）
+alwaysApply: true
+---
+
+# 博恒核心约定
+
+- **小步修改**：只改与需求相关的文件；不顺手重构、不扩大 scope。
+- **模块依赖**：`flow` / `device` 只依赖 `*-api` 契约（如 `wms-api`、`device-api`），禁止 flow → wms 实现模块。
+- **错误码**：后端业务异常用 `ErrorCodeConstants` + `ServiceExceptionUtil.exception`，与现有段号一致。
+- **Git**：仅在用户明确要求时 commit；不提交 `.env*`、密钥；不 force push main。
+- **全栈功能**：动 HTTP 契约时，同一任务内同步后端 VO/Controller、`web/src/api/**`、相关 Vue 页（见 `boheng-api-sync` 规则）。
+- **Agent 流程**：大功能先 plan/spec 再 implement；提交前做 review（见 `.cursor/skills/boheng-pre-commit-review`）。

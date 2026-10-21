@@ -5,7 +5,11 @@
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="样本编号" prop="sampleId">
-            <el-input v-model="formData.sampleId" maxlength="128" placeholder="如 SP-20261011-001（不填自动生成）" />
+            <el-input v-model="formData.sampleId" maxlength="128" placeholder="如 SP-20261011-001">
+              <template #append>
+                <el-button @click="genSampleId">生成</el-button>
+              </template>
+            </el-input>
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -153,6 +157,7 @@
 import { SampleApi, SampleVO } from '@/api/wms/sample'
 import { ContentDefApi, ContentDefVO } from '@/api/wms/content'
 import { ContainerTypeApi, ContainerTypeVO } from '@/api/wms/container'
+import { useSampleTypeDictOptions } from './labels'
 
 defineOptions({ name: 'WmsSampleForm' })
 
@@ -214,22 +219,21 @@ const handleContentDefChange = (code?: string) => {
 }
 
 const formRules = reactive({
-  sampleId: [{ required: true, message: '样本编号不能为空', trigger: 'blur' }],
   sampleType: [{ required: true, message: '样本类型不能为空', trigger: 'change' }]
 })
 const formRef = ref()
 
-const sampleTypeOptions = [
-  { label: '水样', value: 'WATER' },
-  { label: '血样', value: 'BLOOD' },
-  { label: '尿样', value: 'URINE' },
-  { label: '组织', value: 'TISSUE' },
-  { label: '土样', value: 'SOIL' },
-  { label: '气样', value: 'AIR' },
-  { label: '食品', value: 'FOOD' },
-  { label: '混合物', value: 'MIXTURE' },
-  { label: '其他', value: 'OTHER' }
-]
+/** 生成样本编号（SP + 日期 + 随机序号，与实例编码「生成」交互一致；仍可不填由后端雪花兜底） */
+const genSampleId = () => {
+  const d = new Date()
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  const rand = Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, '0')
+  formData.value.sampleId = `SP-${ymd}-${rand}`
+}
+
+const sampleTypeOptions = useSampleTypeDictOptions()
 
 const STATUS_META: Record<string, { label: string; type: 'info' | 'primary' | 'warning' | 'success' | 'danger' }> = {
   REGISTERED: { label: '已登记', type: 'info' },
@@ -297,11 +301,17 @@ const submitForm = async () => {
   if (!valid) return
   formLoading.value = true
   try {
+    const payload = { ...formData.value }
+    if (!payload.sampleId?.trim()) {
+      payload.sampleId = undefined
+    } else {
+      payload.sampleId = payload.sampleId.trim()
+    }
     if (formType.value === 'create') {
-      await SampleApi.createSample(formData.value)
+      await SampleApi.createSample(payload)
       message.success(t('common.createSuccess'))
     } else {
-      await SampleApi.updateSample(formData.value)
+      await SampleApi.updateSample(payload)
       message.success(t('common.updateSuccess'))
     }
     dialogVisible.value = false

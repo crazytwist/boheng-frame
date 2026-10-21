@@ -85,7 +85,7 @@ public class DeviceInfoController {
     }
 
     @PostMapping("/invoke")
-    @Operation(summary = "调用设备动作", description = "已配置登录时先登录，令牌失效后重新登录再试一次；动作要求回调时等待设备回调")
+    @Operation(summary = "调用设备动作", description = "已配置登录时先登录，令牌失效后重新登录再试一次；回调动作受理后立即返回 WAITING")
     @PreAuthorize("@ss.hasPermission('device:info:invoke')")
     public CommonResult<DeviceInvokeRespVO> invoke(@Valid @RequestBody DeviceInvokeReqVO reqVO) {
         return success(deviceHttpService.invoke(reqVO));
