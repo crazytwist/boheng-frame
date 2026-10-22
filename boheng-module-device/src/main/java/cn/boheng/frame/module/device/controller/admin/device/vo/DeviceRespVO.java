@@ -90,6 +90,8 @@ public class DeviceRespVO {
 
     @Schema(description = "仪器能否主动推送结果", example = "false")
     private Boolean callbackEnabled;
+    private Boolean pollEnabled;
+    private Boolean statusQueryEnabled;
 
     @Schema(description = "设备回调平台用的地址，空则用平台默认地址")
     private String callbackUrl;

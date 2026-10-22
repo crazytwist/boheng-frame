@@ -150,6 +150,12 @@ public class DeviceInfoDO extends TenantBaseDO {
      */
     private Boolean callbackEnabled;
 
+    /** 是否支持平台轮询查询任务状态。 */
+    private Boolean pollEnabled;
+
+    /** 是否提供可用于轮询的状态查询动作。 */
+    private Boolean statusQueryEnabled;
+
     /**
      * 设备回调平台用的地址。空则用平台默认地址；可写 ${commandNo}、${callbackToken} 占位符
      */

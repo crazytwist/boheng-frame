@@ -92,7 +92,8 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
             return StepOutcome.failed(StrUtil.blankToDefault(error, "设备命令失败"));
         }
         if ("WAITING".equals(result.getStatus())) {
-            return StepOutcome.waiting("DEVICE_COMMAND_CALLBACK", String.valueOf(result.getCommandId()));
+            return StepOutcome.waiting("DEVICE_COMMAND_CALLBACK", String.valueOf(result.getCommandId()),
+                    result.getCommandId(), result.getCommandNo());
         }
         Map<String, Object> output = new java.util.LinkedHashMap<>();
         output.put("commandId", result.getCommandId());

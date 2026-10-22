@@ -286,12 +286,36 @@ public class DeviceHttpGateway {
         if (StrUtil.isBlank(template)) {
             return template;
         }
+        Map<String, Object> values = new LinkedHashMap<>();
+        params.forEach((key, value) -> flatten(values, key, value));
         String rendered = template;
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
-            String value = entry.getValue() == null ? "" : String.valueOf(entry.getValue());
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            String value = renderValue(entry.getValue());
             rendered = rendered.replace("${" + entry.getKey() + "}", value);
+            rendered = rendered.replace("${$." + entry.getKey() + "}", value);
         }
         return rendered;
+    }
+
+    /** 展开对象和数组，兼容 ${sample.id}、${items[0].code} 以及旧的一级参数。 */
+    private static void flatten(Map<String, Object> values, String path, Object value) {
+        values.put(path, value);
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> flatten(values, path + "." + key, child));
+        } else if (value instanceof Iterable<?> iterable) {
+            int index = 0;
+            for (Object child : iterable) {
+                flatten(values, path + "[" + index++ + "]", child);
+            }
+        }
+    }
+
+    private static String renderValue(Object value) {
+        if (value == null) return "";
+        if (value instanceof Map<?, ?> || value instanceof Iterable<?>) {
+            return JSONUtil.toJsonStr(value);
+        }
+        return String.valueOf(value);
     }
 
     /**

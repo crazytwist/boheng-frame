@@ -102,6 +102,9 @@ public class DeviceActionDO extends TenantBaseDO {
      */
     private String requestPath;
 
+    /** 平台轮询查询接口相对路径；为空时兼容使用 requestPath。 */
+    private String pollPath;
+
     /**
      * 请求报文模板，支持 ${param} 占位符。
      */
@@ -116,6 +119,9 @@ public class DeviceActionDO extends TenantBaseDO {
      * 轮询完成判定表达式，例如 $.status == "DONE"。
      */
     private String pollDoneExpr;
+
+    /** 平台轮询的最大等待时间（秒），系统按设备轮询间隔换算查询次数。 */
+    private Integer pollTimeoutSec;
 
     /**
      * 最大轮询次数，超限判超时；为空走全局默认。

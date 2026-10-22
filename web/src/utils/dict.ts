@@ -352,6 +352,9 @@ export enum DICT_TYPE {
   ERP_AUDIT_STATUS = 'erp_audit_status', // ERP 审批状态
   ERP_STOCK_RECORD_BIZ_TYPE = 'erp_stock_record_biz_type', // 库存明细的业务类型
 
+  // ========== 设备域 ==========
+  DEVICE_TYPE = 'device_type', // 设备类型编码（device_info / device_action）
+
   // ========== WMS - 仓库管理模块 ==========
   WMS_MERCHANT_TYPE = 'merchant_type', // WMS 往来企业类型
   WMS_ORDER_TYPE = 'wms_order_type', // WMS 单据类型

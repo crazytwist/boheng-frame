@@ -1,17 +1,45 @@
 <template>
   <ContentWrap title="设备动作定义">
     <!-- 搜索 -->
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
+    <el-form
+      class="-mb-15px"
+      :model="queryParams"
+      ref="queryFormRef"
+      :inline="true"
+      label-width="80px"
+    >
       <el-form-item label="设备类型" prop="deviceTypeCode">
-        <el-select v-model="queryParams.deviceTypeCode" placeholder="请选择设备类型" clearable class="!w-180px">
-          <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        <el-select
+          v-model="queryParams.deviceTypeCode"
+          placeholder="请选择设备类型"
+          clearable
+          class="!w-180px"
+        >
+          <el-option
+            v-for="item in deviceTypeOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </el-select>
       </el-form-item>
       <el-form-item label="动作编码" prop="actionCode">
-        <el-input v-model="queryParams.actionCode" placeholder="请输入动作编码" clearable @keyup.enter="handleQuery" class="!w-200px" />
+        <el-input
+          v-model="queryParams.actionCode"
+          placeholder="请输入动作编码"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-200px"
+        />
       </el-form-item>
       <el-form-item label="动作名称" prop="actionName">
-        <el-input v-model="queryParams.actionName" placeholder="请输入动作名称" clearable @keyup.enter="handleQuery" class="!w-200px" />
+        <el-input
+          v-model="queryParams.actionName"
+          placeholder="请输入动作名称"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-200px"
+        />
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-140px">
@@ -22,7 +50,12 @@
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
-        <el-button type="primary" plain @click="openForm('create')" v-hasPermi="['device:action:create']">
+        <el-button
+          type="primary"
+          plain
+          @click="openForm('create')"
+          v-hasPermi="['device:action:create']"
+        >
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
       </el-form-item>
@@ -35,42 +68,76 @@
       <el-table-column label="设备类型" align="center" width="140">
         <template #default="scope">{{ deviceTypeLabel(scope.row.deviceTypeCode) }}</template>
       </el-table-column>
-      <el-table-column label="动作编码" align="center" prop="actionCode" :show-overflow-tooltip="true" />
-      <el-table-column label="动作名称" align="center" prop="actionName" :show-overflow-tooltip="true" />
-      <el-table-column label="SiLA 标准特性" align="center" prop="standardFeature" :show-overflow-tooltip="true" />
-      <el-table-column label="厂商映射" align="center" prop="vendorRef" :show-overflow-tooltip="true" />
+      <el-table-column
+        label="动作编码"
+        align="center"
+        prop="actionCode"
+        :show-overflow-tooltip="true"
+      />
+      <el-table-column
+        label="动作名称"
+        align="center"
+        prop="actionName"
+        :show-overflow-tooltip="true"
+      />
       <el-table-column label="请求路径" align="center" :show-overflow-tooltip="true">
         <template #default="scope">
-          <span v-if="scope.row.requestPath">{{ scope.row.httpMethod || 'POST' }} {{ scope.row.requestPath }}</span>
+          <span v-if="scope.row.requestPath"
+            >{{ scope.row.httpMethod || 'POST' }} {{ scope.row.requestPath }}</span
+          >
           <span v-else>—</span>
         </template>
       </el-table-column>
-      <el-table-column label="预估耗时" align="center" width="110">
-        <template #default="scope">{{ durationLabel(scope.row.estimateDurationMs) }}</template>
-      </el-table-column>
-      <el-table-column label="能力来源" align="center" width="110">
-        <template #default="scope">{{ sourceLabel(scope.row.source) }}</template>
+      <el-table-column label="结果方式" align="center" width="110">
+        <template #default="scope">{{ resultModeLabel(scope.row.resultMode) }}</template>
       </el-table-column>
       <el-table-column label="状态" align="center" width="90">
         <template #default="scope">
-          <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '启用' : '停用' }}</el-tag>
+          <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{
+            scope.row.status === 0 ? '启用' : '停用'
+          }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" align="center" width="320" fixed="right">
         <template #default="scope">
-          <el-button v-hasPermi="['device:info:invoke']" link type="primary" @click="openTest(scope.row.id)">
+          <el-button
+            v-hasPermi="['device:info:invoke']"
+            link
+            type="primary"
+            @click="openTest(scope.row.id)"
+          >
             调试
           </el-button>
-          <el-button v-hasPermi="['device:simulate:query']" link type="primary" @click="openSimulate(scope.row.id)">
+          <el-button
+            v-hasPermi="['device:simulate:query']"
+            link
+            type="primary"
+            @click="openSimulate(scope.row.id)"
+          >
             仿真配置
           </el-button>
-          <el-button v-hasPermi="['device:action:query']" link type="primary" @click="openDetail(scope.row.id)">
+          <el-button
+            v-hasPermi="['device:action:query']"
+            link
+            type="primary"
+            @click="openDetail(scope.row.id)"
+          >
             详情
           </el-button>
-          <el-button v-hasPermi="['device:action:update']" link type="primary" @click="openForm('update', scope.row.id)">
+          <el-button
+            v-hasPermi="['device:action:update']"
+            link
+            type="primary"
+            @click="openForm('update', scope.row.id)"
+          >
             编辑
           </el-button>
-          <el-button v-hasPermi="['device:action:delete']" link type="danger" @click="handleDelete(scope.row.id)">
+          <el-button
+            v-hasPermi="['device:action:delete']"
+            link
+            type="danger"
+            @click="handleDelete(scope.row.id)"
+          >
             删除
           </el-button>
         </template>
@@ -94,6 +161,7 @@
 
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import ActionForm from './ActionForm.vue'
 import ActionDetailDrawer from './ActionDetailDrawer.vue'
 import ActionTestDialog from './ActionTestDialog.vue'
@@ -102,6 +170,7 @@ import ActionSimulateDialog from './ActionSimulateDialog.vue'
 defineOptions({ name: 'DeviceAction' })
 
 const message = useMessage()
+const route = useRoute()
 
 const loading = ref(false)
 const list = ref<DeviceActionVO[]>([])
@@ -109,30 +178,18 @@ const total = ref(0)
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 10,
-  deviceTypeCode: undefined,
+  deviceTypeCode: (route.query.deviceTypeCode as string) || undefined,
   actionCode: undefined,
   actionName: undefined,
   status: undefined
 })
 const queryFormRef = ref()
 
-const deviceTypeOptions = [
-  { label: '酶标仪/读板机', value: 'PLATE_READER' },
-  { label: '液体处理工作站', value: 'LIQUID_HANDLER' },
-  { label: '机械臂', value: 'ROBOTIC_ARM' },
-  { label: '培养箱', value: 'INCUBATOR' },
-  { label: '离心机', value: 'CENTRIFUGE' },
-  { label: '其他', value: 'OTHER' }
-]
-const deviceTypeLabel = (v?: string) => deviceTypeOptions.find((i) => i.value === v)?.label || v || '—'
-
-const sourceLabel = (v?: string) => ({ MANUAL: '手工录入', DEVICE_DECLARED: '驱动上报' }[v || ''] || v || '—')
-
-const durationLabel = (v?: number) => {
-  if (v === undefined || v === null) return '—'
-  if (v < 1000) return `${v} ms`
-  return `${(v / 1000).toFixed(1)} s`
-}
+const deviceTypeOptions = computed(() => getStrDictOptions(DICT_TYPE.DEVICE_TYPE))
+const deviceTypeLabel = (v?: string) =>
+  deviceTypeOptions.value.find((i) => i.value === v)?.label || v || '—'
+const resultModeLabel = (v?: string) =>
+  ({ SYNC_RETURN: '同步返回', CALLBACK: '设备回调', POLL: '平台轮询' })[v || ''] || v || '—'
 
 const getList = async () => {
   loading.value = true
@@ -161,7 +218,12 @@ const detailRef = ref()
 const testRef = ref()
 const simulateRef = ref()
 const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
+  formRef.value.open(type, id, {
+    deviceTypeCode: route.query.deviceTypeCode as string,
+    callbackEnabled: route.query.callbackEnabled === 'true',
+    pollEnabled: route.query.pollEnabled === 'true',
+    callbackTimeoutSec: Number(route.query.callbackTimeoutSec) || undefined
+  })
 }
 const openDetail = (id: number) => {
   detailRef.value.open(id)
@@ -185,6 +247,7 @@ const handleDelete = async (id: number) => {
 }
 
 onMounted(() => {
+  queryParams.deviceTypeCode = (route.query.deviceTypeCode as string) || undefined
   getList()
 })
 </script>

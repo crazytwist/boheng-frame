@@ -27,6 +27,8 @@ export interface DeviceVO {
   tokenTtlSec?: number
   mqttTopicPrefix?: string
   callbackEnabled?: boolean
+  pollEnabled?: boolean
+  statusQueryEnabled?: boolean
   callbackUrl?: string
   callbackTimeoutSec?: number
   pollIntervalSec?: number

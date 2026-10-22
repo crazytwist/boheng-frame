@@ -218,13 +218,12 @@ public class FlowSignalDispatcher {
      */
     public void deviceCommandSignal(FlowStepExecutionDO row) {
         if (row == null || !"WAITING".equals(row.getStatus())
-                || !"DEVICE_COMMAND_CALLBACK".equals(row.getWaitingFor())
-                || StrUtil.isBlank(row.getWaitRef())) {
+                || !"DEVICE_COMMAND_CALLBACK".equals(row.getWaitingFor())) {
             return;
         }
         Long commandId;
         try {
-            commandId = Long.valueOf(row.getWaitRef());
+            commandId = row.getCommandId() != null ? row.getCommandId() : Long.valueOf(row.getWaitRef());
         } catch (NumberFormatException ex) {
             log.warn("[flow][signal] 设备命令引用不合法: {}", row.getWaitRef());
             return;
@@ -258,6 +257,12 @@ public class FlowSignalDispatcher {
         }
         save(signalId, row.getExecutionId(), row.getNodeId(), row.getAttempt(), row.getIterationNo(),
                 "EXTERNAL", payload, success);
+    }
+
+    /** 设备命令完成事件入口；找不到流程节点时视为人工/独立设备命令。 */
+    public void deviceCommandSignal(Long commandId) {
+        if (commandId == null) return;
+        deviceCommandSignal(stepExecutionMapper.selectWaitingByCommandId(commandId));
     }
 
     /**

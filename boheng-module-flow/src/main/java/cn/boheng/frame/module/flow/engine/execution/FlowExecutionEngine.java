@@ -173,7 +173,7 @@ public class FlowExecutionEngine {
                 }
             }
             if (StrUtil.isNotBlank(inputParamsJson)) {
-                JSONUtil.parseObj(inputParamsJson).forEach(input::put);
+                deepMerge(input, JSONUtil.parseObj(inputParamsJson));
             }
             contextHolder.saveInput(execution.getId(), input);
             contextHolder.saveSystem(execution.getId(), "executionNo", execution.getExecutionNo());
@@ -192,6 +192,24 @@ public class FlowExecutionEngine {
         } finally {
             FlowLogContextHolder.clear();
         }
+    }
+
+    /** 合并流程声明默认值与启动入参；嵌套对象递归合并，数组和标量按启动入参覆盖。 */
+    @SuppressWarnings("unchecked")
+    private static void deepMerge(Map<String, Object> target, Map<String, Object> override) {
+        override.forEach((key, value) -> {
+            Object current = target.get(key);
+            if (current instanceof Map<?, ?> currentMap && value instanceof Map<?, ?> valueMap) {
+                Map<String, Object> merged = new LinkedHashMap<>();
+                currentMap.forEach((k, v) -> merged.put(String.valueOf(k), v));
+                Map<String, Object> incoming = new LinkedHashMap<>();
+                valueMap.forEach((k, v) -> incoming.put(String.valueOf(k), v));
+                deepMerge(merged, incoming);
+                target.put(key, merged);
+            } else {
+                target.put(key, value);
+            }
+        });
     }
 
     /**
@@ -417,6 +435,8 @@ public class FlowExecutionEngine {
                 row.setStatus("WAITING");
                 row.setWaitingFor(outcome.getWaitingFor());
                 row.setWaitRef(outcome.getWaitRef());
+                row.setCommandId(outcome.getCommandId());
+                row.setCommandNo(outcome.getCommandNo());
                 row.setDeadlineAt(deadlineOf(outcome, graph, node));
                 if (!casStep(row, fromStatus)) {
                     return false;

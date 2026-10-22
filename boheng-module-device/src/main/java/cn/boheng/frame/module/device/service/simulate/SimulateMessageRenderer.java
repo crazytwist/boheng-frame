@@ -30,11 +30,31 @@ public final class SimulateMessageRenderer {
         if (params == null || params.isEmpty()) {
             return rendered;
         }
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
-            String value = entry.getValue() == null ? "" : String.valueOf(entry.getValue());
+        Map<String, Object> values = new LinkedHashMap<>();
+        params.forEach((key, value) -> flatten(values, key, value));
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            String value = renderValue(entry.getValue());
             rendered = rendered.replace("${" + entry.getKey() + "}", value);
+            rendered = rendered.replace("${$." + entry.getKey() + "}", value);
         }
         return rendered;
+    }
+
+    /** 展开嵌套对象和数组，支持 ${sample.id}、${items[0].code}。 */
+    private static void flatten(Map<String, Object> values, String path, Object value) {
+        values.put(path, value);
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> flatten(values, path + "." + key, child));
+        } else if (value instanceof Iterable<?> iterable) {
+            int index = 0;
+            for (Object child : iterable) flatten(values, path + "[" + index++ + "]", child);
+        }
+    }
+
+    private static String renderValue(Object value) {
+        if (value == null) return "";
+        if (value instanceof Map<?, ?> || value instanceof Iterable<?>) return JSONUtil.toJsonStr(value);
+        return String.valueOf(value);
     }
 
     /**
