@@ -3,6 +3,8 @@ import { FlowStepApi, FlowStepVO, STEP_TYPES } from '@/api/flow/step'
 import { STEP_TYPE_FIELDS } from '@/api/flow/stepSchema'
 import SchemaForm from '@/components/flow/SchemaForm.vue'
 import JsonKeyValueEditor from '@/components/flow/JsonKeyValueEditor.vue'
+import { DeviceInfoApi, DeviceVO } from '@/api/device'
+import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 
 defineOptions({ name: 'FlowStepForm' })
 
@@ -45,6 +47,13 @@ const formRef = ref()
 const isDeviceCommand = computed(() => formData.value.stepType === 'device.command')
 const isDeviceTask = computed(() => formData.value.stepType === 'device.task')
 
+/** 新增步骤自动生成一个可持久化、符合编码规则的默认编码；用户仍可手动修改。 */
+const generateStepKey = () => `step_${Date.now().toString(36)}`
+const devices = ref<DeviceVO[]>([])
+const paramSets = ref<DeviceParamSetVO[]>([])
+const selectedParamSetId = ref<number | undefined>()
+const selectedParamSet = computed(() => paramSets.value.find((item) => item.id === selectedParamSetId.value))
+
 /** 当前类型的类型配置字段表（驱动 SchemaForm） */
 const typeFields = computed(() => STEP_TYPE_FIELDS[formData.value.stepType ?? ''] ?? [])
 
@@ -57,9 +66,43 @@ const parseConfig = (json?: string): Record<string, any> => {
   }
 }
 
+const updateConfigField = (key: string, value?: any) => {
+  const config = parseConfig(formData.value.typeConfig)
+  if (value === undefined || value === '') delete config[key]
+  else config[key] = value
+  formData.value.typeConfig = Object.keys(config).length ? JSON.stringify(config) : ''
+}
+
+const loadParamSets = async () => {
+  paramSets.value = []
+  if (!isDeviceCommand.value && !isDeviceTask.value) return
+  const config = parseConfig(formData.value.typeConfig)
+  if (!config.deviceCode || !config.actionCode) return
+  const device = devices.value.find((item) => item.deviceCode === config.deviceCode)
+  if (!device?.deviceTypeCode) return
+  const list = await DeviceParamSetApi.getParamSetList({
+    deviceTypeCode: device.deviceTypeCode,
+    actionCode: config.actionCode
+  })
+  paramSets.value = (list || []).filter((item: DeviceParamSetVO) => item.validated !== false && item.status !== 1)
+  selectedParamSetId.value = config.paramSetId ? Number(config.paramSetId) : undefined
+}
+
+const onConfigChanged = async (value: string) => {
+  formData.value.typeConfig = value
+  if (isDeviceCommand.value || isDeviceTask.value) await loadParamSets()
+}
+
+const onParamSetChange = (value?: number) => {
+  selectedParamSetId.value = value
+  updateConfigField('paramSetId', value)
+}
+
 /** 切换类型时清掉旧配置 */
 const onTypeChange = () => {
   formData.value.typeConfig = ''
+  selectedParamSetId.value = undefined
+  paramSets.value = []
 }
 
 const open = async (type: string, id?: number) => {
@@ -67,11 +110,15 @@ const open = async (type: string, id?: number) => {
   dialogTitle.value = t('action.' + type)
   formType.value = type
   formData.value = createEmpty()
+  if (!id) formData.value.stepKey = generateStepKey()
+  if (!devices.value.length) devices.value = (await DeviceInfoApi.getDeviceList()) || []
   formRef.value?.clearValidate()
   if (!id) return
   formLoading.value = true
   try {
     formData.value = await FlowStepApi.get(id)
+    selectedParamSetId.value = parseConfig(formData.value.typeConfig).paramSetId ? Number(parseConfig(formData.value.typeConfig).paramSetId) : undefined
+    await loadParamSets()
   } finally {
     formLoading.value = false
   }
@@ -125,7 +172,12 @@ const emit = defineEmits<{ success: [] }>()
   <Dialog v-model="dialogVisible" :title="dialogTitle" width="760px">
     <el-form ref="formRef" v-loading="formLoading" :model="formData" :rules="formRules" label-width="100px">
       <el-form-item label="步骤编码" prop="stepKey">
-        <el-input v-model="formData.stepKey" maxlength="32" placeholder="小写字母开头，如 spin" :disabled="formType !== 'create'" />
+        <el-input v-model="formData.stepKey" maxlength="32" placeholder="系统自动生成，也可手动修改" :disabled="formType !== 'create'">
+          <template #append>
+            <el-button v-if="formType === 'create'" @click="formData.stepKey = generateStepKey()">重新生成</el-button>
+          </template>
+        </el-input>
+        <div class="field-tip">系统已自动生成步骤编码；编码用于流程内部引用，创建后不可修改。</div>
       </el-form-item>
       <el-form-item label="步骤名称" prop="name">
         <el-input v-model="formData.name" maxlength="128" placeholder="请输入步骤名称，如 离心" />
@@ -137,15 +189,34 @@ const emit = defineEmits<{ success: [] }>()
       </el-form-item>
       <!-- 类型配置：按类型字段表动态渲染，收进 typeConfig JSON -->
       <template v-if="typeFields.length">
-        <SchemaForm :fields="typeFields" v-model="formData.typeConfig" />
+        <SchemaForm :fields="typeFields" v-model="formData.typeConfig" @update:model-value="onConfigChanged" />
       </template>
       <el-form-item v-else label="类型配置">
         <el-input v-model="formData.typeConfig" type="textarea" :rows="3" maxlength="4096" placeholder="类型专属配置 JSON" />
       </el-form-item>
+      <template v-if="isDeviceCommand || isDeviceTask">
+        <el-form-item label="参数集">
+          <el-select
+            v-model="selectedParamSetId"
+            class="!w-1/1"
+            clearable
+            filterable
+            :disabled="!paramSets.length"
+            :placeholder="paramSets.length ? '请选择已验证参数集' : '请先选择设备和任务类型'"
+            @change="onParamSetChange"
+          >
+            <el-option v-for="item in paramSets" :key="item.id" :label="`${item.paramSetName}（${item.paramSetCode}）`" :value="item.id!" />
+          </el-select>
+          <div class="field-tip">
+            参数集按设备类型和动作自动筛选，仅显示已验证且启用的参数集；运行时会作为基础参数。
+            <span v-if="selectedParamSet">当前：{{ selectedParamSet.paramSetName }}</span>
+          </div>
+        </el-form-item>
+      </template>
       <!-- 默认入参：自由键值对 -->
       <el-form-item label="默认输入">
         <JsonKeyValueEditor v-model="formData.defaultParams" />
-        <div class="field-tip">节点引用这一步时会先按这些默认参数起手，再用参数映射覆盖同名键。__comments__ 是给人看的说明，运行期不参与入参。</div>
+        <div class="field-tip">可选的步骤级覆盖值。执行时按“参数集 → 默认输入 → 流程参数映射”合并；__comments__ 仅用于说明。</div>
       </el-form-item>
       <!-- 输出声明：键=字段名，值=说明；发布期作为契约与节点输出映射校验 -->
       <el-form-item label="输出声明">

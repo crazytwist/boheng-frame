@@ -224,6 +224,24 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
     }
 
     /**
+     * 将已发布或已停用版本退回草稿，清除旧发布指纹，允许继续调整流程。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackDraft(Long id) {
+        FlowDefinitionDO definition = requireDefinition(id);
+        if (!FlowConstants.STATUS_PUBLISHED.equals(definition.getStatus())
+                && !FlowConstants.STATUS_RETIRED.equals(definition.getStatus())) {
+            throw exception(FLOW_DEFINITION_LOCKED, definition.getPipelineKey(), definition.getVersion(),
+                    FlowConstants.statusLabel(definition.getStatus()));
+        }
+        definition.setStatus(FlowConstants.STATUS_DRAFT);
+        definition.setChecksum(null);
+        definition.setPublishedAt(null);
+        flowDefinitionMapper.updateById(definition);
+    }
+
+    /**
      * 复制出下一个草稿。同一编码已有草稿时拒绝，避免两个人各改一份。
      */
     @Override
@@ -350,6 +368,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         resp.setJoinFailurePolicy(draft.getJoinFailurePolicy());
         resp.setBranches(draft.getBranches());
         resp.setOutputMapping(row.getOutputMapping());
+        resp.setOutputSchema(draft.getOutputSchema());
         resp.setTimeoutSec(FlowConstants.toTimeoutSec(draft.getTimeoutMs()));
         resp.setMaxAttempts(draft.getMaxAttempts());
         resp.setFailStrategy(draft.getFailStrategy());

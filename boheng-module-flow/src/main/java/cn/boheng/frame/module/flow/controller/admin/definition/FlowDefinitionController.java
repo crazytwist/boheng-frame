@@ -115,6 +115,15 @@ public class FlowDefinitionController {
         return success(true);
     }
 
+    @PostMapping("/rollback-draft")
+    @Operation(summary = "退回草稿")
+    @Parameter(name = "id", description = "编号", required = true)
+    @PreAuthorize("@ss.hasPermission('flow:definition:update')")
+    public CommonResult<Boolean> rollbackDraft(@RequestParam("id") Long id) {
+        flowDefinitionService.rollbackDraft(id);
+        return success(true);
+    }
+
     @PostMapping("/revise")
     @Operation(summary = "修订出下一版草稿")
     @Parameter(name = "id", description = "来源版本编号", required = true)

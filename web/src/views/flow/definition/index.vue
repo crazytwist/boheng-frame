@@ -37,6 +37,11 @@
         <template #default="scope">v{{ scope.row.version }}</template>
       </el-table-column>
       <el-table-column label="步骤数" align="center" prop="nodeCount" width="80" />
+      <el-table-column label="默认出参" align="center" width="100">
+        <template #default="scope">
+          <el-button link type="primary" @click="openOutput(scope.row)">查看 JSON</el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" align="center" width="100">
         <template #default="scope">
           <el-tag :type="statusTag(scope.row.status)">{{ statusLabel(scope.row.status) }}</el-tag>
@@ -76,6 +81,15 @@
             修订
           </el-button>
           <el-button
+            v-if="scope.row.status !== 'DRAFT'"
+            v-hasPermi="['flow:definition:update']"
+            link
+            type="warning"
+            @click="handleRollbackDraft(scope.row)"
+          >
+            退回草稿
+          </el-button>
+          <el-button
             v-if="scope.row.status === 'PUBLISHED'"
             v-hasPermi="['flow:definition:publish']"
             link
@@ -103,6 +117,9 @@
   <DefinitionForm ref="formRef" @success="getList" />
   <DefinitionDetailDrawer ref="detailRef" />
   <FlowIssuePanel ref="issueRef" />
+  <el-dialog v-model="outputVisible" title="默认出参" width="680px" append-to-body>
+    <pre class="output-json">{{ outputJson || '{}' }}</pre>
+  </el-dialog>
 </template>
 
 <script lang="ts" setup>
@@ -166,6 +183,8 @@ const resetQuery = () => {
 const formRef = ref()
 const detailRef = ref()
 const issueRef = ref()
+const outputVisible = ref(false)
+const outputJson = ref('')
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
@@ -179,6 +198,7 @@ const openRelation = (id: number) => {
 /** 不发布只校验。打开结构化问题清单，发现问题可一键去编排 */
 const handleValidate = async (row: FlowDefinitionVO) => {
   const issues = await FlowDefinitionApi.validate(row.id!)
+  await getList()
   issueRef.value?.open(issues || [], {
     title: `校验：${row.name} v${row.version}`,
     emptyText: '所有检查通过，可以发布。',
@@ -188,6 +208,33 @@ const handleValidate = async (row: FlowDefinitionVO) => {
       }
     }
   })
+}
+
+/** 从节点输出声明汇总默认出参，保持列表接口轻量，点击时再读取详情。 */
+const openOutput = async (row: FlowDefinitionVO) => {
+  const detail = await FlowDefinitionApi.get(row.id!)
+  const result: Record<string, unknown> = {}
+  for (const node of detail.nodes || []) {
+    if (!node.outputSchema?.trim()) continue
+    try {
+      result[node.name || node.nodeId] = JSON.parse(node.outputSchema)
+    } catch {
+      result[node.name || node.nodeId] = node.outputSchema
+    }
+  }
+  outputJson.value = JSON.stringify(result, null, 2)
+  outputVisible.value = true
+}
+
+const handleRollbackDraft = async (row: FlowDefinitionVO) => {
+  try {
+    await message.confirm(`确认将「${row.name}」v${row.version} 退回草稿？发布状态和发布指纹将被清除。`)
+  } catch {
+    return
+  }
+  await FlowDefinitionApi.rollbackDraft(row.id!)
+  message.success('已退回草稿')
+  await getList()
 }
 
 const handlePublish = async (row: FlowDefinitionVO) => {
@@ -251,3 +298,20 @@ onMounted(() => {
   getList()
 })
 </script>
+
+<style scoped>
+.output-json {
+  max-height: 520px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  font-family: Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+</style>

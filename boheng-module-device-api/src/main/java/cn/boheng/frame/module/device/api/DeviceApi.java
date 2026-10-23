@@ -2,6 +2,7 @@ package cn.boheng.frame.module.device.api;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSelectReqDTO;
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
+import cn.boheng.frame.module.device.api.dto.DeviceParamSetDTO;
 
 import java.util.List;
 
@@ -57,5 +58,18 @@ public interface DeviceApi {
      * @return 启用动作编码列表；设备不存在或没有启用动作时返回空列表
      */
     List<String> listActionCodesByDevice(String deviceCode);
+
+    /**
+     * 读取一套可用于指定设备动作的参数集。
+     *
+     * <p>参数集必须存在、启用、已验证，且其设备类型及动作须与目标设备一致；
+     * 任一条件不满足时返回 {@code null}，让调用方以自身上下文生成错误提示。
+     *
+     * @param paramSetId 参数集主键
+     * @param deviceCode 目标设备编码
+     * @param actionCode 目标动作编码
+     * @return 可执行的参数集；不可用时返回 null
+     */
+    DeviceParamSetDTO getUsableParamSet(Long paramSetId, String deviceCode, String actionCode);
 
 }

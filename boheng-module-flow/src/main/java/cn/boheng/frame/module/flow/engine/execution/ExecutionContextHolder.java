@@ -104,7 +104,24 @@ public class ExecutionContextHolder {
      * 能力目录的默认输入（default_params）先作为基底，节点映射同名键覆盖。
      */
     public Map<String, Object> resolveParams(RuntimeNode node, Map<String, Object> env) {
+        return resolveParams(node, env, Map.of());
+    }
+
+    /**
+     * 按参数映射解析一个节点的输入，并以参数集默认值作为最低优先级基底。
+     * 覆盖顺序为：参数集 → 步骤默认参数 → 节点映射。
+     *
+     * @param node 运行节点
+     * @param env 执行上下文
+     * @param paramSetParams 已校验的参数集默认值，可为空
+     * @return 设备或步骤执行所需的最终参数
+     */
+    public Map<String, Object> resolveParams(RuntimeNode node, Map<String, Object> env,
+                                             Map<String, Object> paramSetParams) {
         Map<String, Object> params = new LinkedHashMap<>();
+        if (paramSetParams != null) {
+            params.putAll(paramSetParams);
+        }
         // 能力目录默认输入作为基底：节点显式映射可覆盖同名键
         if (node.getDefaultParams() != null && !node.getDefaultParams().isBlank()) {
             try {

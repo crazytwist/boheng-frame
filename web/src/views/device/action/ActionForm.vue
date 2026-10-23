@@ -2,6 +2,8 @@
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import { DeviceCodecApi, DeviceCodecVO } from '@/api/device/codec'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
+import ParamSetForm from '../paramSet/ParamSetForm.vue'
+import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 
 defineOptions({ name: 'DeviceActionForm' })
 
@@ -40,6 +42,15 @@ const createEmptyFormData = (): DeviceActionVO => ({
 })
 
 const formData = ref<DeviceActionVO>(createEmptyFormData())
+const requestTemplateDialog = ref(false)
+const paramDefinitionDialog = ref(false)
+const paramSetFormRef = ref()
+const paramSets = ref<DeviceParamSetVO[]>([])
+const paramSetDetail = ref<DeviceParamSetVO>()
+const paramSetDetailVisible = ref(false)
+const selectedParamSetId = ref<number>()
+type ParamDefinitionRow = { key: string; label: string; type: string; unit?: string; required: boolean; defaultValue?: string; constraints?: string }
+const paramDefinitionRows = ref<ParamDefinitionRow[]>([])
 const codecOptions = ref<DeviceCodecVO[]>([])
 const fixedDeviceTypeCode = ref<string>()
 
@@ -144,6 +155,7 @@ const open = async (
   dialogTitle.value = t('action.' + type)
   formType.value = type
   formData.value = createEmptyFormData()
+  paramDefinitionRows.value = []
   fixedDeviceTypeCode.value = context?.deviceTypeCode
   if (fixedDeviceTypeCode.value) formData.value.deviceTypeCode = fixedDeviceTypeCode.value
   if (type === 'create' && context) {
@@ -167,6 +179,9 @@ const open = async (
     try {
       const data = await DeviceActionApi.getAction(id)
       Object.assign(formData.value, data)
+      loadParamDefinitionRows()
+      await loadParamSets()
+      loadParamDefinitionRows()
       if (fixedDeviceTypeCode.value) formData.value.deviceTypeCode = fixedDeviceTypeCode.value
       if (!formData.value.bodyFormat) formData.value.bodyFormat = 'JSON'
       if (!formData.value.resultMode) formData.value.resultMode = 'SYNC_RETURN'
@@ -174,6 +189,50 @@ const open = async (
       formLoading.value = false
     }
   }
+}
+
+const loadParamDefinitionRows = () => {
+  try {
+    const obj = formData.value.paramSchema ? JSON.parse(formData.value.paramSchema) : {}
+    paramDefinitionRows.value = Object.entries(obj).map(([key, raw]: [string, any]) => ({
+      key, label: raw?.label || key, type: raw?.type || 'STRING', unit: raw?.unit,
+      required: !!raw?.required,
+      defaultValue: raw?.defaultValue ?? raw?.default,
+      constraints: Array.isArray(raw?.constraints) ? raw.constraints.join(', ') : raw?.constraints
+    }))
+  } catch { paramDefinitionRows.value = [] }
+}
+
+const syncParamSchema = () => {
+  const result: Record<string, any> = {}
+  for (const row of paramDefinitionRows.value) {
+    const key = row.key?.trim()
+    if (!key) continue
+    const item: Record<string, any> = { label: row.label?.trim() || key, type: row.type || 'STRING', required: !!row.required }
+    if (row.unit?.trim()) item.unit = row.unit.trim()
+    if (row.defaultValue !== undefined && row.defaultValue !== '') item.default = row.defaultValue
+    if (row.constraints?.trim()) item.constraints = row.constraints.split(',').map((v) => v.trim()).filter(Boolean)
+    result[key] = item
+  }
+  formData.value.paramSchema = Object.keys(result).length ? JSON.stringify(result, null, 2) : undefined
+}
+
+const addParamDefinition = () => paramDefinitionRows.value.push({ key: '', label: '', type: 'STRING', required: false })
+const removeParamDefinition = (index: number) => { paramDefinitionRows.value.splice(index, 1); syncParamSchema() }
+
+const loadParamSets = async () => {
+  if (!formData.value.deviceTypeCode || !formData.value.actionCode) { paramSets.value = []; return }
+  paramSets.value = await DeviceParamSetApi.getParamSetList({ deviceTypeCode: formData.value.deviceTypeCode, actionCode: formData.value.actionCode }) || []
+  selectedParamSetId.value = paramSets.value[0]?.id
+}
+const showParamSetDetail = (item: DeviceParamSetVO) => { paramSetDetail.value = item; selectedParamSetId.value = item.id; paramSetDetailVisible.value = true }
+const openParamSetConfig = () => {
+  const existing = paramSets.value[0]
+  if (existing?.id) showParamSetDetail(existing)
+  else paramSetFormRef.value?.open('create', undefined, { deviceTypeCode: formData.value.deviceTypeCode, actionCode: formData.value.actionCode })
+}
+const handleParamSetDetailChange = async (id: number) => {
+  paramSetDetail.value = await DeviceParamSetApi.getParamSet(id)
 }
 
 // 校验并美化 JSON（参数模式）
@@ -227,6 +286,14 @@ const emit = defineEmits<{ success: [] }>()
       :rules="formRules"
       label-width="120px"
     >
+      <el-alert
+        title="按顺序完成：先定义参数，再设置默认值，最后配置设备请求模板"
+        description="参数定义决定允许传入什么；参数集提供可复用的默认值；请求模板负责把参数转换成设备报文。"
+        type="info"
+        :closable="false"
+        show-icon
+        class="setup-guide"
+      />
       <el-divider content-position="left">基本信息</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
@@ -273,7 +340,7 @@ const emit = defineEmits<{ success: [] }>()
             />
           </el-form-item>
         </el-col>
-        <el-col v-if="!fixedDeviceTypeCode" :span="12">
+        <el-col v-if="false" :span="12">
           <el-form-item label="能力来源">
             <el-select v-model="formData.source" placeholder="请选择能力来源" class="!w-1/1">
               <el-option
@@ -285,7 +352,7 @@ const emit = defineEmits<{ success: [] }>()
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col v-if="!fixedDeviceTypeCode" :span="12">
+        <el-col v-if="false" :span="12">
           <el-form-item label="预估耗时(毫秒)">
             <el-input-number
               v-model="formData.estimateDurationMs"
@@ -298,14 +365,14 @@ const emit = defineEmits<{ success: [] }>()
           </el-form-item>
         </el-col>
       </el-row>
-      <el-form-item v-if="!fixedDeviceTypeCode" label="SiLA 标准特性">
+      <el-form-item v-if="false" label="SiLA 标准特性">
         <el-input
           v-model="formData.standardFeature"
           maxlength="128"
           placeholder="如 com.sila_standard.run_control；私有动作无需填写"
         />
       </el-form-item>
-      <el-form-item v-if="!fixedDeviceTypeCode" label="厂商映射">
+      <el-form-item v-if="false" label="厂商映射">
         <el-input
           v-model="formData.vendorRef"
           maxlength="255"
@@ -346,28 +413,68 @@ const emit = defineEmits<{ success: [] }>()
           </el-form-item>
         </el-col>
       </el-row>
+      <el-divider content-position="left">请求配置</el-divider>
       <el-form-item label="请求模板" prop="requestTemplate">
-        <el-input
-          v-model="formData.requestTemplate"
-          type="textarea"
-          :rows="3"
-          placeholder="选填，使用 ${参数名} 引用调用参数；报文格式为 XML 时必须填写"
-        />
+        <el-button type="primary" plain @click="requestTemplateDialog = true">配置请求模板</el-button>
+        <span class="field-tip inline-tip">{{ formData.requestTemplate ? '已配置请求模板' : '尚未配置' }}</span>
       </el-form-item>
-      <el-form-item label="参数定义">
-        <div class="json-editor-wrap">
-          <el-input
-            v-model="formData.paramSchema"
-            type="textarea"
-            :rows="8"
-            :placeholder="PARAM_SCHEMA_PLACEHOLDER"
-          />
-          <div class="json-editor-tip">
-            <span>JSON 格式，调用时据此生成参数表单</span>
-            <el-button link type="primary" @click="formatParamSchema">格式化</el-button>
+      <el-dialog v-model="requestTemplateDialog" title="配置请求模板" width="720px" append-to-body>
+        <el-input v-model="formData.requestTemplate" type="textarea" :rows="10" placeholder="使用 ${参数名} 引用参数；XML 报文格式下必须填写" />
+        <div class="field-tip">可用参数示例：${sample.id}、${temperature}。请求模板只负责把参数转换为设备报文。</div>
+      </el-dialog>
+      <el-divider content-position="left">参数定义</el-divider>
+      <el-form-item label="参数定义" class="compact-config-item">
+        <el-button type="primary" plain @click="paramDefinitionDialog = true">配置参数定义</el-button>
+        <span class="field-tip inline-tip">{{ paramDefinitionRows.length ? `已配置 ${paramDefinitionRows.length} 个参数` : '尚未配置' }}</span>
+      </el-form-item>
+      <el-dialog v-model="paramDefinitionDialog" title="配置参数定义" width="980px" append-to-body>
+        <div class="param-definition-editor">
+          <div class="section-intro"><strong>定义动作允许接收哪些输入</strong><span>参数集、流程节点和调试页面都会依据这里生成输入项。</span></div>
+          <div v-for="(row, index) in paramDefinitionRows" :key="index" class="param-definition-row">
+            <el-input v-model="row.key" placeholder="参数路径，如 sample.id" @change="syncParamSchema" />
+            <el-input v-model="row.label" placeholder="显示名称，如 样本编号" @change="syncParamSchema" />
+            <el-select v-model="row.type" placeholder="类型" @change="syncParamSchema">
+              <el-option label="字符串" value="STRING" /><el-option label="整数" value="INTEGER" />
+              <el-option label="小数" value="DECIMAL" /><el-option label="布尔" value="BOOLEAN" />
+              <el-option label="对象" value="OBJECT" /><el-option label="数组" value="ARRAY" />
+            </el-select>
+            <el-input v-model="row.defaultValue" placeholder="默认值（可选）" @change="syncParamSchema" />
+            <el-checkbox v-model="row.required" @change="syncParamSchema">必填</el-checkbox>
+            <el-button link type="danger" @click="removeParamDefinition(index)">删除</el-button>
           </div>
+          <el-button link type="primary" @click="addParamDefinition">+ 添加参数</el-button>
+          <div class="json-editor-tip">复杂对象或数组可在下方高级 JSON 中补充；保存时系统会自动生成参数定义。</div>
+          <el-input v-model="formData.paramSchema" type="textarea" :rows="4" :placeholder="PARAM_SCHEMA_PLACEHOLDER" @change="loadParamDefinitionRows" />
+          <el-button link type="primary" @click="formatParamSchema">格式化高级 JSON</el-button>
         </div>
+      </el-dialog>
+      <el-form-item label="参数集" class="compact-config-item">
+        <el-button type="primary" plain :disabled="!formData.deviceTypeCode || !formData.actionCode" @click="openParamSetConfig">配置参数集</el-button>
+        <span class="field-tip inline-tip">{{ paramSets.length ? `已配置 ${paramSets.length} 个参数集` : '尚未配置参数集' }}</span>
       </el-form-item>
+      <el-dialog v-model="paramSetDetailVisible" title="参数集详情" width="880px" append-to-body>
+        <el-form v-if="paramSetDetail" label-width="105px">
+          <el-divider content-position="left">基本信息</el-divider>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="参数集编码">
+                <el-select v-model="selectedParamSetId" class="!w-1/1" @change="handleParamSetDetailChange">
+                  <el-option v-for="item in paramSets" :key="item.id" :label="`${item.paramSetCode}（${item.paramSetName}）`" :value="item.id!" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12"><el-form-item label="参数集名称"><el-input :model-value="paramSetDetail.paramSetName" disabled /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="设备类型"><el-input :model-value="paramSetDetail.deviceTypeCode" disabled /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="关联动作"><el-input :model-value="paramSetDetail.actionCode" disabled /></el-form-item></el-col>
+          </el-row>
+          <el-divider content-position="left">参数配置</el-divider>
+          <el-form-item label="参数取值"><pre class="param-set-json">{{ paramSetDetail.paramsJson || '{}' }}</pre></el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="paramSetDetailVisible = false">关 闭</el-button>
+          <el-button type="primary" @click="paramSetFormRef?.open('update', paramSetDetail.id)">编 辑</el-button>
+        </template>
+      </el-dialog>
 
       <el-divider content-position="left">结果处理</el-divider>
       <el-form-item label="结果获取方式">
@@ -477,6 +584,7 @@ const emit = defineEmits<{ success: [] }>()
       <el-button @click="dialogVisible = false">取 消</el-button>
     </template>
   </Dialog>
+  <ParamSetForm ref="paramSetFormRef" />
 </template>
 
 <style lang="scss" scoped>
@@ -498,5 +606,29 @@ const emit = defineEmits<{ success: [] }>()
   font-size: 12px;
   color: var(--el-text-color-secondary);
   line-height: 24px;
+}
+
+.param-definition-editor {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+}
+.setup-guide { margin-bottom: 18px; }
+.section-intro { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
+.section-intro strong { color: var(--el-text-color-primary); font-size: 14px; }
+.inline-tip { display: inline-block; margin-left: 10px; }
+.param-set-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.param-set-tag { cursor: pointer; }
+.param-set-manager { display: flex; gap: 12px; align-items: center; }
+.param-set-json { max-height: 520px; overflow: auto; margin: 0; padding: 16px; border-radius: 6px; background: #f6f8fa; white-space: pre-wrap; font-family: monospace; }
+:deep(.compact-config-item) { display: inline-flex; width: 49%; vertical-align: top; box-sizing: border-box; }
+.param-definition-row {
+  display: grid;
+  grid-template-columns: 1.25fr 1.1fr 0.9fr 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
 }
 </style>

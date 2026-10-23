@@ -63,6 +63,11 @@ public interface FlowDefinitionService {
     void retireDefinition(Long id);
 
     /**
+     * 将已发布或已停用的流程版本退回草稿。
+     */
+    void rollbackDraft(Long id);
+
+    /**
      * 从已发布或已停用的版本复制出下一版草稿。
      *
      * @return 新草稿编号

@@ -2,10 +2,13 @@ package cn.boheng.frame.module.device.api;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSelectReqDTO;
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
+import cn.boheng.frame.module.device.api.dto.DeviceParamSetDTO;
 import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
+import cn.boheng.frame.module.device.dal.dataobject.paramset.DeviceParamSetDO;
 import cn.boheng.frame.module.device.dal.mysql.action.DeviceActionMapper;
 import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
+import cn.boheng.frame.module.device.dal.mysql.paramset.DeviceParamSetMapper;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
@@ -37,6 +40,12 @@ public class DeviceApiImpl implements DeviceApi {
      */
     @Resource
     private DeviceActionMapper deviceActionMapper;
+
+    /**
+     * 参数集表。为流程等外部调用方筛选可执行的默认入参
+     */
+    @Resource
+    private DeviceParamSetMapper deviceParamSetMapper;
     /**
      * 按设备类型挑选在线且空闲的设备
      */
@@ -122,6 +131,34 @@ public class DeviceApiImpl implements DeviceApi {
                 .filter(StrUtil::isNotBlank)
                 .distinct()
                 .toList();
+    }
+
+    /**
+     * 按目标设备和动作校验并返回参数集。流程运行期不能直接访问设备表，
+     * 因此由设备域在这里统一保证参数集的启用、验证和归属约束。
+     */
+    @Override
+    public DeviceParamSetDTO getUsableParamSet(Long paramSetId, String deviceCode, String actionCode) {
+        if (paramSetId == null || StrUtil.hasBlank(deviceCode, actionCode)) {
+            return null;
+        }
+        DeviceInfoDO device = deviceInfoMapper.selectByDeviceCode(deviceCode.trim());
+        DeviceParamSetDO paramSet = deviceParamSetMapper.selectById(paramSetId);
+        if (device == null || paramSet == null
+                || !Boolean.TRUE.equals(paramSet.getValidated())
+                || (paramSet.getStatus() != null && paramSet.getStatus() != 0)
+                || !StrUtil.equals(device.getDeviceTypeCode(), paramSet.getDeviceTypeCode())
+                || !StrUtil.equals(actionCode.trim(), paramSet.getActionCode())) {
+            return null;
+        }
+        DeviceParamSetDTO result = new DeviceParamSetDTO();
+        result.setId(paramSet.getId());
+        result.setParamSetCode(paramSet.getParamSetCode());
+        result.setParamSetName(paramSet.getParamSetName());
+        result.setDeviceTypeCode(paramSet.getDeviceTypeCode());
+        result.setActionCode(paramSet.getActionCode());
+        result.setParamsJson(paramSet.getParamsJson());
+        return result;
     }
 
     /**
