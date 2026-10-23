@@ -424,7 +424,7 @@ const steps = ref<FlowStepVO[]>([])
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 50,
-  definitionId: undefined as number | undefined
+  definitionId: undefined as string | undefined
 })
 const queryFormRef = ref()
 
@@ -569,7 +569,11 @@ const loadOptions = async () => {
 
 const applyRoute = () => {
   const raw = route.query.definitionId
-  if (raw) queryParams.definitionId = Number(raw)
+  // 注意：流程定义 ID 是 19 位雪花 ID，超出 JS 的 Number.MAX_SAFE_INTEGER（16 位）。
+  // 一旦用 Number() 转换就会丢精度（如 2110257675692195842 → 2110257675692195840），
+  // 后端按错误 ID 查询会返回空列表。后端已用 NumberSerializer 把 Long 序列化成字符串，
+  // 因此这里必须原样保留字符串，不能做任何数值转换。
+  if (raw) queryParams.definitionId = String(raw)
 }
 
 const handleQuery = () => {
@@ -591,8 +595,8 @@ const creating = ref(false)
 const createFormRef = ref()
 const createForm = reactive({
   mode: 'step' as 'step' | 'control',
-  definitionId: undefined as number | undefined,
-  stepId: undefined as number | undefined,
+  definitionId: undefined as string | undefined,
+  stepId: undefined as string | undefined,
   nodeId: '',
   name: '',
   stepType: undefined as string | undefined,
@@ -689,13 +693,13 @@ const editVisible = ref(false)
 const editing = ref(false)
 const editLoading = ref(false)
 const editId = ref(0)
-const editDefinitionId = ref<number>()
+const editDefinitionId = ref<string>()
 const editForm = reactive({
   nodeId: '',
   stepType: '',
   isControl: false,
   name: '',
-  stepId: undefined as number | undefined,
+  stepId: undefined as string | undefined,
   typeConfig: '',
   dependsOn: [] as string[],
   joinPolicy: undefined as string | undefined,
@@ -729,7 +733,7 @@ const inputDeclaredKeys = computed<string[]>(() => {
  * 兜底取步骤详情：/flow/step/list 只返回启用步骤，
  * 步骤被停用后仍挂在节点上时，列表里查不到会误判成「没声明参数」。
  */
-const loadStepDetail = async (stepId?: number) => {
+const loadStepDetail = async (stepId?: string) => {
   if (!stepId || steps.value.some((item) => item.id === stepId)) return
   try {
     const detail = await FlowStepApi.get(stepId)
@@ -929,12 +933,12 @@ const submitEdit = async () => {
   }
 }
 
-const move = async (id: number, offset: number) => {
+const move = async (id: string, offset: number) => {
   await FlowRelationApi.move(id, offset)
   await getList()
 }
 
-const handleDelete = async (id: number) => {
+const handleDelete = async (id: string) => {
   try {
     await message.delConfirm('移除后，还要依赖它的节点会校验失败，请先解除那些依赖。')
   } catch {
