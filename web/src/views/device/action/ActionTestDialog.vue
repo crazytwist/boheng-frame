@@ -5,7 +5,12 @@
         <span>{{ actionLine }}</span>
       </el-form-item>
       <el-form-item label="目标设备" required>
-        <el-select v-model="deviceId" placeholder="请选择 HTTP 接入或仿真设备" class="!w-1/1" filterable>
+        <el-select
+          v-model="deviceId"
+          placeholder="请选择 HTTP 接入或仿真设备"
+          class="!w-1/1"
+          filterable
+        >
           <el-option
             v-for="item in devices"
             :key="item.id"
@@ -14,8 +19,45 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item v-if="fields.length" label="参数模式">
+        <el-radio-group v-model="inputMode">
+          <el-radio-button value="FORM">结构化表单</el-radio-button>
+          <el-radio-button value="JSON">JSON 高级</el-radio-button>
+        </el-radio-group>
+        <span class="form-tip">复杂对象、数组或级联参数建议使用 JSON 模式</span>
+      </el-form-item>
+      <el-form-item v-if="paramSets.length" label="参数集">
+        <el-select
+          v-model="selectedParamSetId"
+          clearable
+          class="!w-1/1"
+          placeholder="可选，选择后自动填充参数"
+          @change="applyParamSet"
+        >
+          <el-option
+            v-for="item in paramSets"
+            :key="item.id"
+            :label="`${item.paramSetName} (${item.paramSetCode})`"
+            :value="item.id!"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item v-if="fields.length && inputMode === 'JSON'" label="调用参数">
+        <el-input
+          v-model="rawParams"
+          type="textarea"
+          :rows="9"
+          placeholder='JSON 对象，如 {"sample":{"id":"S001"},"items":[]}'
+        />
+      </el-form-item>
       <template v-if="fields.length">
-        <el-form-item v-for="field in fields" :key="field.key" :label="field.label" :required="field.required">
+        <el-form-item
+          v-if="inputMode === 'FORM'"
+          v-for="field in fields"
+          :key="field.key"
+          :label="field.label"
+          :required="field.required"
+        >
           <el-select
             v-if="enumOptions(field).length"
             v-model="values[field.key]"
@@ -23,7 +65,12 @@
             class="!w-1/1"
             :placeholder="field.required ? '请选择' : '选填'"
           >
-            <el-option v-for="option in enumOptions(field)" :key="option" :label="option" :value="option" />
+            <el-option
+              v-for="option in enumOptions(field)"
+              :key="option"
+              :label="option"
+              :value="option"
+            />
           </el-select>
           <el-switch v-else-if="field.type === 'BOOLEAN'" v-model="values[field.key]" />
           <el-input-number
@@ -32,7 +79,12 @@
             controls-position="right"
             class="!w-1/1"
           />
-          <el-input v-else v-model="values[field.key]" clearable :placeholder="field.unit ? `单位：${field.unit}` : '请输入'" />
+          <el-input
+            v-else
+            v-model="values[field.key]"
+            clearable
+            :placeholder="field.unit ? `单位：${field.unit}` : '请输入'"
+          />
         </el-form-item>
       </template>
       <el-form-item v-else label="调用参数">
@@ -54,10 +106,17 @@
     />
     <div v-if="result" class="test-result">
       <div class="test-result__head">
-        <el-tag :type="statusType" effect="dark" size="small">HTTP {{ result.status ?? '—' }}</el-tag>
+        <el-tag :type="statusType" effect="dark" size="small"
+          >HTTP {{ result.status ?? '—' }}</el-tag
+        >
+        <el-tag v-if="result.commandStatus === 'WAITING'" type="warning" size="small"
+          >等待设备回调</el-tag
+        >
         <span v-if="result.contentType" class="test-result__meta">{{ result.contentType }}</span>
         <el-tag v-if="result.retriedLogin" type="warning" size="small">已重新登录</el-tag>
-        <span v-if="result.commandNo" class="test-result__meta">命令编号：{{ result.commandNo }}</span>
+        <span v-if="result.commandNo" class="test-result__meta"
+          >命令编号：{{ result.commandNo }}</span
+        >
       </div>
       <pre class="test-result__body">{{ prettyBody }}</pre>
     </div>
@@ -70,7 +129,8 @@
 
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
-import { DeviceInfoApi, DeviceVO } from '@/api/device'
+import { DeviceInfoApi, DeviceInvokeResult, DeviceVO } from '@/api/device'
+import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 import { parseSchema, SchemaField } from '../labels'
 
 const message = useMessage()
@@ -79,13 +139,21 @@ const loading = ref(false)
 const sending = ref(false)
 const action = ref<DeviceActionVO>()
 const devices = ref<DeviceVO[]>([])
+const paramSets = ref<DeviceParamSetVO[]>([])
+const selectedParamSetId = ref<number>()
 const deviceId = ref<number>()
 const fields = ref<SchemaField[]>([])
 const values = reactive<Record<string, any>>({})
 const rawParams = ref('')
-const result = ref<{ status?: number; body?: string; contentType?: string; retriedLogin?: boolean; commandNo?: string }>()
+const inputMode = ref<'FORM' | 'JSON'>('FORM')
+const result = ref<DeviceInvokeResult>()
 
-const formatNames: Record<string, string> = { JSON: 'JSON', FORM: '表单', TEXT: '纯文本', XML: 'XML' }
+const formatNames: Record<string, string> = {
+  JSON: 'JSON',
+  FORM: '表单',
+  TEXT: '纯文本',
+  XML: 'XML'
+}
 
 const actionLine = computed(() => {
   if (!action.value) return ''
@@ -101,9 +169,9 @@ let elapsedTimer: ReturnType<typeof setInterval> | undefined
 const waitingText = computed(() => {
   const head =
     action.value?.resultMode === 'CALLBACK'
-      ? '设备已受理请求，正在等待设备回调执行结果'
+      ? '正在向设备下发回调命令'
       : '正在等待设备返回结果，回调或轮询方式耗时较长'
-  return `${head}（已等待 ${elapsed.value} 秒），请勿关闭窗口`
+  return `${head}（已等待 ${elapsed.value} 秒）`
 })
 
 const startElapsed = () => {
@@ -128,6 +196,9 @@ const statusType = computed(() => {
 })
 
 const prettyBody = computed(() => {
+  if (result.value?.commandStatus === 'WAITING') {
+    return '设备已受理命令，执行结果将通过 callback 写入命令记录。可以关闭当前窗口。'
+  }
   const body = result.value?.body
   if (!body) return '无响应体'
   const type = result.value?.contentType || ''
@@ -142,12 +213,15 @@ const prettyBody = computed(() => {
 })
 
 const isSimulated = (item: DeviceVO) =>
-  item.connectionType === 'SIMULATED' || item.driverType === 'SIMULATED' || Boolean(item.simulationMode)
+  item.connectionType === 'SIMULATED' ||
+  item.driverType === 'SIMULATED' ||
+  Boolean(item.simulationMode)
 
 const deviceOptionLabel = (item: DeviceVO) =>
   `${item.deviceName || item.deviceCode} · ${isSimulated(item) ? '仿真' : item.endpointUrl || '未配置接入地址'}`
 
-const enumOptions = (field: SchemaField) => (Array.isArray(field.constraints) ? field.constraints.map(String) : [])
+const enumOptions = (field: SchemaField) =>
+  Array.isArray(field.constraints) ? field.constraints.map(String) : []
 
 const resetValues = (schema: SchemaField[]) => {
   Object.keys(values).forEach((key) => delete values[key])
@@ -160,6 +234,16 @@ const resetValues = (schema: SchemaField[]) => {
   })
 }
 
+const applyParamSet = (id?: number) => {
+  const selected = paramSets.value.find((item) => item.id === id)
+  if (!selected?.paramsJson) return
+  rawParams.value = selected.paramsJson
+  inputMode.value = 'JSON'
+}
+
+const hasComplexSchema = (schema: SchemaField[]) =>
+  schema.some((field) => ['OBJECT', 'ARRAY', 'LIST'].includes(String(field.type).toUpperCase()))
+
 const open = async (id: number, presetDeviceId?: number) => {
   visible.value = true
   loading.value = true
@@ -167,8 +251,11 @@ const open = async (id: number, presetDeviceId?: number) => {
   result.value = undefined
   deviceId.value = undefined
   rawParams.value = ''
+  inputMode.value = 'FORM'
   action.value = undefined
   devices.value = []
+  paramSets.value = []
+  selectedParamSetId.value = undefined
   fields.value = []
   try {
     const data = await DeviceActionApi.getAction(id)
@@ -176,12 +263,22 @@ const open = async (id: number, presetDeviceId?: number) => {
     const schema = parseSchema(data?.paramSchema)
     fields.value = schema
     resetValues(schema)
+    inputMode.value = hasComplexSchema(schema) ? 'JSON' : 'FORM'
+    const presets = await DeviceParamSetApi.getParamSetList({
+      deviceTypeCode: data?.deviceTypeCode,
+      actionCode: data?.actionCode
+    })
+    paramSets.value = (Array.isArray(presets) ? presets : []).filter(
+      (item) => item.validated !== false && item.status !== 1
+    )
     const list = await DeviceInfoApi.getDeviceList()
     const rows = Array.isArray(list) ? list : []
     devices.value = rows.filter(
       (item) =>
         item.deviceTypeCode === data?.deviceTypeCode &&
-        (item.connectionType === 'HTTP' || item.connectionType === 'NODE_RED' || isSimulated(item) ||
+        (item.connectionType === 'HTTP' ||
+          item.connectionType === 'NODE_RED' ||
+          isSimulated(item) ||
           item.id === presetDeviceId)
     )
     if (presetDeviceId && devices.value.some((item) => item.id === presetDeviceId)) {
@@ -195,6 +292,15 @@ const open = async (id: number, presetDeviceId?: number) => {
 }
 
 const buildParams = () => {
+  if (inputMode.value === 'JSON') {
+    if (!rawParams.value.trim()) return undefined
+    try {
+      JSON.parse(rawParams.value)
+    } catch {
+      throw new Error('调用参数不是合法的 JSON')
+    }
+    return rawParams.value
+  }
   if (!fields.value.length) {
     if (!rawParams.value.trim()) return undefined
     try {
@@ -252,6 +358,11 @@ defineExpose({ open })
 <style scoped>
 .test-waiting {
   margin-bottom: 8px;
+}
+.form-tip {
+  margin-left: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .test-result {
   margin-top: 4px;

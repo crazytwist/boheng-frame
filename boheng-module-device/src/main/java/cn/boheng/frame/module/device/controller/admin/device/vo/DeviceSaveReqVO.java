@@ -120,6 +120,12 @@ public class DeviceSaveReqVO {
     @Schema(description = "仪器能否主动推送结果", example = "false")
     private Boolean callbackEnabled;
 
+    @Schema(description = "是否支持平台轮询")
+    private Boolean pollEnabled;
+
+    @Schema(description = "是否支持状态查询")
+    private Boolean statusQueryEnabled;
+
     @Schema(description = "设备回调平台用的地址，空则用平台默认地址", example = "http://10.0.0.5:48080/admin-api/device/callback/${commandNo}?token=${callbackToken}")
     @Size(max = 512, message = "回调地址长度不能超过 512 个字符")
     @Pattern(regexp = "^$|^(?i)https?://.+", message = "回调地址必须以 http:// 或 https:// 开头")

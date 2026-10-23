@@ -25,6 +25,9 @@ public class DeviceInvokeRespVO {
     @Schema(description = "命令号")
     private String commandNo;
 
+    @Schema(description = "命令状态：WAITING / SUCCEEDED / FAILED", example = "WAITING")
+    private String commandStatus;
+
     @Schema(description = "实际请求方法")
     private String httpMethod;
 

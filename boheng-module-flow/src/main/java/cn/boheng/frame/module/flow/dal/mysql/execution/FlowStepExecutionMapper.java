@@ -67,4 +67,12 @@ public interface FlowStepExecutionMapper extends BaseMapperX<FlowStepExecutionDO
                 .eq(FlowStepExecutionDO::getStatus, "WAITING"));
     }
 
+    /** 按设备命令定位等待中的流程节点，设备完成事件使用。 */
+    default FlowStepExecutionDO selectWaitingByCommandId(Long commandId) {
+        return selectOne(new LambdaQueryWrapperX<FlowStepExecutionDO>()
+                .eq(FlowStepExecutionDO::getCommandId, commandId)
+                .eq(FlowStepExecutionDO::getStatus, "WAITING")
+                .last("LIMIT 1"));
+    }
+
 }

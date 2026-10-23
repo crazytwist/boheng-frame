@@ -20,6 +20,11 @@ public class DeviceCommandConfig {
     private String actionCode;
 
     /**
+     * 设备参数集主键。运行期读取其默认值，再由步骤默认参数和节点映射覆盖。
+     */
+    private Long paramSetId;
+
+    /**
      * 解析规则编码。空则用动作上配置的规则
      */
     private String codecCode;

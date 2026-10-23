@@ -83,18 +83,30 @@
           </div>
         </div>
       </section>
+      <section class="cat-block">
+        <div class="cat-kicker">绑定参数集</div>
+        <div v-if="paramSets.length">
+          <div v-for="item in paramSets" :key="item.id" class="param-card">
+            <div class="param-name">{{ item.paramSetName }} <el-tag size="small" :type="item.validated ? 'success' : 'info'">{{ item.validated ? '已验证' : '未验证' }}</el-tag></div>
+            <div class="param-meta">{{ item.paramSetCode }} · {{ item.status === 0 ? '启用' : '停用' }}</div>
+          </div>
+        </div>
+        <div v-else class="empty-text">暂未绑定参数集</div>
+      </section>
     </template>
   </CategoryDrawer>
 </template>
 
 <script lang="ts" setup>
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
+import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 import CategoryDrawer from '../components/CategoryDrawer.vue'
 import { constraintText, deviceTypeLabel, durationText, parseSchema, resultModeLabel, sourceLabel } from '../labels'
 
 const visible = ref(false)
 const loading = ref(false)
 const action = ref<DeviceActionVO>()
+const paramSets = ref<DeviceParamSetVO[]>([])
 
 const fields = computed(() => parseSchema(action.value?.paramSchema))
 
@@ -105,8 +117,13 @@ const open = async (id: number) => {
   visible.value = true
   loading.value = true
   action.value = undefined
+  paramSets.value = []
   try {
     action.value = await DeviceActionApi.getAction(id)
+    if (action.value?.deviceTypeCode && action.value?.actionCode) {
+      const list = await DeviceParamSetApi.getParamSetList({ deviceTypeCode: action.value.deviceTypeCode, actionCode: action.value.actionCode })
+      paramSets.value = list || []
+    }
   } finally {
     loading.value = false
   }

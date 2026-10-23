@@ -53,6 +53,9 @@ public class FlowNodeRespVO {
     @Schema(description = "输出映射 JSON：{输出字段: 上下文键}")
     private String outputMapping;
 
+    @Schema(description = "能力默认出参声明 JSON：{输出字段: 说明}")
+    private String outputSchema;
+
     @Schema(description = "等待秒数（生效值）")
     private Integer timeoutSec;
 

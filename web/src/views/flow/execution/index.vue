@@ -359,17 +359,40 @@ const detail = ref<FlowExecutionVO>()
 const detailTab = ref('graph')
 const detailNodes = ref<FlowNodeVO[]>([])
 
-/** 启动入参 / 顶层输出：JSON 美化；解析失败回退原文 */
+/**
+ * 启动入参 / 顶层输出格式化。
+ * 设备结果常见为外层 JSON 中嵌套 JSON 字符串，递归展开后再展示，
+ * 避免顶层输出出现 \\n、\\" 等转义符。
+ */
 const formatInputParams = computed(() => pretty(detail.value?.inputParams))
 const formatOutputData = computed(() => pretty(detail.value?.outputData))
 
 const pretty = (raw?: string): string => {
   if (!raw?.trim()) return ''
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
+    return JSON.stringify(unwrapNestedJson(JSON.parse(raw)), null, 2)
   } catch {
     return raw
   }
+}
+
+const unwrapNestedJson = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+      try {
+        return unwrapNestedJson(JSON.parse(text))
+      } catch {
+        return value
+      }
+    }
+    return value
+  }
+  if (Array.isArray(value)) return value.map(unwrapNestedJson)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, unwrapNestedJson(item)]))
+  }
+  return value
 }
 
 let pollTimer: number | undefined

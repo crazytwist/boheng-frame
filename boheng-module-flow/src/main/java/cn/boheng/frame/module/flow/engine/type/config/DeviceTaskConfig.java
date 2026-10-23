@@ -19,4 +19,9 @@ public class DeviceTaskConfig {
      */
     private String actionCode;
 
+    /**
+     * 任务类型对应的参数集主键。参数集提供固定默认值，流程节点映射可覆盖。
+     */
+    private Long paramSetId;
+
 }

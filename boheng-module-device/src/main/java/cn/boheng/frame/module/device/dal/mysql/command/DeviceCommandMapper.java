@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
+import java.util.List;
 /**
  * 命令记录 Mapper
  */
@@ -39,14 +40,10 @@ public interface DeviceCommandMapper extends BaseMapperX<DeviceCommandDO> {
     }
 
     /**
-     * 等回调早已过了截止时刻的命令标成超时。等待线程随服务重启丢失时靠它收尾。
+     * 查询已经超过回调截止时间的等待命令，由服务逐条收口并释放设备占用。
      */
-    default int timeoutExpiredWaiting(LocalDateTime before) {
-        return update(null, new LambdaUpdateWrapper<DeviceCommandDO>()
-                .set(DeviceCommandDO::getStatus, "TIMED_OUT")
-                .set(DeviceCommandDO::getWaitingFor, "")
-                .set(DeviceCommandDO::getFinishedAt, LocalDateTime.now())
-                .set(DeviceCommandDO::getErrorMsg, "超过回调截止时间仍未收到回调")
+    default List<DeviceCommandDO> selectExpiredWaiting(LocalDateTime before) {
+        return selectList(new LambdaQueryWrapperX<DeviceCommandDO>()
                 .eq(DeviceCommandDO::getStatus, "WAITING")
                 .lt(DeviceCommandDO::getTimeoutAt, before));
     }

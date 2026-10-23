@@ -1,22 +1,42 @@
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle" width="720px">
-    <el-form ref="formRef" v-loading="formLoading" :model="formData" :rules="formRules" label-width="110px">
+    <el-form
+      ref="formRef"
+      v-loading="formLoading"
+      :model="formData"
+      :rules="formRules"
+      label-width="110px"
+    >
       <el-divider content-position="left">基本信息</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="参数集编码" prop="paramSetCode">
-            <el-input v-model="formData.paramSetCode" maxlength="64" placeholder="请输入参数集编码，如 PS-ABSORB-450" />
+            <el-input v-model="formData.paramSetCode" maxlength="64" placeholder="系统自动生成" :disabled="formType === 'update'" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="参数集名称" prop="paramSetName">
-            <el-input v-model="formData.paramSetName" maxlength="128" placeholder="请输入参数集名称" />
+            <el-input
+              v-model="formData.paramSetName"
+              maxlength="128"
+              placeholder="请输入参数集名称"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="设备类型" prop="deviceTypeCode">
-            <el-select v-model="formData.deviceTypeCode" placeholder="请选择设备类型" class="!w-1/1" @change="handleTypeChange">
-              <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-select
+              v-model="formData.deviceTypeCode"
+              placeholder="请选择设备类型"
+              class="!w-1/1"
+              @change="handleTypeChange"
+            >
+              <el-option
+                v-for="item in deviceTypeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
           </el-form-item>
         </el-col>
@@ -31,7 +51,12 @@
               default-first-option
               class="!w-1/1"
             >
-              <el-option v-for="item in actionOptions" :key="item.actionCode" :label="actionLabel(item)" :value="item.actionCode!" />
+              <el-option
+                v-for="item in actionOptions"
+                :key="item.actionCode"
+                :label="actionLabel(item)"
+                :value="item.actionCode!"
+              />
             </el-select>
           </el-form-item>
         </el-col>
@@ -53,9 +78,15 @@
       <el-divider content-position="left">参数配置</el-divider>
       <el-form-item label="参数取值" prop="paramsJson">
         <div class="json-editor-wrap">
-          <el-input v-model="formData.paramsJson" type="textarea" :rows="8" :placeholder="paramsPlaceholder" />
+          <el-input
+            v-model="formData.paramsJson"
+            type="textarea"
+            :rows="8"
+            :placeholder="paramsPlaceholder"
+          />
           <div class="json-editor-tip">
             <span>须与关联动作的参数定义一致；仅已验证的参数集可用于下发命令</span>
+            <el-button link type="primary" @click="syncDefinition">同步参数定义</el-button>
             <el-button link type="primary" @click="formatParamsJson">格式化</el-button>
           </div>
         </div>
@@ -70,6 +101,7 @@
 
 <script lang="ts" setup>
 import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 
 defineOptions({ name: 'DeviceParamSetForm' })
@@ -97,6 +129,20 @@ const createEmptyFormData = (): DeviceParamSetVO => ({
 
 const formData = ref<DeviceParamSetVO>(createEmptyFormData())
 
+const syncDefinition = async () => {
+  if (!formData.value.deviceTypeCode || !formData.value.actionCode) return
+  const list = await DeviceActionApi.getActionList({ deviceTypeCode: formData.value.deviceTypeCode })
+  const action = (list || []).find((item) => item.actionCode === formData.value.actionCode)
+  if (!action?.paramSchema) return
+  try {
+    const schema = JSON.parse(action.paramSchema)
+    const current = formData.value.paramsJson ? JSON.parse(formData.value.paramsJson) : {}
+    const result: Record<string, any> = {}
+    Object.keys(schema).forEach((key) => { result[key] = current[key] ?? '' })
+    formData.value.paramsJson = JSON.stringify(result, null, 2)
+  } catch { /* 保存时统一校验 */ }
+}
+
 const formRules = reactive({
   paramSetCode: [{ required: true, message: '参数集编码不能为空', trigger: 'blur' }],
   paramSetName: [{ required: true, message: '参数集名称不能为空', trigger: 'blur' }],
@@ -106,18 +152,12 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const deviceTypeOptions = [
-  { label: '酶标仪/读板机', value: 'PLATE_READER' },
-  { label: '液体处理工作站', value: 'LIQUID_HANDLER' },
-  { label: '机械臂', value: 'ROBOTIC_ARM' },
-  { label: '培养箱', value: 'INCUBATOR' },
-  { label: '离心机', value: 'CENTRIFUGE' },
-  { label: '其他', value: 'OTHER' }
-]
+const deviceTypeOptions = computed(() => getStrDictOptions(DICT_TYPE.DEVICE_TYPE))
 
 // 按设备类型拉取动作，供「关联动作」下拉
 const actionOptions = ref<DeviceActionVO[]>([])
-const actionLabel = (item: DeviceActionVO) => (item.actionName ? `${item.actionCode}（${item.actionName}）` : item.actionCode!)
+const actionLabel = (item: DeviceActionVO) =>
+  item.actionName ? `${item.actionCode}（${item.actionName}）` : item.actionCode!
 
 const paramsPlaceholder = `{
   "wavelength": 450,
@@ -129,7 +169,9 @@ const loadActions = async () => {
     actionOptions.value = []
     return
   }
-  const data = await DeviceActionApi.getActionList({ deviceTypeCode: formData.value.deviceTypeCode })
+  const data = await DeviceActionApi.getActionList({
+    deviceTypeCode: formData.value.deviceTypeCode
+  })
   actionOptions.value = data || []
 }
 
@@ -138,11 +180,13 @@ const handleTypeChange = () => {
   loadActions()
 }
 
-const open = async (type: string, id?: number) => {
+const open = async (type: string, id?: number, preset?: Partial<DeviceParamSetVO>) => {
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
   formType.value = type
   formData.value = createEmptyFormData()
+  if (preset) Object.assign(formData.value, preset)
+  if (!id) formData.value.paramSetCode = `ps_${Date.now().toString(36)}`
   formRef.value?.clearValidate()
   actionOptions.value = []
   if (id) {
