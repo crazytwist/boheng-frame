@@ -180,7 +180,10 @@ public class SimulateHttpService {
                 vars.putIfAbsent("callbackUrl", ticket.url());
                 vars.putIfAbsent("callbackToken", ticket.token());
             }
-            return SimulateMessageRenderer.render(template, vars);
+            String rendered = SimulateMessageRenderer.render(template, vars);
+            log.info("[requestBody][设备({}) 动作({})] 模板={}, 参数={}, 渲染后={}",
+                    device.getDeviceCode(), action.getActionCode(), template, params, rendered);
+            return rendered;
         }
         if (params.isEmpty()) {
             return "{}";

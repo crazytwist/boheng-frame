@@ -43,6 +43,9 @@ public class DevicePageReqVO extends PageParam {
     @Schema(description = "接入方式: HTTP/MQTT/NODE_RED/SIMULATED", example = "SIMULATED")
     private String connectionType;
 
+    @Schema(description = "任务接入模式: PULL/PUSH", example = "PUSH")
+    private String taskMode;
+
     @Schema(description = "创建时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] createTime;

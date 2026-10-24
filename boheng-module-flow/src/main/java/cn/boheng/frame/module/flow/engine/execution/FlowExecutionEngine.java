@@ -22,6 +22,10 @@ import cn.boheng.frame.module.flow.engine.type.StepOutcome;
 import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
 import cn.boheng.frame.module.flow.framework.log.FlowLogContextHolder;
+import cn.boheng.frame.module.device.api.DeviceApi;
+import cn.boheng.frame.module.device.api.dto.DeviceParamSetDTO;
+import cn.boheng.frame.module.flow.engine.type.config.DeviceCommandConfig;
+import cn.boheng.frame.module.flow.engine.type.config.DeviceTaskConfig;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
@@ -125,6 +129,12 @@ public class FlowExecutionEngine {
     @Resource
     private FlowSignalDispatcher signalDispatcher;
 
+    /**
+     * 设备域契约。用于在运行期解析设备节点选择的参数集
+     */
+    @Resource
+    private DeviceApi deviceApi;
+
     // ==================== 启动 ====================
 
     /**
@@ -173,7 +183,7 @@ public class FlowExecutionEngine {
                 }
             }
             if (StrUtil.isNotBlank(inputParamsJson)) {
-                JSONUtil.parseObj(inputParamsJson).forEach(input::put);
+                deepMerge(input, JSONUtil.parseObj(inputParamsJson));
             }
             contextHolder.saveInput(execution.getId(), input);
             contextHolder.saveSystem(execution.getId(), "executionNo", execution.getExecutionNo());
@@ -192,6 +202,24 @@ public class FlowExecutionEngine {
         } finally {
             FlowLogContextHolder.clear();
         }
+    }
+
+    /** 合并流程声明默认值与启动入参；嵌套对象递归合并，数组和标量按启动入参覆盖。 */
+    @SuppressWarnings("unchecked")
+    private static void deepMerge(Map<String, Object> target, Map<String, Object> override) {
+        override.forEach((key, value) -> {
+            Object current = target.get(key);
+            if (current instanceof Map<?, ?> currentMap && value instanceof Map<?, ?> valueMap) {
+                Map<String, Object> merged = new LinkedHashMap<>();
+                currentMap.forEach((k, v) -> merged.put(String.valueOf(k), v));
+                Map<String, Object> incoming = new LinkedHashMap<>();
+                valueMap.forEach((k, v) -> incoming.put(String.valueOf(k), v));
+                deepMerge(merged, incoming);
+                target.put(key, merged);
+            } else {
+                target.put(key, value);
+            }
+        });
     }
 
     /**
@@ -334,16 +362,53 @@ public class FlowExecutionEngine {
     public StepOutcome executeStep(PipelineGraph graph, FlowExecutionDO execution,
                                    FlowStepExecutionDO row, RuntimeNode node) {
         Map<String, Object> env = contextHolder.loadEnv(execution.getId());
-        Map<String, Object> params = contextHolder.resolveParams(node, env);
         StepExecutor executor = typeRegistry.getExecutor(node.getStepType());
         if (executor == null) {
             return StepOutcome.failed("类型没有执行器: " + node.getStepType());
         }
         Object config = typeRegistry.parseConfig(node.getStepType(), node.getTypeConfig());
+        Map<String, Object> paramSetParams;
+        try {
+            paramSetParams = resolveParamSetParams(config);
+        } catch (IllegalArgumentException ex) {
+            return StepOutcome.failed(ex.getMessage());
+        }
+        Map<String, Object> params = contextHolder.resolveParams(node, env, paramSetParams);
         long timeoutMs = effectiveTimeout(graph, node);
         row.setInputSnapshot(params.isEmpty() ? null : JSONUtil.toJsonStr(params));
         return executor.execute(new StepExecutionContext(execution.getId(), row.getNodeId(),
                 row.getAttempt(), row.getIterationNo(), params, config, timeoutMs));
+    }
+
+    /**
+     * 读取设备节点绑定的参数集。未选择参数集时返回空；选择后必须通过设备域的可执行校验。
+     */
+    private Map<String, Object> resolveParamSetParams(Object config) {
+        String deviceCode;
+        String actionCode;
+        Long paramSetId;
+        if (config instanceof DeviceCommandConfig device) {
+            deviceCode = device.getDeviceCode();
+            actionCode = device.getActionCode();
+            paramSetId = device.getParamSetId();
+        } else if (config instanceof DeviceTaskConfig device) {
+            deviceCode = device.getDeviceCode();
+            actionCode = device.getActionCode();
+            paramSetId = device.getParamSetId();
+        } else {
+            return Map.of();
+        }
+        if (paramSetId == null) {
+            return Map.of();
+        }
+        DeviceParamSetDTO paramSet = deviceApi.getUsableParamSet(paramSetId, deviceCode, actionCode);
+        if (paramSet == null) {
+            throw new IllegalArgumentException("绑定的参数集不可用：请确认参数集已启用、已验证且与设备动作匹配");
+        }
+        if (StrUtil.isBlank(paramSet.getParamsJson()) || !JSONUtil.isTypeJSONObject(paramSet.getParamsJson())) {
+            throw new IllegalArgumentException("绑定的参数集内容不是合法 JSON 对象: " + paramSet.getParamSetCode());
+        }
+        return new LinkedHashMap<>(JSONUtil.parseObj(paramSet.getParamsJson()));
     }
 
     // ==================== 结算 ====================
@@ -417,6 +482,8 @@ public class FlowExecutionEngine {
                 row.setStatus("WAITING");
                 row.setWaitingFor(outcome.getWaitingFor());
                 row.setWaitRef(outcome.getWaitRef());
+                row.setCommandId(outcome.getCommandId());
+                row.setCommandNo(outcome.getCommandNo());
                 row.setDeadlineAt(deadlineOf(outcome, graph, node));
                 if (!casStep(row, fromStatus)) {
                     return false;

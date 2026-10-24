@@ -74,6 +74,10 @@ public class DeviceActionSaveReqVO {
     @Size(max = 255, message = "接口路径长度不能超过 255 个字符")
     private String requestPath;
 
+    @Schema(description = "平台轮询查询接口相对路径", example = "/api/measure/status")
+    @Size(max = 255, message = "轮询接口路径长度不能超过 255 个字符")
+    private String pollPath;
+
     @Schema(description = "请求报文模板")
     private String requestTemplate;
 
@@ -85,11 +89,16 @@ public class DeviceActionSaveReqVO {
     @Size(max = 255, message = "轮询完成判定表达式长度不能超过 255 个字符")
     private String pollDoneExpr;
 
+    @Schema(description = "平台轮询最大等待时间（秒）", example = "600")
+    @Min(value = 1, message = "最大等待时间至少 1 秒")
+    @Max(value = 86400, message = "最大等待时间不能超过 86400 秒")
+    private Integer pollTimeoutSec;
+
     @Schema(description = "最大轮询次数", example = "12")
     private Integer pollMaxTimes;
 
     @Schema(description = "结果怎么拿: SYNC_RETURN 直接看响应/CALLBACK 等设备回调", example = "SYNC_RETURN")
-    @Pattern(regexp = "SYNC_RETURN|CALLBACK", message = "结果方式只能是直接看响应或等设备回调")
+    @Pattern(regexp = "SYNC_RETURN|CALLBACK|POLL", message = "结果方式只能是同步返回、设备回调或平台轮询")
     private String resultMode;
 
     @Schema(description = "等回调的秒数，空则用设备默认", example = "120")

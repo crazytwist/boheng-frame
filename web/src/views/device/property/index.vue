@@ -1,22 +1,55 @@
 <template>
   <ContentWrap title="设备属性">
     <!-- 搜索 -->
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
+    <el-form
+      class="-mb-15px"
+      :model="queryParams"
+      ref="queryFormRef"
+      :inline="true"
+      label-width="80px"
+    >
       <el-form-item label="设备类型" prop="deviceTypeCode">
-        <el-select v-model="queryParams.deviceTypeCode" placeholder="请选择设备类型" clearable class="!w-180px">
-          <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        <el-select
+          v-model="queryParams.deviceTypeCode"
+          placeholder="请选择设备类型"
+          clearable
+          class="!w-180px"
+        >
+          <el-option
+            v-for="item in deviceTypeOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </el-select>
       </el-form-item>
       <el-form-item label="属性编码" prop="propertyCode">
-        <el-input v-model="queryParams.propertyCode" placeholder="请输入属性编码" clearable @keyup.enter="handleQuery" class="!w-200px" />
+        <el-input
+          v-model="queryParams.propertyCode"
+          placeholder="请输入属性编码"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-200px"
+        />
       </el-form-item>
       <el-form-item label="属性名称" prop="propertyName">
-        <el-input v-model="queryParams.propertyName" placeholder="请输入属性名称" clearable @keyup.enter="handleQuery" class="!w-200px" />
+        <el-input
+          v-model="queryParams.propertyName"
+          placeholder="请输入属性名称"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-200px"
+        />
       </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
-        <el-button type="primary" plain @click="openForm('create')" v-hasPermi="['device:property:create']">
+        <el-button
+          type="primary"
+          plain
+          @click="openForm('create')"
+          v-hasPermi="['device:property:create']"
+        >
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
       </el-form-item>
@@ -29,39 +62,72 @@
       <el-table-column label="设备类型" align="center" width="140">
         <template #default="scope">{{ deviceTypeLabel(scope.row.deviceTypeCode) }}</template>
       </el-table-column>
-      <el-table-column label="属性编码" align="center" prop="propertyCode" :show-overflow-tooltip="true" />
-      <el-table-column label="属性名称" align="center" prop="propertyName" :show-overflow-tooltip="true" />
+      <el-table-column
+        label="属性编码"
+        align="center"
+        prop="propertyCode"
+        :show-overflow-tooltip="true"
+      />
+      <el-table-column
+        label="属性名称"
+        align="center"
+        prop="propertyName"
+        :show-overflow-tooltip="true"
+      />
       <el-table-column label="数据类型" align="center" width="120">
         <template #default="scope">{{ scope.row.dataType || '—' }}</template>
       </el-table-column>
       <el-table-column label="单位" align="center" prop="unit" width="90" />
       <el-table-column label="支持读取" align="center" width="80">
         <template #default="scope">
-          <el-tag :type="scope.row.readable ? 'success' : 'info'">{{ scope.row.readable ? '是' : '否' }}</el-tag>
+          <el-tag :type="scope.row.readable ? 'success' : 'info'">{{
+            scope.row.readable ? '是' : '否'
+          }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="支持订阅" align="center" width="90">
         <template #default="scope">
-          <el-tag :type="scope.row.subscribable ? 'success' : 'info'">{{ scope.row.subscribable ? '是' : '否' }}</el-tag>
+          <el-tag :type="scope.row.subscribable ? 'success' : 'info'">{{
+            scope.row.subscribable ? '是' : '否'
+          }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="轮询间隔" align="center" width="100">
-        <template #default="scope">{{ scope.row.pollIntervalSec ? scope.row.pollIntervalSec + ' s' : '—' }}</template>
+        <template #default="scope">{{
+          scope.row.pollIntervalSec ? scope.row.pollIntervalSec + ' s' : '—'
+        }}</template>
       </el-table-column>
       <el-table-column label="状态" align="center" width="90">
         <template #default="scope">
-          <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{ scope.row.status === 0 ? '启用' : '停用' }}</el-tag>
+          <el-tag :type="scope.row.status === 0 ? 'success' : 'info'">{{
+            scope.row.status === 0 ? '启用' : '停用'
+          }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
-          <el-button v-hasPermi="['device:property:query']" link type="primary" @click="openDetail(scope.row.id)">
+          <el-button
+            v-hasPermi="['device:property:query']"
+            link
+            type="primary"
+            @click="openDetail(scope.row.id)"
+          >
             详情
           </el-button>
-          <el-button v-hasPermi="['device:property:update']" link type="primary" @click="openForm('update', scope.row.id)">
+          <el-button
+            v-hasPermi="['device:property:update']"
+            link
+            type="primary"
+            @click="openForm('update', scope.row.id)"
+          >
             编辑
           </el-button>
-          <el-button v-hasPermi="['device:property:delete']" link type="danger" @click="handleDelete(scope.row.id)">
+          <el-button
+            v-hasPermi="['device:property:delete']"
+            link
+            type="danger"
+            @click="handleDelete(scope.row.id)"
+          >
             删除
           </el-button>
         </template>
@@ -83,9 +149,9 @@
 
 <script lang="ts" setup>
 import { DevicePropertyApi, DevicePropertyVO } from '@/api/device/property'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import PropertyForm from './PropertyForm.vue'
 import PropertyDetailDrawer from './PropertyDetailDrawer.vue'
-import { deviceTypeLabel, useDeviceTypeDictOptions } from '../labels'
 
 defineOptions({ name: 'DeviceProperty' })
 
@@ -103,7 +169,9 @@ const queryParams = reactive({
 })
 const queryFormRef = ref()
 
-const deviceTypeOptions = useDeviceTypeDictOptions()
+const deviceTypeOptions = computed(() => getStrDictOptions(DICT_TYPE.DEVICE_TYPE))
+const deviceTypeLabel = (v?: string) =>
+  deviceTypeOptions.value.find((i) => i.value === v)?.label || v || '—'
 
 const getList = async () => {
   loading.value = true

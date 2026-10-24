@@ -84,6 +84,9 @@ public class DeviceInfoDO extends TenantBaseDO {
      */
     private String connectionType;
 
+    /** 任务接入模式：PULL 设备主动拉取，PUSH 平台接收任务后下发。 */
+    private String taskMode;
+
     /**
      * 接入地址(HTTP=base url；MQTT=broker host:port；NODE_RED=Node-RED http 入站节点 url)
      */
@@ -149,6 +152,12 @@ public class DeviceInfoDO extends TenantBaseDO {
      * 仪器能否主动推送结果(决定 result_mode 用 CALLBACK 还是 POLL)
      */
     private Boolean callbackEnabled;
+
+    /** 是否支持平台轮询查询任务状态。 */
+    private Boolean pollEnabled;
+
+    /** 是否提供可用于轮询的状态查询动作。 */
+    private Boolean statusQueryEnabled;
 
     /**
      * 设备回调平台用的地址。空则用平台默认地址；可写 ${commandNo}、${callbackToken} 占位符

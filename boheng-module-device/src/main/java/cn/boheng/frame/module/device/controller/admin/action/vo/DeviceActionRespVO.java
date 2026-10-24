@@ -56,6 +56,9 @@ public class DeviceActionRespVO {
     @Schema(description = "接口相对路径", example = "/api/read")
     private String requestPath;
 
+    @Schema(description = "平台轮询查询接口相对路径", example = "/api/measure/status")
+    private String pollPath;
+
     @Schema(description = "请求报文模板")
     private String requestTemplate;
 
@@ -64,6 +67,7 @@ public class DeviceActionRespVO {
 
     @Schema(description = "轮询完成判定表达式", example = "$.status == \"DONE\"")
     private String pollDoneExpr;
+    private Integer pollTimeoutSec;
 
     @Schema(description = "最大轮询次数", example = "12")
     private Integer pollMaxTimes;

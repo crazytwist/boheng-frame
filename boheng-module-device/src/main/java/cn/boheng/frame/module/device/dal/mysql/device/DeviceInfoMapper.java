@@ -29,6 +29,7 @@ public interface DeviceInfoMapper extends BaseMapperX<DeviceInfoDO> {
                 .eqIfPresent(DeviceInfoDO::getDriverType, reqVO.getDriverType())
                 .eqIfPresent(DeviceInfoDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(DeviceInfoDO::getConnectionType, reqVO.getConnectionType())
+                .eqIfPresent(DeviceInfoDO::getTaskMode, reqVO.getTaskMode())
                 .betweenIfPresent(DeviceInfoDO::getCreateTime, reqVO.getCreateTime())
                 .orderByDesc(DeviceInfoDO::getId));
     }

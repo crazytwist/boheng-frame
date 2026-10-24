@@ -16,11 +16,13 @@ export interface DeviceActionVO {
   httpMethod?: string
   bodyFormat?: string
   requestPath?: string
+  pollPath?: string
   requestTemplate?: string
   codecCode?: string
   pollDoneExpr?: string
+  pollTimeoutSec?: number
   pollMaxTimes?: number
-  resultMode?: 'SYNC_RETURN' | 'CALLBACK'
+  resultMode?: 'SYNC_RETURN' | 'CALLBACK' | 'POLL'
   callbackTimeoutSec?: number
   status?: number
   createTime?: Date

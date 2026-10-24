@@ -13,6 +13,7 @@ export interface DeviceVO {
   driverType?: string
   status?: string
   connectionType?: string
+  taskMode?: 'PULL' | 'PUSH' | string
   endpointUrl?: string
   loginPath?: string
   loginMethod?: string
@@ -27,6 +28,8 @@ export interface DeviceVO {
   tokenTtlSec?: number
   mqttTopicPrefix?: string
   callbackEnabled?: boolean
+  pollEnabled?: boolean
+  statusQueryEnabled?: boolean
   callbackUrl?: string
   callbackTimeoutSec?: number
   pollIntervalSec?: number

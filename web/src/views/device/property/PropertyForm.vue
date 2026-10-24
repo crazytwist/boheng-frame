@@ -1,12 +1,27 @@
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
-    <el-form ref="formRef" v-loading="formLoading" :model="formData" :rules="formRules" label-width="110px">
+    <el-form
+      ref="formRef"
+      v-loading="formLoading"
+      :model="formData"
+      :rules="formRules"
+      label-width="110px"
+    >
       <el-divider content-position="left">基本信息</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="设备类型" prop="deviceTypeCode">
-            <el-select v-model="formData.deviceTypeCode" placeholder="请选择设备类型" class="!w-1/1">
-              <el-option v-for="item in deviceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-select
+              v-model="formData.deviceTypeCode"
+              placeholder="请选择设备类型"
+              class="!w-1/1"
+            >
+              <el-option
+                v-for="item in deviceTypeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
           </el-form-item>
         </el-col>
@@ -20,18 +35,31 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="属性编码" prop="propertyCode">
-            <el-input v-model="formData.propertyCode" maxlength="64" placeholder="请输入属性编码，如 TEMPERATURE" />
+            <el-input
+              v-model="formData.propertyCode"
+              maxlength="64"
+              placeholder="请输入属性编码，如 TEMPERATURE"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="属性名称" prop="propertyName">
-            <el-input v-model="formData.propertyName" maxlength="128" placeholder="请输入属性名称，如 温度" />
+            <el-input
+              v-model="formData.propertyName"
+              maxlength="128"
+              placeholder="请输入属性名称，如 温度"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="数据类型" prop="dataType">
             <el-select v-model="formData.dataType" placeholder="请选择数据类型" class="!w-1/1">
-              <el-option v-for="item in dataTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              <el-option
+                v-for="item in dataTypeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
           </el-form-item>
         </el-col>
@@ -64,7 +92,12 @@
         </el-col>
       </el-row>
       <el-form-item label="轮询间隔(秒)">
-        <el-input-number v-model="formData.pollIntervalSec" :min="1" controls-position="right" placeholder="默认 30" />
+        <el-input-number
+          v-model="formData.pollIntervalSec"
+          :min="1"
+          controls-position="right"
+          placeholder="默认 30"
+        />
         <span class="form-tip">设备不支持订阅时，平台按此间隔主动读取</span>
       </el-form-item>
     </el-form>
@@ -77,7 +110,7 @@
 
 <script lang="ts" setup>
 import { DevicePropertyApi, DevicePropertyVO } from '@/api/device/property'
-import { useDeviceTypeDictOptions } from '../labels'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 
 defineOptions({ name: 'DevicePropertyForm' })
 
@@ -113,7 +146,7 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const deviceTypeOptions = useDeviceTypeDictOptions()
+const deviceTypeOptions = computed(() => getStrDictOptions(DICT_TYPE.DEVICE_TYPE))
 
 const dataTypeOptions = [
   { label: '字符串', value: 'STRING' },

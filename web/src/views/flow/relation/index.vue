@@ -424,11 +424,12 @@ const steps = ref<FlowStepVO[]>([])
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 50,
-  definitionId: undefined as number | undefined
+  // 雪花 ID 可能超过 JS 安全整数范围，路由和查询参数必须保留字符串精度
+  definitionId: undefined as string | number | undefined
 })
 const queryFormRef = ref()
 
-const selectedDefinition = computed(() => definitions.value.find((item) => item.id === queryParams.definitionId))
+const selectedDefinition = computed(() => definitions.value.find((item) => String(item.id) === String(queryParams.definitionId)))
 const drafts = computed(() => definitions.value.filter((item) => item.status === 'DRAFT'))
 const canEdit = computed(() => !queryParams.definitionId || selectedDefinition.value?.status === 'DRAFT')
 
@@ -569,7 +570,12 @@ const loadOptions = async () => {
 
 const applyRoute = () => {
   const raw = route.query.definitionId
-  if (raw) queryParams.definitionId = Number(raw)
+  if (Array.isArray(raw)) {
+    queryParams.definitionId = raw[0]
+  } else if (raw) {
+    // 不能 Number(raw)，否则 19 位雪花 ID 会发生精度丢失
+    queryParams.definitionId = raw
+  }
 }
 
 const handleQuery = () => {
@@ -616,7 +622,7 @@ const controlPlaceholder = computed(() => {
 
 const openCreate = () => {
   createForm.mode = 'step'
-  createForm.definitionId = selectedDefinition.value?.status === 'DRAFT' ? queryParams.definitionId : undefined
+  createForm.definitionId = selectedDefinition.value?.status === 'DRAFT' ? queryParams.definitionId as number : undefined
   createForm.stepId = undefined
   createForm.nodeId = ''
   createForm.name = ''
@@ -959,7 +965,7 @@ watch(
 /** 当前选中流程（= queryParams.definitionId 对应的草稿/发布/停用） */
 const currentDefinition = computed(() => {
   if (!queryParams.definitionId) return undefined
-  return definitions.value.find((item) => item.id === queryParams.definitionId)
+  return definitions.value.find((item) => String(item.id) === String(queryParams.definitionId))
 })
 
 const statusLabel = (status?: string) => {

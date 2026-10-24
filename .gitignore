@@ -76,3 +76,6 @@ deploy/boheng/*.tar
 deploy/boheng/*.tar.gz
 deploy/boheng/boheng-frame-dump.sql
 deploy/boheng/.env
+deploy/frp/.env
+deploy/frp/frpc
+deploy/frp/ca-certificates.crt

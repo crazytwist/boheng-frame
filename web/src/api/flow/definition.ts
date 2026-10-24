@@ -22,6 +22,7 @@ export interface FlowNodeVO {
   joinFailurePolicy?: string
   branches?: Record<string, string[]>
   outputMapping?: string
+  outputSchema?: string
   timeoutSec?: number
   maxAttempts?: number
   failStrategy?: string
@@ -75,6 +76,9 @@ export const FlowDefinitionApi = {
   },
   retire: async (id: number) => {
     return await request.post({ url: '/flow/definition/retire', params: { id } })
+  },
+  rollbackDraft: async (id: number) => {
+    return await request.post({ url: '/flow/definition/rollback-draft', params: { id } })
   },
   revise: async (id: number) => {
     return await request.post({ url: '/flow/definition/revise', params: { id } })

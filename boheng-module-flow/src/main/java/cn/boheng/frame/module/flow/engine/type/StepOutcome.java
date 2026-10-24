@@ -45,6 +45,12 @@ public final class StepOutcome {
      */
     private final String waitRef;
 
+    /** 设备命令主键，等待设备命令时用于显式关联节点与命令。 */
+    private final Long commandId;
+
+    /** 设备命令号，便于审计和日志追踪。 */
+    private final String commandNo;
+
     /**
      * 路由节点选出的出口 key
      */
@@ -56,11 +62,13 @@ public final class StepOutcome {
     private final String errorMessage;
 
     private StepOutcome(Kind kind, String outputJson, String waitingFor, String waitRef,
-                        String branchKey, String errorMessage) {
+                        Long commandId, String commandNo, String branchKey, String errorMessage) {
         this.kind = kind;
         this.outputJson = outputJson;
         this.waitingFor = waitingFor;
         this.waitRef = waitRef;
+        this.commandId = commandId;
+        this.commandNo = commandNo;
         this.branchKey = branchKey;
         this.errorMessage = errorMessage;
     }
@@ -69,14 +77,14 @@ public final class StepOutcome {
      * 同步成功
      */
     public static StepOutcome success(String outputJson) {
-        return new StepOutcome(Kind.SUCCESS, outputJson, null, null, null, null);
+        return new StepOutcome(Kind.SUCCESS, outputJson, null, null, null, null, null, null);
     }
 
     /**
      * 同步失败
      */
     public static StepOutcome failed(String errorMessage) {
-        return new StepOutcome(Kind.FAILED, null, null, null, null, errorMessage);
+        return new StepOutcome(Kind.FAILED, null, null, null, null, null, null, errorMessage);
     }
 
     /**
@@ -86,7 +94,12 @@ public final class StepOutcome {
      * @param waitRef    非密引用
      */
     public static StepOutcome waiting(String waitingFor, String waitRef) {
-        return new StepOutcome(Kind.WAITING, null, waitingFor, waitRef, null, null);
+        return waiting(waitingFor, waitRef, null, null);
+    }
+
+    /** 已下发进入等待，并显式携带设备命令关联信息。 */
+    public static StepOutcome waiting(String waitingFor, String waitRef, Long commandId, String commandNo) {
+        return new StepOutcome(Kind.WAITING, null, waitingFor, waitRef, commandId, commandNo, null, null);
     }
 
     /**
@@ -101,7 +114,7 @@ public final class StepOutcome {
      * 产出会写进上下文的 NODE 命名空间，供该出口下游读取。
      */
     public static StepOutcome branch(String branchKey, String outputJson) {
-        return new StepOutcome(Kind.BRANCH, outputJson, null, null, branchKey, null);
+        return new StepOutcome(Kind.BRANCH, outputJson, null, null, null, null, branchKey, null);
     }
 
     public Kind getKind() {
@@ -119,6 +132,10 @@ public final class StepOutcome {
     public String getWaitRef() {
         return waitRef;
     }
+
+    public Long getCommandId() { return commandId; }
+
+    public String getCommandNo() { return commandNo; }
 
     public String getBranchKey() {
         return branchKey;

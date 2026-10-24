@@ -90,6 +90,7 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
     public Long createDevice(DeviceSaveReqVO createReqVO) {
         // 校验设备编码唯一性
         validateDeviceCodeUnique(createReqVO.getId(), createReqVO.getDeviceCode());
+        normalizeTaskMode(createReqVO);
 
         // 插入
         DeviceInfoDO device = BeanUtils.toBean(createReqVO, DeviceInfoDO.class);
@@ -107,6 +108,7 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         DeviceInfoDO old = validateDeviceExists(updateReqVO.getId());
         // 校验设备编码唯一性
         validateDeviceCodeUnique(updateReqVO.getId(), updateReqVO.getDeviceCode());
+        normalizeTaskMode(updateReqVO);
 
         // 更新。密码留空表示不改，避免把已保存的登录密码清掉。
         DeviceInfoDO updateObj = BeanUtils.toBean(updateReqVO, DeviceInfoDO.class);
@@ -120,6 +122,17 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
             deviceSimulateProfileMapper.update(profile, new LambdaQueryWrapperX<DeviceSimulateProfileDO>().eq(DeviceSimulateProfileDO::getDeviceId, old.getId()));
         }
         deviceLoginTokenCache.evict(updateReqVO.getId());
+    }
+
+    /** 兼容旧设备：未填写模式时按 PUSH 处理。 */
+    private void normalizeTaskMode(DeviceSaveReqVO reqVO) {
+        if (StrUtil.isBlank(reqVO.getTaskMode())) {
+            reqVO.setTaskMode("PUSH");
+        }
+        if ("PULL".equals(reqVO.getTaskMode())) {
+            // PULL 是设备主动领取任务，不支持平台侧仿真设备配置。
+            reqVO.setSimulationMode(false);
+        }
     }
     /**
      * 删除设备台账，连带删除它的仿真配置，并清掉缓存的登录令牌。有执行中的命令时不允许删除
@@ -359,6 +372,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      */
     private DeviceRespVO toResp(DeviceInfoDO device) {
         DeviceRespVO resp = BeanUtils.toBean(device, DeviceRespVO.class);
+        if ("PULL".equals(device.getTaskMode())) {
+            resp.setSimulationMode(false);
+        }
         resp.setLoginConfigured(StrUtil.isNotBlank(device.getLoginPassword()));
         resp.setLoginPassword(null);
         return resp;

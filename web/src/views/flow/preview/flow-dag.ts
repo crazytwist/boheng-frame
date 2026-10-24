@@ -309,14 +309,40 @@ function branchLabel(nodes: FlowNodeVO[], source: string, target: string): strin
   return undefined
 }
 
-/** JSON 字符串格式化展示（非法 JSON 原样返回） */
+/**
+ * JSON 字符串格式化展示。
+ *
+ * 设备响应经常是「外层 JSON 的 body 字段再次保存为 JSON 字符串」，
+ * 例如 body: "{\"status\":\"DONE\"}"。展示层递归解一层对象/数组，
+ * 避免用户看到转义符、\\n 和 \\"；普通文本字符串仍保持原样。
+ */
 export function prettyJson(json?: string): string {
   if (!json) return ''
   try {
-    return JSON.stringify(JSON.parse(json), null, 2)
+    const parsed = JSON.parse(json)
+    return JSON.stringify(unwrapNestedJson(parsed), null, 2)
   } catch {
     return json
   }
+}
+
+function unwrapNestedJson(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+      try {
+        return unwrapNestedJson(JSON.parse(text))
+      } catch {
+        return value
+      }
+    }
+    return value
+  }
+  if (Array.isArray(value)) return value.map(unwrapNestedJson)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, unwrapNestedJson(item)]))
+  }
+  return value
 }
 
 /** 参数映射的取值展示 */

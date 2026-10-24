@@ -80,6 +80,22 @@ class ExecutionContextHolderTest {
     }
 
     /**
+     * 参数集提供最低优先级默认值，步骤默认参数及节点映射可以依次覆盖。
+     */
+    @Test
+    void paramSetIsTheLowestPriorityParameterBase() {
+        RuntimeNode node = node(List.of(
+                mapping("sampleId", FlowConstants.SOURCE_LITERAL, null, null, "S002")));
+        node.setDefaultParams("{\"temperature\":20,\"mode\":\"AUTO\"}");
+        Map<String, Object> params = holder.resolveParams(node, env(Map.of(), Map.of()),
+                Map.of("sampleId", "S001", "temperature", 25, "operator", "robot"));
+        assertEquals("S002", params.get("sampleId"));
+        assertEquals(20, params.get("temperature"));
+        assertEquals("AUTO", params.get("mode"));
+        assertEquals("robot", params.get("operator"));
+    }
+
+    /**
      * 默认参数 JSON 非法时忽略，不抛异常，映射照常
      */
     @Test

@@ -20,44 +20,71 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="12">
-          <el-form-item label="设备状态" prop="status">
-            <el-select v-model="formData.status" placeholder="请选择设备状态" class="!w-1/1">
-              <el-option label="在线" value="ONLINE" />
-              <el-option label="离线" value="OFFLINE" />
-              <el-option label="维护中" value="MAINTENANCE" />
-              <el-option label="故障" value="FAULT" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="厂商" prop="vendor">
-            <el-input v-model="formData.vendor" maxlength="128" placeholder="请输入厂商" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="型号" prop="model">
-            <el-input v-model="formData.model" maxlength="128" placeholder="请输入型号" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="序列号" prop="serialNo">
-            <el-input v-model="formData.serialNo" maxlength="128" placeholder="请输入序列号" />
-          </el-form-item>
-        </el-col>
       </el-row>
-      <el-form-item label="设备图片">
-        <div class="image-upload-wrap">
-          <UploadImg v-model="formData.imageUrl" />
-          <span class="form-tip">选填，未上传时显示默认图片</span>
-        </div>
+      <el-alert class="!mb-18px" type="info" :closable="false" show-icon>
+        <template #title>先填写设备名称、编码和类型即可保存；厂商、型号等档案信息可稍后补充。</template>
+      </el-alert>
+
+      <el-collapse v-model="activePanels" class="form-collapse">
+        <el-collapse-item name="profile">
+          <template #title>
+            <span>更多设备信息</span>
+            <span class="collapse-tip">用于资产记录和设备维护，可选</span>
+          </template>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="厂商" prop="vendor">
+                <el-input v-model="formData.vendor" maxlength="128" placeholder="请输入设备厂商" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="型号" prop="model">
+                <el-input v-model="formData.model" maxlength="128" placeholder="请输入设备型号" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="序列号" prop="serialNo">
+                <el-input v-model="formData.serialNo" maxlength="128" placeholder="请输入设备序列号" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="管理状态" prop="status">
+                <el-select v-model="formData.status" placeholder="请选择管理状态" class="!w-1/1">
+                  <el-option label="在线" value="ONLINE" />
+                  <el-option label="维护中" value="MAINTENANCE" />
+                  <el-option label="离线" value="OFFLINE" />
+                  <el-option label="故障" value="FAULT" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="设备图片">
+            <div class="image-upload-wrap">
+              <UploadImg v-model="formData.imageUrl" />
+              <span class="form-tip">选填，未上传时显示默认图片</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="formData.remark" maxlength="512" show-word-limit placeholder="补充设备位置、用途等信息" type="textarea" :rows="2" />
+          </el-form-item>
+        </el-collapse-item>
+      </el-collapse>
+
+      <el-divider content-position="left">任务接入模式</el-divider>
+      <el-form-item label="任务模式" prop="taskMode">
+        <el-radio-group v-model="formData.taskMode">
+          <el-radio-button label="PULL">设备拉取任务</el-radio-button>
+          <el-radio-button label="PUSH">平台接收任务</el-radio-button>
+        </el-radio-group>
+        <div class="field-tip">PUSH 复用现有平台任务链路；PULL 的任务参数由流程节点配置。</div>
       </el-form-item>
 
+      <template v-if="formData.taskMode !== 'PULL'">
       <el-divider content-position="left">接入配置</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="接入方式" prop="connectionType">
-            <el-select v-model="formData.connectionType" placeholder="请选择接入方式" class="!w-1/1">
+            <el-select v-model="formData.connectionType" placeholder="请选择接入方式" class="!w-1/1" @change="syncDriver">
               <el-option label="HTTP 直连" value="HTTP" />
               <el-option label="MQTT 直连" value="MQTT" />
               <el-option label="Node-RED 转接" value="NODE_RED" />
@@ -68,10 +95,7 @@
         <el-col :span="12">
           <el-form-item label="驱动类型" prop="driverType">
             <el-select v-model="formData.driverType" placeholder="请选择驱动类型" class="!w-1/1">
-              <el-option label="Tecan Reader.NETwork" value="TECAN_READER_NETWORK" />
-              <el-option label="仿真驱动" value="SIMULATED" />
-              <el-option label="通用 HTTP" value="GENERIC_HTTP" />
-              <el-option label="通用 MQTT" value="GENERIC_MQTT" />
+              <el-option v-for="item in driverOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
         </el-col>
@@ -89,6 +113,13 @@
 
       <template v-if="formData.connectionType === 'HTTP' || formData.connectionType === 'NODE_RED'">
         <el-divider content-position="left">登录认证</el-divider>
+        <el-form-item label="认证方式">
+          <el-select v-model="authMode" class="!w-1/1" @change="authModeChanged">
+            <el-option label="无需认证" value="NONE" />
+            <el-option label="用户名密码登录" value="PASSWORD" />
+            <el-option label="Token / API Key" value="TOKEN" />
+          </el-select>
+        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="请求方法" prop="loginMethod">
@@ -101,11 +132,11 @@
           </el-col>
           <el-col :span="16">
             <el-form-item label="登录路径" label-width="90px">
-              <el-input v-model="formData.loginPath" maxlength="255" placeholder="相对路径，如 /api/login；为空表示设备无需登录" />
+            <el-input v-model="formData.loginPath" maxlength="255" placeholder="相对路径，如 /api/login" :disabled="authMode === 'NONE'" />
             </el-form-item>
           </el-col>
         </el-row>
-        <template v-if="formData.loginPath">
+        <template v-if="authMode !== 'NONE'">
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="用户名">
@@ -159,9 +190,8 @@
       </template>
 
       <el-divider content-position="left">结果获取</el-divider>
-      <el-form-item label="结果回调">
-        <el-switch v-model="formData.callbackEnabled" active-text="支持" inactive-text="不支持" />
-        <span class="form-tip">设备执行完成后能否主动将结果推送给平台</span>
+      <el-form-item label="回调配置">
+        <span class="form-tip">是否支持回调请在“设备能力”中配置；这里仅填写回调地址和超时参数。</span>
       </el-form-item>
       <template v-if="formData.callbackEnabled">
         <el-form-item label="回调地址" prop="callbackUrl">
@@ -183,6 +213,33 @@
         <span class="form-tip">以轮询方式获取结果时，两次查询之间的间隔</span>
       </el-form-item>
 
+      <el-divider content-position="left">设备能力</el-divider>
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="支持设备回调">
+            <el-switch v-model="formData.callbackEnabled" active-text="支持" inactive-text="不支持" />
+            <span class="form-tip">设备完成任务后主动通知平台</span>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="支持平台轮询">
+            <el-switch v-model="formData.pollEnabled" active-text="支持" inactive-text="不支持" />
+            <span class="form-tip">平台通过状态查询动作获取进度</span>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="支持状态查询">
+            <el-switch v-model="formData.statusQueryEnabled" :disabled="!formData.pollEnabled" active-text="支持" inactive-text="不支持" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-collapse v-model="activePanels" class="form-collapse">
+        <el-collapse-item name="advanced">
+          <template #title>
+            <span>高级设置</span>
+            <span class="collapse-tip">结果接收能力、并发和调度策略</span>
+          </template>
       <el-divider content-position="left">调度策略</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
@@ -220,11 +277,9 @@
           设备自带任务队列时，请将“并发策略”设为<strong>设备本地排队</strong>，平台即可连续下发。
         </template>
       </el-alert>
-
-      <el-divider content-position="left">其他</el-divider>
-      <el-form-item label="备注">
-        <el-input v-model="formData.remark" maxlength="512" show-word-limit placeholder="请输入备注" type="textarea" :rows="2" />
-      </el-form-item>
+        </el-collapse-item>
+      </el-collapse>
+      </template>
     </el-form>
     <template #footer>
       <el-button :disabled="formLoading" type="primary" @click="submitForm">确 定</el-button>
@@ -235,8 +290,8 @@
 
 <script lang="ts" setup>
 import { DeviceInfoApi, DeviceVO } from '@/api/device'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { UploadImg } from '@/components/UploadFile'
-import { useDeviceTypeDictOptions } from './labels'
 
 defineOptions({ name: 'WmsDeviceInfoForm' })
 
@@ -247,6 +302,7 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formLoading = ref(false)
 const formType = ref('')
+const activePanels = ref<string[]>([])
 
 const createEmptyFormData = (): DeviceVO => ({
   id: undefined,
@@ -260,6 +316,7 @@ const createEmptyFormData = (): DeviceVO => ({
   driverType: 'SIMULATED',
   status: 'OFFLINE',
   connectionType: 'SIMULATED',
+  taskMode: 'PUSH',
   endpointUrl: undefined,
   loginPath: undefined,
   loginMethod: 'POST',
@@ -274,6 +331,8 @@ const createEmptyFormData = (): DeviceVO => ({
   tokenTtlSec: 1800,
   mqttTopicPrefix: undefined,
   callbackEnabled: false,
+  pollEnabled: false,
+  statusQueryEnabled: false,
   callbackUrl: undefined,
   callbackTimeoutSec: 300,
   pollIntervalSec: 5,
@@ -295,6 +354,14 @@ const createEmptyFormData = (): DeviceVO => ({
 })
 
 const formData = ref<DeviceVO>(createEmptyFormData())
+const authMode = ref<'NONE' | 'PASSWORD' | 'TOKEN'>('NONE')
+const authModeChanged = () => {
+  if (authMode.value === 'NONE') {
+    formData.value.loginPath = undefined
+    formData.value.loginUsername = undefined
+    formData.value.loginPassword = undefined
+  }
+}
 
 const urlPattern = /^https?:\/\/.+/i
 
@@ -316,6 +383,7 @@ const formRules = reactive({
   driverType: [{ required: true, message: '驱动类型不能为空', trigger: 'change' }],
   status: [{ required: true, message: '设备状态不能为空', trigger: 'change' }],
   connectionType: [{ required: true, message: '接入方式不能为空', trigger: 'change' }],
+  taskMode: [{ required: true, message: '任务模式不能为空', trigger: 'change' }],
   endpointUrl: [
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
@@ -333,19 +401,36 @@ const formRules = reactive({
 })
 const formRef = ref()
 
-const deviceTypeOptions = useDeviceTypeDictOptions()
-
+const deviceTypeOptions = computed(() => getStrDictOptions(DICT_TYPE.DEVICE_TYPE))
+const driverOptions = computed(() => {
+  const map: Record<string, Array<{ label: string; value: string }>> = {
+    HTTP: [{ label: '通用 HTTP', value: 'GENERIC_HTTP' }, { label: 'Tecan Reader.NETWORK', value: 'TECAN_READER_NETWORK' }],
+    NODE_RED: [{ label: '通用 HTTP', value: 'GENERIC_HTTP' }, { label: 'Tecan Reader.NETWORK', value: 'TECAN_READER_NETWORK' }],
+    MQTT: [{ label: '通用 MQTT', value: 'GENERIC_MQTT' }],
+    SIMULATED: [{ label: '仿真驱动', value: 'SIMULATED' }]
+  }
+  return map[formData.value.connectionType || 'SIMULATED'] || []
+})
+const syncDriver = () => {
+  if (!driverOptions.value.some((item) => item.value === formData.value.driverType)) {
+    formData.value.driverType = driverOptions.value[0]?.value
+  }
+}
 const open = async (type: string, id?: number) => {
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
   formType.value = type
   formData.value = createEmptyFormData()
+  authMode.value = 'NONE'
+  activePanels.value = []
   formRef.value?.clearValidate()
   if (id) {
     formLoading.value = true
     try {
       const data = await DeviceInfoApi.getDevice(id)
       Object.assign(formData.value, data)
+      authMode.value = formData.value.loginPath ? 'PASSWORD' : 'NONE'
+      syncDriver()
     } finally {
       formLoading.value = false
     }
@@ -391,5 +476,15 @@ const emit = defineEmits<{ success: [] }>()
   font-size: 12px;
   line-height: 20px;
   color: var(--el-text-color-secondary);
+}
+.form-collapse {
+  margin-bottom: 18px;
+  border-top: 0;
+}
+.collapse-tip {
+  margin-left: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: normal;
 }
 </style>

@@ -81,11 +81,11 @@ export const STEP_TYPE_FIELDS: Record<string, ParamField[]> = {
   /** 设备异步任务：派发到任务队列，设备Code可留空（不限设备），动作限定任务类型 */
   'device.task': [
     { key: 'deviceCode', label: '设备', type: 'device', placeholder: '可留空，不限设备' },
-    { key: 'actionCode', label: '动作', type: 'action', required: true, dependsOn: 'deviceCode', placeholder: '请选择任务类型（动作）' }
+    { key: 'actionCode', label: '任务类型', type: 'action', required: true, dependsOn: 'deviceCode', placeholder: '请选择任务类型' }
   ],
   /** Bean 调用：同步执行后端白名单动作 Bean，固定参数以键值对传入 */
   'bean.invoke': [
-    { key: 'beanName', label: '调用 Bean', type: 'beanAction', required: true, placeholder: '请选择可调用动作' },
+    { key: 'beanName', label: '调用 Bean', type: 'string', required: true, placeholder: '请输入已注册的 Bean 名称，如 waterRegisterAction' },
     { key: 'argsJson', label: '固定参数', type: 'json', hint: '传给 Bean 的固定参数（键值对）' }
   ],
   /** 脚本执行：运行一段表达式（可引用 input），结果可写回指定键名 */
@@ -147,10 +147,9 @@ export const STEP_TYPE_FIELDS: Record<string, ParamField[]> = {
     { key: 'version', label: '版本', type: 'number', placeholder: '空则取已发布最新版', when: { key: 'dispatchMode', value: 'SINGLE' } },
     { key: 'inputJson', label: '入参', type: 'json', hint: '传给子流程的入参（键值对）', when: { key: 'dispatchMode', value: 'SINGLE' } }
   ],
-  /** 定时等待：暂停指定秒数，或等到某个绝对时间点再继续 */
+  /** 定时等待：暂停指定秒数后继续 */
   'timer.wait': [
-    { key: 'waitSeconds', label: '等待秒数', type: 'number', placeholder: '等待多少秒' },
-    { key: 'waitUntil', label: '等到时间点', type: 'string', placeholder: '如 2026-10-12 18:00:00' }
+    { key: 'waitSeconds', label: '等待秒数', type: 'number', required: true, placeholder: '等待多少秒（1~86400）' }
   ],
   /** 前置校验：调用校验 Bean 做资源/规则校验，固定参数键值对传入 */
   validate: [

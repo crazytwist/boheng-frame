@@ -28,6 +28,7 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
@@ -79,6 +80,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      */
     @Resource
     private DeviceInfoMapper deviceInfoMapper;
+
+    @Resource
+    private ApplicationEventPublisher eventPublisher;
     /**
      * 调用开始时落一条已占用的命令
      */
@@ -146,6 +150,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             applyCodec(command, raw);
         }
         deviceCommandMapper.updateById(command);
+        publishCompleted(command);
     }
 
     /**
@@ -212,6 +217,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         result.setErrorMsg(command.getErrorMsg());
         deviceCommandMapper.updateById(result);
         deviceInfoMapper.releaseOccupy(command.getDeviceId(), command.getId());
+        command.setStatus(failure == null ? "SUCCEEDED" : "FAILED");
+        publishCompleted(command);
         return true;
     }
 
@@ -232,6 +239,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         update.setErrorMsg(limit(message, 1000));
         if (deviceCommandMapper.updateIfStatus(update, "WAITING")) {
             deviceInfoMapper.releaseOccupy(command.getDeviceId(), command.getId());
+            command.setStatus("TIMED_OUT");
+            publishCompleted(command);
         }
     }
 
@@ -304,6 +313,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         command.setFinishedAt(LocalDateTime.now());
         command.setErrorMsg(limit(message, 1000));
         deviceCommandMapper.updateById(command);
+        publishCompleted(command);
+    }
+
+    /** 发布统一终态事件；流程节点按 commandId 关联，独立设备命令则无人消费。 */
+    private void publishCompleted(DeviceCommandDO command) {
+        eventPublisher.publishEvent(new cn.boheng.frame.module.device.api.dto.DeviceCommandCompletedEvent(
+                command.getId(), command.getCommandNo(), command.getStatus()));
     }
 
     /**

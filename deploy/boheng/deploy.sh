@@ -5,6 +5,8 @@
 #   ./deploy.sh                 # 更新发布（复用已有 jar/dist，仅重建镜像并部署）
 #   ./deploy.sh --build         # 完整构建：mvn package + pnpm build + 镜像 + 部署
 #   ./deploy.sh --with-mw       # 连同 MySQL/Redis 镜像一起打包传输（目标离线时用）
+#   ./deploy.sh --remote-build  # 只传 jar/dist，由目标服务器原生构建镜像
+#                               # 适用于：本机拉不到基础镜像，或本机架构≠目标架构时
 #   ./deploy.sh --migrate-only  # 只跑 SQL 增量迁移（不动代码/镜像/容器）
 #   ./deploy.sh --skip-migrate  # 发布代码但跳过 SQL 迁移
 #
@@ -26,24 +28,32 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # ---------------------------- 参数 ----------------------------
 BUILD=0
 WITH_MW=0
+REMOTE_BUILD=0
 MIGRATE_ONLY=0
 SKIP_MIGRATE=0
 for arg in "$@"; do
   case "$arg" in
     --build) BUILD=1 ;;
     --with-mw) WITH_MW=1 ;;
+    --remote-build) REMOTE_BUILD=1 ;;
     --migrate-only) MIGRATE_ONLY=1 ;;
     --skip-migrate) SKIP_MIGRATE=1 ;;
     *) echo "未知参数: $arg"; exit 1 ;;
   esac
 done
 
-# 互斥：--migrate-only 与 --build/--with-mw/--skip-migrate
+# 互斥：--migrate-only 与 --build/--with-mw/--remote-build/--skip-migrate
 if [[ "$MIGRATE_ONLY" == "1" ]]; then
-  if [[ "$BUILD" == "1" || "$WITH_MW" == "1" || "$SKIP_MIGRATE" == "1" ]]; then
-    echo "❌ --migrate-only 不能与 --build / --with-mw / --skip-migrate 同时使用"
+  if [[ "$BUILD" == "1" || "$WITH_MW" == "1" || "$REMOTE_BUILD" == "1" || "$SKIP_MIGRATE" == "1" ]]; then
+    echo "❌ --migrate-only 不能与 --build / --with-mw / --remote-build / --skip-migrate 同时使用"
     exit 1
   fi
+fi
+
+# 互斥：--remote-build 模式下镜像由服务器自己构建，不再需要本机打包中间件镜像
+if [[ "$REMOTE_BUILD" == "1" && "$WITH_MW" == "1" ]]; then
+  echo "❌ --remote-build 与 --with-mw 不能同时使用（远程构建时中间件镜像由服务器自行拉取）"
+  exit 1
 fi
 
 # ---------------------------- 加载 .env ----------------------------
@@ -245,34 +255,58 @@ else
 fi
 
 # ---------------------------- 3. 构建 Docker 镜像 ----------------------------
-# 目标服务器是 x86_64，本地是 arm64，必须跨架构构建 linux/amd64
-PLATFORM="linux/amd64"
-echo "▶ 构建后端镜像 boheng/server:latest ($PLATFORM) ..."
-docker buildx build --platform "$PLATFORM" -f "$SCRIPT_DIR/Dockerfile.server" -t boheng/server:latest --load "$PROJECT_DIR/boheng-server"
+if [[ "$REMOTE_BUILD" == "1" ]]; then
+  # 服务器原生构建：本机只产出架构无关的 jar/dist，镜像交由目标机 build。
+  # 适用场景：本机拉不到基础镜像（Docker Hub 不通），或本机架构 ≠ 目标架构。
+  echo "▶ [remote-build] 准备远端构建上下文 ..."
+  "${SSH_CMD[@]}" "mkdir -p '$REMOTE_DIR/server-ctx/target' '$REMOTE_DIR/web-ctx'"
 
-echo "▶ 构建前端镜像 boheng/web:latest ($PLATFORM) ..."
-WEB_CTX="$SCRIPT_DIR/.build-web"
-rm -rf "$WEB_CTX"; mkdir -p "$WEB_CTX"
-cp -r "$DIST" "$WEB_CTX/dist"
-cp "$SCRIPT_DIR/nginx.conf" "$WEB_CTX/nginx.conf"
-cp "$SCRIPT_DIR/Dockerfile.web" "$WEB_CTX/Dockerfile"
-docker buildx build --platform "$PLATFORM" -t boheng/web:latest --load "$WEB_CTX"
+  echo "  ▶ 传输后端 jar（$(du -h "$JAR" | cut -f1)）..."
+  "${SCP_CMD[@]}" "$JAR" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/server-ctx/target/boheng-server.jar"
+  "${SCP_CMD[@]}" "$SCRIPT_DIR/Dockerfile.server" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/server-ctx/Dockerfile"
 
-# ---------------------------- 4. 打包镜像 ----------------------------
-echo "▶ 打包镜像 tar ..."
-TAR="$SCRIPT_DIR/boheng-images.tar"
-docker save boheng/server:latest boheng/web:latest -o "$TAR"
+  # 前端 dist 文件多，先本地打 tar 再传，避免逐文件 scp 的开销
+  echo "  ▶ 传输前端 dist（$(du -sh "$DIST" | cut -f1 | tr -d ' ')）..."
+  DIST_TAR="$SCRIPT_DIR/.dist-prod.tar.gz"
+  tar -C "$DIST" -czf "$DIST_TAR" .
+  "${SCP_CMD[@]}" "$DIST_TAR" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/web-ctx/dist.tar.gz"
+  rm -f "$DIST_TAR"
+  "${SCP_CMD[@]}" "$SCRIPT_DIR/nginx.conf" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/web-ctx/nginx.conf"
+  "${SCP_CMD[@]}" "$SCRIPT_DIR/Dockerfile.web" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/web-ctx/Dockerfile"
+  echo "  ✓ 构建上下文已就绪（镜像将在目标机构建）"
+else
+  # 目标服务器是 x86_64，本地是 arm64，必须跨架构构建 linux/amd64
+  PLATFORM="linux/amd64"
+  echo "▶ 构建后端镜像 boheng/server:latest ($PLATFORM) ..."
+  docker buildx build --platform "$PLATFORM" -f "$SCRIPT_DIR/Dockerfile.server" -t boheng/server:latest --load "$PROJECT_DIR/boheng-server"
 
-if [[ "$WITH_MW" == "1" ]]; then
-  echo "▶ 追加打包 MySQL/Redis 镜像 ..."
-  # mysql 锁定 8.0.32（OL8/x86-64-v1），目标机老 CPU 跑不了 OL9 基座的 mysql:8.0 最新 tag
-  docker pull --platform "$PLATFORM" -q mysql:8.0.32 redis:7-alpine
-  docker save boheng/server:latest boheng/web:latest mysql:8.0.32 redis:7-alpine -o "$TAR"
+  echo "▶ 构建前端镜像 boheng/web:latest ($PLATFORM) ..."
+  WEB_CTX="$SCRIPT_DIR/.build-web"
+  rm -rf "$WEB_CTX"; mkdir -p "$WEB_CTX"
+  cp -r "$DIST" "$WEB_CTX/dist"
+  cp "$SCRIPT_DIR/nginx.conf" "$WEB_CTX/nginx.conf"
+  cp "$SCRIPT_DIR/Dockerfile.web" "$WEB_CTX/Dockerfile"
+  docker buildx build --platform "$PLATFORM" -t boheng/web:latest --load "$WEB_CTX"
+
+  # ---------------------------- 4. 打包镜像 ----------------------------
+  echo "▶ 打包镜像 tar ..."
+  TAR="$SCRIPT_DIR/boheng-images.tar"
+  docker save boheng/server:latest boheng/web:latest -o "$TAR"
+
+  if [[ "$WITH_MW" == "1" ]]; then
+    echo "▶ 追加打包 MySQL/Redis 镜像 ..."
+    # mysql 锁定 8.0.32（OL8/x86-64-v1），目标机老 CPU 跑不了 OL9 基座的 mysql:8.0 最新 tag
+    docker pull --platform "$PLATFORM" -q mysql:8.0.32 redis:7-alpine
+    docker save boheng/server:latest boheng/web:latest mysql:8.0.32 redis:7-alpine -o "$TAR"
+  fi
 fi
 
 # ---------------------------- 5. 传输到目标 ----------------------------
 echo "▶ 传输到目标服务器 ..."
-"${SCP_CMD[@]}" "$TAR" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/boheng-images.tar"
+# remote-build 模式下镜像在目标机构建，不需要传 tar
+if [[ "$REMOTE_BUILD" != "1" ]]; then
+  "${SCP_CMD[@]}" "$TAR" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/boheng-images.tar"
+fi
 "${SCP_CMD[@]}" "$SCRIPT_DIR/docker-compose.yml" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/docker-compose.yml"
 "${SCP_CMD[@]}" "$SCRIPT_DIR/.env" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/.env"
 
@@ -280,13 +314,24 @@ echo "▶ 传输到目标服务器 ..."
 echo "▶ 目标端加载镜像并启动 ..."
 # 显式传 REMOTE_DIR 给远端：单引号 heredoc 不做本地变量展开，
 # 远端脚本只能通过 $1 拿到 REMOTE_DIR
-"${SSH_CMD[@]}" bash -s "$REMOTE_DIR" <<'REMOTE'
+"${SSH_CMD[@]}" bash -s "$REMOTE_DIR" "$REMOTE_BUILD" <<'REMOTE'
 set -euo pipefail
 REMOTE_DIR="$1"; shift
+REMOTE_BUILD="$1"; shift
 cd "$REMOTE_DIR"
 
-# 加载镜像
-docker load < boheng-images.tar
+# 镜像来源二选一：本机 buildx 构建则 load tar；remote-build 则由目标机原生构建
+if [[ "$REMOTE_BUILD" == "1" ]]; then
+  echo "▶ 目标机构建后端镜像 boheng/server:latest ..."
+  docker build -t boheng/server:latest server-ctx
+  echo "▶ 目标机构建前端镜像 boheng/web:latest ..."
+  mkdir -p web-ctx/dist
+  tar -xzf web-ctx/dist.tar.gz -C web-ctx/dist
+  rm -f web-ctx/dist.tar.gz
+  docker build -t boheng/web:latest web-ctx
+else
+  docker load < boheng-images.tar
+fi
 
 # 生成 .env 供 compose 读取（去除 SSH 段，保留端口/密码）
 {
@@ -317,8 +362,10 @@ REMOTE
 # 函数内部自己有 SSH 调用，会去远端执行 MySQL 迁移逻辑。
 apply_migrations
 
-rm -f "$TAR"
-rm -rf "$WEB_CTX"
+if [[ "$REMOTE_BUILD" != "1" ]]; then
+  rm -f "$TAR"
+  rm -rf "$WEB_CTX"
+fi
 
 echo ""
 echo "======================================================"
