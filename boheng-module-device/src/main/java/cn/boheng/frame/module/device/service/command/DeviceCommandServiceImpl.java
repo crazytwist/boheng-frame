@@ -102,6 +102,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         DeviceCommandDO row = new DeviceCommandDO();
         row.setCommandNo("C" + IdUtil.getSnowflakeNextIdStr());
         row.setSourceType(StrUtil.blankToDefault(src.sourceType(), "MANUAL"));
+        row.setSourceRef(StrUtil.trimToNull(src.sourceRef()));
         row.setAttempt(src.attempt() == null || src.attempt() < 1 ? 1 : src.attempt());
         row.setDeviceId(device.getId());
         row.setDeviceCode(device.getDeviceCode());
@@ -117,7 +118,6 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
                 StrUtil.blankToDefault(SecurityFrameworkUtils.getLoginUserNickname(), "user")));
         row.setOperatorType("USER");
         row.setAcquiredAt(LocalDateTime.now());
-        row.setVersion(0);
         deviceCommandMapper.insert(row);
         return row;
     }

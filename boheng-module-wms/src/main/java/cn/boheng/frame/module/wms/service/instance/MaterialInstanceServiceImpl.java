@@ -25,6 +25,9 @@ import cn.boheng.frame.module.wms.dal.mysql.content.ContentDefMapper;
 import cn.boheng.frame.module.wms.dal.mysql.instance.MaterialInstanceMapper;
 import cn.boheng.frame.module.wms.dal.mysql.sample.SampleInfoMapper;
 import cn.boheng.frame.module.wms.dal.mysql.slot.SlotMapper;
+import cn.boheng.frame.module.wms.enums.InstanceStatusEnum;
+import cn.boheng.frame.module.wms.enums.MovementTypeEnum;
+import cn.boheng.frame.module.wms.enums.SlotStatusEnum;
 import cn.boheng.frame.module.wms.service.movement.MaterialMovementService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
@@ -41,8 +44,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.*;
@@ -51,9 +56,10 @@ import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.*;
  * 物料实例 Service 实现类
  *
  * <h3>流水一致性约束（重要）</h3>
- * 上架 / 下架 / 转移 / 消耗都必须「改实例」与「写流水」在**同一事务**内完成。
+ * 上架 / 下架 / 转移 / 消耗 / 删除都必须「改实例」与「写流水」在**同一事务**内完成。
  * 因此本类不允许任何绕过流水直接改 {@code root_slot_id} 的入口：
- * {@link #updateMaterialInstance} 会显式拒绝改动槽位字段。
+ * {@link #updateMaterialInstance} 会显式拒绝改动槽位字段；
+ * 删除（含批量下架）统一经 {@link #deleteInstancesWithJournal}，删除前先记 DELETE 流水。
  *
  * @author yinan
  */
@@ -67,36 +73,9 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
     private static final int MAX_BATCH_SIZE = 500;
 
     /**
-     * 槽位使用状态：占用 / 空闲
-     */
-    private static final String SLOT_STATUS_OCCUPIED = "OCCUPIED";
-    private static final String SLOT_STATUS_FREE = "FREE";
-
-    /**
-     * 实例状态
-     */
-    private static final String STATUS_AVAILABLE = "AVAILABLE";
-    private static final String STATUS_IN_USE = "IN_USE";
-    private static final String STATUS_USED = "USED";
-
-    /**
-     * 允许被消耗的实例状态（终态 USED / EXPIRED / DISCARDED 不可再消耗）
-     */
-    private static final Set<String> CONSUMABLE_STATUS = Set.of(STATUS_AVAILABLE, "RESERVED", STATUS_IN_USE);
-
-    /**
      * 按容器消耗时的挑选策略
      */
     private static final String STRATEGY_POSITION = "POSITION";
-
-    /**
-     * 流水类型
-     */
-    private static final String MT_CREATE = "CREATE";
-    private static final String MT_PUT_IN = "PUT_IN";
-    private static final String MT_TAKE_OUT = "TAKE_OUT";
-    private static final String MT_MOVE = "MOVE";
-    private static final String MT_CONSUME = "CONSUME";
 
     @Resource
     private MaterialInstanceMapper materialInstanceMapper;
@@ -202,7 +181,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         // 记建账流水。只为顶层实例记 —— 子实例（如 96 孔板的孔位）由父实例的 CREATE 流水代表，
         // 否则一次建板会刷出 97 条流水，且孔位不会独立移动，记了也没有查询价值。
         if (movementId == null && materialInstance.getParentInstanceId() == null) {
-            MaterialMovementDO movement = buildMovement(MT_CREATE, materialInstance, null, slot);
+            MaterialMovementDO movement = buildMovement(MovementTypeEnum.CREATE.getType(), materialInstance, null, slot);
             movement.setOperationId(operationId);
             movement.setAfterStatus(materialInstance.getInstanceStatus());
             materialMovementService.recordMovement(movement);
@@ -251,10 +230,8 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         if (childCount != null && childCount > 0) {
             throw exception(MATERIAL_INSTANCE_HAS_CHILDREN, id);
         }
-        // 删除
-        materialInstanceMapper.deleteById(id);
-        // 释放其占用的槽位
-        refreshSlotOccupancy(instance.getRootSlotId());
+        // 先记 DELETE 流水再删行（同一事务），保证「删了东西必有流水」
+        deleteInstancesWithJournal(List.of(instance), null);
     }
 
     @Override
@@ -263,15 +240,98 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         if (CollUtil.isEmpty(ids)) {
             return;
         }
-        // 先取出待删除的实例，删除后释放它们占用的槽位
+        // 先取出待删除的实例（不存在的编号静默跳过，与单条删除的存在性语义保持宽松一致）
         List<MaterialInstanceDO> instances = materialInstanceMapper.selectList(
                 new LambdaQueryWrapperX<MaterialInstanceDO>().in(MaterialInstanceDO::getId, ids));
-        materialInstanceMapper.deleteBatch(MaterialInstanceDO::getId, ids);
+        if (instances.isEmpty()) {
+            return;
+        }
+        // 子树闭合校验：任何一个被删实例的子实例不在本次集合内，删除后子树就会悬空
+        validateDeleteClosure(instances);
+        // 同一次批量删除的 DELETE 流水共享一个 operationId，便于在流水页还原「一次操作」
+        deleteInstancesWithJournal(instances, IdUtil.fastSimpleUUID());
+    }
+
+    /**
+     * 批量删除的子树闭合校验：每个被删实例的子实例必须也在删除集合内。
+     * 单独删父留子会造成 instance_path 断裂、子树悬空，这里直接拒绝并指明违规父实例。
+     */
+    @VisibleForTesting
+    void validateDeleteClosure(List<MaterialInstanceDO> instances) {
+        Set<Long> idSet = instances.stream().map(MaterialInstanceDO::getId).collect(Collectors.toSet());
+        List<MaterialInstanceDO> children = materialInstanceMapper.selectList(
+                new LambdaQueryWrapperX<MaterialInstanceDO>().in(MaterialInstanceDO::getParentInstanceId, idSet));
+        // 子实例自身不在删除集合内的，就是会被悬空的那部分
+        Map<Long, Long> outsideCountByParent = children.stream()
+                .filter(child -> !idSet.contains(child.getId()))
+                .collect(Collectors.groupingBy(MaterialInstanceDO::getParentInstanceId, Collectors.counting()));
+        if (outsideCountByParent.isEmpty()) {
+            return;
+        }
+        instances.stream()
+                .filter(instance -> outsideCountByParent.containsKey(instance.getId()))
+                .findFirst()
+                .ifPresentOrElse(parent -> {
+                    throw exception(MATERIAL_INSTANCE_DELETE_CHILDREN_OUTSIDE,
+                            parent.getInstanceCode(), outsideCountByParent.get(parent.getId()));
+                }, () -> {
+                    // 理论不可达：悬空子实例的父实例必在本次集合内
+                    throw exception(MATERIAL_INSTANCE_HAS_CHILDREN, outsideCountByParent.keySet().iterator().next());
+                });
+    }
+
+    /**
+     * 删除已通过子树校验的一组实例：先为「被删除森林的树根」各记一条 DELETE 流水，再删行、重算槽位占用。
+     *
+     * <p>树根 = 父实例不在本组内的实例。口径与建账流水一致：整板删除时只有顶层实例记流水
+     * （子实例随父删除，不单独记，避免一次删板刷出 97 条流水）；单独删除某个子实例时，
+     * 该子实例自己是树根，同样有流水可查。</p>
+     *
+     * <p>删除按 instance_path 深度降序（子实例先删）。当前表没有父子自引用外键，顺序本无约束；
+     * 这是对未来可能加外键的防御，父先删会让子行失去引用。</p>
+     *
+     * @param instances   待删除实例（调用方须已完成子树闭合 / 无子实例校验）
+     * @param operationId 操作批次号（单条删除传 null；批量删除传共享批次号）
+     */
+    @VisibleForTesting
+    void deleteInstancesWithJournal(List<MaterialInstanceDO> instances, String operationId) {
+        if (CollUtil.isEmpty(instances)) {
+            return;
+        }
+        Set<Long> idSet = instances.stream().map(MaterialInstanceDO::getId).collect(Collectors.toSet());
+        List<MaterialInstanceDO> deleteOrder = instances.stream()
+                .sorted(Comparator.comparingInt(
+                        (MaterialInstanceDO instance) -> pathDepth(instance.getInstancePath())).reversed())
+                .toList();
+        for (MaterialInstanceDO instance : deleteOrder) {
+            boolean forestRoot = instance.getParentInstanceId() == null
+                    || !idSet.contains(instance.getParentInstanceId());
+            if (forestRoot) {
+                SlotDO fromSlot = instance.getRootSlotId() == null ? null : slotMapper.selectById(instance.getRootSlotId());
+                MaterialMovementDO movement = buildMovement(MovementTypeEnum.DELETE.getType(), instance, fromSlot, null);
+                movement.setOperationId(operationId);
+                movement.setBeforeStatus(instance.getInstanceStatus());
+                // afterStatus 留空：实例已随删除离开系统，没有后续状态
+                materialMovementService.recordMovement(movement);
+            }
+            materialInstanceMapper.deleteById(instance.getId());
+        }
+        // 释放这些实例占用的槽位
         instances.stream()
                 .map(MaterialInstanceDO::getRootSlotId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .forEach(this::refreshSlotOccupancy);
+    }
+
+    /**
+     * 物化路径深度：'/' 分隔的段数。'/1' 是 1 层，'/1/5' 是 2 层；空路径按 0 层。
+     */
+    private static int pathDepth(String instancePath) {
+        if (StrUtil.isBlank(instancePath)) {
+            return 0;
+        }
+        return instancePath.split("/").length - 1;
     }
 
 
@@ -338,7 +398,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             throw exception(BATCH_PUT_IN_MATERIAL_KIND_INVALID, kind);
         }
 
-        String status = StrUtil.blankToDefault(reqVO.getInstanceStatus(), STATUS_AVAILABLE);
+        String status = StrUtil.blankToDefault(reqVO.getInstanceStatus(), InstanceStatusEnum.AVAILABLE.name());
 
         // 3. 托盘架（RACK）自动生成子集：载体 + 子单元类型 + 位数都齐备时才展开，否则只生成 1 个顶层实例
         ContainerTypeDO childType = resolveChildContainerType(containerType);
@@ -485,7 +545,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         SlotDO slot = validateSlotForPlacement(reqVO.getSlotId(), instance.getId());
 
         // 1) 先写流水（幂等键冲突会在这里 fail-fast，整个事务回滚，不会出现「位置变了没流水」）
-        MaterialMovementDO movement = buildMovement(MT_PUT_IN, instance, null, slot);
+        MaterialMovementDO movement = buildMovement(MovementTypeEnum.PUT_IN.getType(), instance, null, slot);
         applyTrace(movement, reqVO, reqVO.getOperationId(), 0);
         movement.setBeforeStatus(instance.getInstanceStatus());
         movement.setAfterStatus(instance.getInstanceStatus());
@@ -507,7 +567,9 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         if (CollUtil.isEmpty(slotIds)) {
             return 0;
         }
-        int count = 0;
+        // 一次批量下架的 DELETE 流水共享一个 operationId，便于在流水页还原「一次操作」
+        String operationId = IdUtil.fastSimpleUUID();
+        List<MaterialInstanceDO> toDelete = new ArrayList<>(slotIds.size());
         for (Long slotId : slotIds) {
             // 找该槽位上的顶层实例（一槽一实例，selectList 取首条以防脏数据多条）
             List<MaterialInstanceDO> insts = materialInstanceMapper.selectList(
@@ -517,11 +579,17 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             if (CollUtil.isEmpty(insts)) {
                 continue; // 空槽位跳过
             }
-            // 复用删除逻辑：校验无子实例 + 删除 + 释放槽位占用
-            deleteMaterialInstance(insts.get(0).getId());
-            count++;
+            MaterialInstanceDO instance = insts.get(0);
+            // 校验无子实例：批量下架是删除语义，带着子实例的容器不允许在此删除（与单条删除口径一致）
+            Long childCount = materialInstanceMapper.selectCount(MaterialInstanceDO::getParentInstanceId, instance.getId());
+            if (childCount != null && childCount > 0) {
+                throw exception(MATERIAL_INSTANCE_HAS_CHILDREN, instance.getId());
+            }
+            toDelete.add(instance);
         }
-        return count;
+        // 复用删除逻辑：记 DELETE 流水 + 删除 + 释放槽位占用
+        deleteInstancesWithJournal(toDelete, operationId);
+        return toDelete.size();
     }
 
     @Override
@@ -537,7 +605,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         String beforeStatus = instance.getInstanceStatus();
         String afterStatus = StrUtil.blankToDefault(reqVO.getAfterStatus(), beforeStatus);
 
-        MaterialMovementDO movement = buildMovement(MT_TAKE_OUT, instance, fromSlot, null);
+        MaterialMovementDO movement = buildMovement(MovementTypeEnum.TAKE_OUT.getType(), instance, fromSlot, null);
         applyTrace(movement, reqVO, reqVO.getOperationId(), 0);
         movement.setBeforeStatus(beforeStatus);
         movement.setAfterStatus(afterStatus);
@@ -569,7 +637,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         SlotDO toSlot = validateSlotForPlacement(reqVO.getTargetSlotId(), instance.getId());
 
         // 一条 MOVE 流水同时带 from / to，不拆成「下架 + 上架」两条
-        MaterialMovementDO movement = buildMovement(MT_MOVE, instance, fromSlot, toSlot);
+        MaterialMovementDO movement = buildMovement(MovementTypeEnum.MOVE.getType(), instance, fromSlot, toSlot);
         applyTrace(movement, reqVO, reqVO.getOperationId(), 0);
         movement.setBeforeStatus(instance.getInstanceStatus());
         movement.setAfterStatus(instance.getInstanceStatus());
@@ -622,8 +690,8 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         boolean includeReserved = Boolean.TRUE.equals(reqVO.getIncludeReserved());
         List<MaterialInstanceDO> candidates = children.stream()
                 .filter(c -> includeReserved
-                        ? CONSUMABLE_STATUS.contains(c.getInstanceStatus())
-                        : STATUS_AVAILABLE.equals(c.getInstanceStatus()))
+                        ? InstanceStatusEnum.isConsumable(c.getInstanceStatus())
+                        : InstanceStatusEnum.AVAILABLE.name().equals(c.getInstanceStatus()))
                 .sorted(positionComparator(reqVO.getStrategy()))
                 .toList();
         if (candidates.size() < reqVO.getCount()) {
@@ -632,7 +700,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         }
 
         String operationId = StrUtil.blankToDefault(reqVO.getOperationId(), IdUtil.fastSimpleUUID());
-        String afterStatus = StrUtil.blankToDefault(reqVO.getAfterStatus(), STATUS_USED);
+        String afterStatus = StrUtil.blankToDefault(reqVO.getAfterStatus(), InstanceStatusEnum.USED.name());
         List<Long> consumedIds = new ArrayList<>(reqVO.getCount());
         int index = 0;
         for (MaterialInstanceDO child : candidates.subList(0, reqVO.getCount())) {
@@ -654,7 +722,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
     private Long doConsume(MaterialInstanceDO instance, Integer qty, BigDecimal volUl, String afterStatus,
                            String remark, MovementTraceBaseReqVO trace, String operationId, int index) {
         // 1. 状态校验
-        if (!CONSUMABLE_STATUS.contains(instance.getInstanceStatus())) {
+        if (!InstanceStatusEnum.isConsumable(instance.getInstanceStatus())) {
             throw exception(INSTANCE_CONSUME_STATUS_ILLEGAL, instance.getInstanceCode(), instance.getInstanceStatus());
         }
         boolean byVolume = volUl != null && volUl.compareTo(BigDecimal.ZERO) > 0;
@@ -688,7 +756,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         String finalStatus = StrUtil.blankToDefault(afterStatus, deriveStatusAfterConsume(byVolume, afterQty, afterVol));
 
         // 组装流水，但要等库存条件更新成功后再落库（幂等键按明细序号派生）
-        MaterialMovementDO movement = buildMovement(MT_CONSUME, instance, null, null);
+        MaterialMovementDO movement = buildMovement(MovementTypeEnum.CONSUME.getType(), instance, null, null);
         applyTrace(movement, trace, operationId, index);
         movement.setRemark(remark);
         movement.setBeforeStatus(beforeStatus);
@@ -734,9 +802,11 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
      */
     private String deriveStatusAfterConsume(boolean byVolume, Integer afterQty, BigDecimal afterVol) {
         if (byVolume) {
-            return afterVol == null || afterVol.compareTo(BigDecimal.ZERO) <= 0 ? STATUS_USED : STATUS_IN_USE;
+            return afterVol == null || afterVol.compareTo(BigDecimal.ZERO) <= 0
+                    ? InstanceStatusEnum.USED.name() : InstanceStatusEnum.IN_USE.name();
         }
-        return afterQty == null || afterQty <= 0 ? STATUS_USED : STATUS_IN_USE;
+        return afterQty == null || afterQty <= 0
+                ? InstanceStatusEnum.USED.name() : InstanceStatusEnum.IN_USE.name();
     }
 
     /**
@@ -953,9 +1023,9 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         // 占用：置 OCCUPIED；释放：仅从 OCCUPIED 回到 FREE，保留 LOCKED / CHECKING
         String newStatus;
         if (occupied) {
-            newStatus = SLOT_STATUS_OCCUPIED;
-        } else if (SLOT_STATUS_OCCUPIED.equals(slot.getSlotStatus())) {
-            newStatus = SLOT_STATUS_FREE;
+            newStatus = SlotStatusEnum.OCCUPIED.name();
+        } else if (SlotStatusEnum.OCCUPIED.name().equals(slot.getSlotStatus())) {
+            newStatus = SlotStatusEnum.FREE.name();
         } else {
             newStatus = slot.getSlotStatus();
         }

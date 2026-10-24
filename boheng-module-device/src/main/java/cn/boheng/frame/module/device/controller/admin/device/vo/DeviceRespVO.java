@@ -114,9 +114,6 @@ public class DeviceRespVO {
     @Schema(description = "允许同时在途命令数", example = "1")
     private Integer maxInflight;
 
-    @Schema(description = "当前在途命令数(运行态)", example = "0")
-    private Integer inflightCount;
-
     @Schema(description = "能力来源", example = "MANUAL")
     private String capabilitySource;
 

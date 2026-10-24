@@ -86,9 +86,19 @@ public class DeviceHttpService {
     private static final long OCCUPY_SEC = 15 * 60;
 
     /**
-     * 校验设备和动作后发起调用，并记下命令
+     * 校验设备和动作后发起调用，并记下命令。来源按人工测试记录
      */
     public DeviceInvokeRespVO invoke(DeviceInvokeReqVO reqVO) {
+        return invoke(reqVO, null);
+    }
+
+    /**
+     * 校验设备和动作后发起调用，并记下命令。
+     *
+     * @param source 命令来源。流程引擎下发时传 FLOW 来源（来源类型 / 来源引用 / 尝试次数），
+     *               事后能沿 source_ref 找回是哪个运行哪个节点哪次尝试发的；为空按人工测试记
+     */
+    public DeviceInvokeRespVO invoke(DeviceInvokeReqVO reqVO, DeviceCommandService.CommandSource source) {
         DeviceInfoDO device = deviceInfoService.getDevice(reqVO.getDeviceId());
         if (device == null) {
             throw exception(DEVICE_NOT_EXISTS);
@@ -122,7 +132,7 @@ public class DeviceHttpService {
             throw exception(DEVICE_CALLBACK_DISABLED, device.getDeviceCode());
         }
         String codecCode = StrUtil.blankToDefault(reqVO.getCodecCode(), action.getCodecCode());
-        DeviceCommandDO command = deviceCommandService.open(device, action, reqVO.getParamsJson(), codecCode);
+        DeviceCommandDO command = deviceCommandService.open(device, action, reqVO.getParamsJson(), codecCode, source);
         boolean occupied = occupy(device, action, command, callback);
         boolean keepOccupied = false;
         DeviceCallbackTicket ticket = null;
@@ -182,7 +192,8 @@ public class DeviceHttpService {
     private boolean occupy(DeviceInfoDO device, DeviceActionDO action, DeviceCommandDO command, boolean callback) {
         if ("DEVICE_QUEUED".equals(device.getConcurrencyPolicy())) {
             int limit = device.getMaxInflight() == null || device.getMaxInflight() < 1 ? 1 : device.getMaxInflight();
-            if (deviceCommandMapper.countRunning(device.getId()) > limit) {
+            // 在途数已达上限就拒绝：count == limit 时容量已满，不能放行第 limit+1 条
+            if (deviceCommandMapper.countRunning(device.getId()) >= limit) {
                 busy(device, command);
             }
             return false;

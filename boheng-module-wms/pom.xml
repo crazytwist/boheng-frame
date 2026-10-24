@@ -69,6 +69,13 @@
             <artifactId>boheng-spring-boot-starter-excel</artifactId>
         </dependency>
 
+        <!-- 测试相关：JUnit5 + spring-test（ReflectionTestUtils），与 flow 模块同款 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
 </project>

@@ -43,6 +43,8 @@ public interface ErrorCodeConstants {
     ErrorCode MATERIAL_INSTANCE_SLOT_ONLY_TOP = new ErrorCode(1_003_004_006, "仅顶层实例允许落位槽位，子实例不允许落位");
     ErrorCode MATERIAL_INSTANCE_SLOT_ONLY_VIA_OPERATION = new ErrorCode(1_003_004_007,
             "落位请使用上架 / 下架 / 转移接口，更新接口不接受槽位字段（否则会绕过物料流水）");
+    ErrorCode MATERIAL_INSTANCE_DELETE_CHILDREN_OUTSIDE = new ErrorCode(1_003_004_008,
+            "实例【{}】仍有 {} 个子实例不在本次删除范围内，请连同其子实例一起选择，否则子树会悬空");
 
     // ========== 物料实例 · 上下架 / 转移 / 消耗 1-003-005-000 ==========
     ErrorCode INSTANCE_NOT_PLACED = new ErrorCode(1_003_005_000, "实例【{}】当前未落位，无法执行该操作");

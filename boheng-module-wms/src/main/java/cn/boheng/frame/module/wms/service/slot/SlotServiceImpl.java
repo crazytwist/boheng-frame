@@ -10,6 +10,7 @@ import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
 import cn.boheng.frame.module.wms.dal.dataobject.zone.ZoneDO;
 import cn.boheng.frame.module.wms.dal.mysql.slot.SlotMapper;
 import cn.boheng.frame.module.wms.dal.mysql.zone.ZoneMapper;
+import cn.boheng.frame.module.wms.enums.SlotStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
 import org.springframework.stereotype.Service;
@@ -125,7 +126,7 @@ public class SlotServiceImpl implements SlotService {
                 slot.setZoneCode(zoneCode);
                 slot.setSlotType("STORAGE");
                 slot.setStatus(0);
-                slot.setSlotStatus("FREE");
+                slot.setSlotStatus(SlotStatusEnum.FREE.name());
                 slot.setCapacity(1);
                 slot.setUniqueBatch(false);
                 slot.setOccupiedQty(0);

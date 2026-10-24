@@ -146,7 +146,9 @@ public class MaterialInstanceController {
     }
 
     @PostMapping("/batch-take-out")
-    @Operation(summary = "批量下架：删除选中槽位上的实例并解绑槽位（空槽位自动跳过）")
+    @Operation(summary = "批量下架（破坏性删除）：删除选中槽位上的实例并解绑槽位，空槽位自动跳过",
+            description = "注意：本接口是删除语义，实例记录会被删除（同事务记 DELETE 流水），不是保留实例的普通下架；"
+                    + "保留实例只解绑槽位请用 take-out 接口")
     @PreAuthorize("@ss.hasPermission('wms:material-instance:take-out')")
     public CommonResult<Integer> batchTakeOut(@RequestBody List<Long> slotIds) {
         return success(materialInstanceService.batchTakeOut(slotIds));

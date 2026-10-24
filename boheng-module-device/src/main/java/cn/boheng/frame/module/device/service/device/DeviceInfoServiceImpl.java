@@ -264,12 +264,12 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
     }
 
     /**
-     * 画像里的占用锁说明
+     * 画像里的占用锁说明。队列型设备的当前在途数实时数命令表（不落台账快照，避免计数漂移）
      */
     private String buildOccupancySummary(DeviceInfoDO device) {
         String concurrency = device.getConcurrencyPolicy() == null ? "EXCLUSIVE" : device.getConcurrencyPolicy();
         if (!"EXCLUSIVE".equals(concurrency)) {
-            int current = device.getInflightCount() == null ? 0 : device.getInflightCount();
+            int current = (int) deviceCommandMapper.countRunning(device.getId());
             int max = device.getMaxInflight() == null ? 1 : device.getMaxInflight();
             return "当前在途 " + current + " 条，上限 " + max + " 条。";
         }

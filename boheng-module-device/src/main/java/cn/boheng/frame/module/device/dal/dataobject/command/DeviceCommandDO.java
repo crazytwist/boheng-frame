@@ -32,9 +32,14 @@ public class DeviceCommandDO extends TenantBaseDO {
     private String commandNo;
 
     /**
-     * 调用来源。当前测试入口记为 MANUAL
+     * 调用来源。MANUAL 手工测试 / FLOW 流程引擎
      */
     private String sourceType;
+
+    /**
+     * 来源引用，回答「这次调用是谁发起的」。流程域格式 flow:{executionId}:{nodeId}:{attempt}
+     */
+    private String sourceRef;
 
     /**
      * 同一业务节点的第几次尝试，从 1 开始
@@ -82,7 +87,9 @@ public class DeviceCommandDO extends TenantBaseDO {
     private String waitingFor;
 
     /**
-     * 命令状态：ACQUIRED 已占用，SUCCEEDED 成功，FAILED 失败
+     * 命令状态：ACQUIRED 已占用 / WAITING 等结果(看 waitingFor) / SUCCEEDED 成功 / FAILED 失败 / TIMED_OUT 超时。
+     * CANCELLED 为预留值，取消入口尚未实现。
+     * 并发竞争不靠乐观锁，靠 updateIfStatus 的状态条件更新(CAS)收口。
      */
     private String status;
 
@@ -155,10 +162,5 @@ public class DeviceCommandDO extends TenantBaseDO {
      * 等回调的截止时刻
      */
     private LocalDateTime timeoutAt;
-
-    /**
-     * 乐观锁版本
-     */
-    private Integer version;
 
 }

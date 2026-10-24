@@ -153,7 +153,7 @@
             <el-tag v-else type="success">空闲</el-tag>
           </template>
           <span v-else class="text-13px text-gray-500">
-            执行中 {{ scope.row.inflightCount ?? 0 }} / {{ scope.row.maxInflight ?? 1 }}
+            队列上限 {{ scope.row.maxInflight ?? 1 }} 条
           </span>
         </template>
       </el-table-column>

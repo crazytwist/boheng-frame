@@ -29,7 +29,7 @@
 DROP TABLE IF EXISTS `wms_material_movement`;
 CREATE TABLE `wms_material_movement` (
   `id` bigint NOT NULL COMMENT '主键',
-  `movement_type` varchar(32) NOT NULL COMMENT '流水类型: CREATE 建账/PUT_IN 上架/TAKE_OUT 下架/MOVE 转移/CONSUME 消耗/STATUS_CHANGE 状态变更/RESERVE 预留/RELEASE 释放预留/ADJUST 冲正',
+  `movement_type` varchar(32) NOT NULL COMMENT '流水类型: CREATE 建账/PUT_IN 上架/TAKE_OUT 下架/MOVE 转移/CONSUME 消耗/DELETE 删除/STATUS_CHANGE 状态变更/RESERVE 预留/RELEASE 释放预留/ADJUST 冲正',
   `biz_source` varchar(32) NOT NULL DEFAULT 'MANUAL' COMMENT '业务来源: MANUAL 手工/TASK 调度任务/DEVICE 设备/IMPORT 导入',
   `operation_id` varchar(64) NULL DEFAULT NULL COMMENT '操作批次号(一次批量操作的多条明细共享，用于归组还原「一次操作」)',
 

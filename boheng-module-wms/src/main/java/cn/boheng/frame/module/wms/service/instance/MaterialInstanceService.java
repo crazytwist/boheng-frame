@@ -55,14 +55,17 @@ public interface MaterialInstanceService {
     void updateMaterialInstance(@Valid MaterialInstanceSaveReqVO updateReqVO);
 
     /**
-     * 删除物料实例
+     * 删除物料实例（不允许带子实例删除，否则子树悬空）。
+     * 删除前会在同一事务记一条 DELETE 流水（含删除时的落位槽位），保证「删了东西必有流水」。
      *
      * @param id 编号
      */
     void deleteMaterialInstance(Long id);
 
     /**
-     * 批量删除物料实例
+     * 批量删除物料实例（支持整棵子树一起删，如连同孔板一起删除其全部孔位）。
+     * 子树闭合校验：任何被删实例的子实例不在本次集合内时拒绝删除；
+     * 每个被删除子树的树根各记一条 DELETE 流水，同批共享一个 operationId。
      *
      * @param ids 编号列表
      */
@@ -90,7 +93,8 @@ public interface MaterialInstanceService {
 
     /**
      * 批量下架：删除选中槽位上的顶层实例并解绑槽位（槽位占用由删除逻辑内自动释放）。
-     * 空槽位自动跳过；实例存在子实例时因删除校验失败而整批回滚。
+     * 空槽位自动跳过；实例存在子实例时因删除校验失败而整批回滚；
+     * 每个被删实例在同一事务记一条 DELETE 流水，同批共享一个 operationId。
      *
      * @param slotIds 槽位编号列表
      * @return 实际删除的实例数量

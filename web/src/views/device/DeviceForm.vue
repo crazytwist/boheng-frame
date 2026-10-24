@@ -339,7 +339,6 @@ const createEmptyFormData = (): DeviceVO => ({
   busyCheckPolicy: 'AUTO',
   concurrencyPolicy: 'EXCLUSIVE',
   maxInflight: 1,
-  inflightCount: 0,
   capabilitySource: 'MANUAL',
   telemetryJson: undefined,
   simulationMode: true,

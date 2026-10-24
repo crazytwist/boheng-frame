@@ -14,20 +14,19 @@
 --      外部网关（伯珩 iot-gateway 等）只作为「可选适配器模块」接入，主模块零依赖。
 --   3. 三种调用方式 = 同一个命令的两个正交维度（不是三个接口）:
 --        dispatch_mode（SYNC/ASYNC 下发方式）× result_mode（SYNC_RETURN/CALLBACK/POLL 回收方式）
---      三态共用 device_command 一张表、一个状态机、一套幂等键、一套锁。
---   4. ★ status 与 waiting_for 正交：status 只表达「流程走到哪一步」（设备侧事实），
---      waiting_for 表达「在等什么」（SLOT_AVAILABLE/DEVICE_CALLBACK/POLL_TICK/MANUAL_APPROVE/EXTERNAL_EVENT）。
+--      三态共用 device_command 一张表、一个状态机、一套占用锁。
+--   4. ★ status 与 waiting_for 正交：status 只表达「走到哪一步」（设备侧事实），
+--      waiting_for 表达「在等什么」（当前写入 DEVICE_CALLBACK/POLL_TICK；SLOT_AVAILABLE/MANUAL_APPROVE/EXTERNAL_EVENT 预留）。
 --      严禁把「等审批」「等定时」混进 status。
---   5. ★★ 幂等三键分工（缺一不可）:
---        uk_command_no  对外唯一（调用方拿到的凭据）
---        uk_idempotent  传输重投拦截（MQTT QoS1/2、HTTP 重发）
---        uk_business    业务执行事实（tenant_id, source_type, business_exec_id, node_id, attempt）
---      只用单键会把「重试」拦成「返回原命令」→ 调度域永远看不到第 2 次执行 → 重试等于没重试。
+--   5. 幂等：当前唯一键只有 uk_command_no（对外凭据）。
+--      传输重投拦截(uk_idempotent)与业务幂等(uk_business)为 future extension：
+--      实现时须保证「同一业务节点的重试是新记录」，否则调度域看不到第 2 次执行。
+--      溯源字段 source_type/source_ref/attempt 已随每次调用落库（idx_source）。
 --   6. ★★ 忙闲校验与并发策略**必须有开关**：不是所有仪器都返回空闲状态，部分仪器自带本地队列。
 --      device_info.busy_check_policy（AUTO/ALWAYS/NEVER）× device_action.need_busy_check
 --      × device_info.concurrency_policy（EXCLUSIVE/DEVICE_QUEUED/PLATFORM_QUEUED）—— 三处都不得写死。
---   7. 生命周期**先落事实再抢设备**：CREATED（已落库、device_id 可为空）→ ACQUIRED → SENT → WAITING → 终态。
---      抢不到设备也必须留痕，否则「资源缺口」无法量化且崩溃不可恢复。
+--   7. 生命周期：下发即占用 → ACQUIRED →（回调型先置 WAITING 再发请求）→ 终态。
+--      无独立 CREATED/SENT 阶段；抢不到设备时命令落 FAILED 留痕（设备正忙，未下发）。
 --   8. 数据分三层（术语对齐 TetraScience / Medallion）:
 --        L0 device_data_raw（不可变）→ L1 device_measurement(+_data)（摄入时挂上下文）→ L2 device_analysis_result（可重判）
 --   9. 设备占用锁对齐 SiLA Lock Controller：lock_holder/lock_type/lock_expire_time/lock_reason。
@@ -86,7 +85,6 @@ CREATE TABLE `device_info` (
     `busy_check_policy`   varchar(32)  NOT NULL DEFAULT 'AUTO' COMMENT '★忙闲校验总开关: AUTO 按动作 need_busy_check 决定/ALWAYS 下发前强制预检/NEVER 从不预检(仪器不报空闲状态时用此项)',
     `concurrency_policy`  varchar(32)  NOT NULL DEFAULT 'EXCLUSIVE' COMMENT '★并发策略: EXCLUSIVE 平台独占(一次仅一条在途，台账CAS)/DEVICE_QUEUED 仪器自带本地队列(平台可连续下发，不做独占)/PLATFORM_QUEUED 平台侧排队(入库等空闲后依次下发)',
     `max_inflight`        int          NOT NULL DEFAULT 1 COMMENT '允许同时在途命令数(EXCLUSIVE 恒为 1；DEVICE_QUEUED 取仪器本地队列深度；PLATFORM_QUEUED 一般 1)',
-    `inflight_count`      int          NOT NULL DEFAULT 0 COMMENT '当前在途命令数(运行态；与 max_inflight 比较决定能否继续下发)',
     -- 能力自描述 / 遥测 / 仿真 --------------------------------------------------
     `capability_source`   varchar(32)  NOT NULL DEFAULT 'MANUAL' COMMENT '能力来源: DEVICE_DECLARED 驱动上报/MANUAL 手工(可覆盖)',
     `telemetry_json`      json         NULL COMMENT '属性当前值快照(列表页与按状态选设备用；详细历史二期进 device_status_log)',
@@ -95,7 +93,7 @@ CREATE TABLE `device_info` (
     -- 占用锁（对齐 SiLA Lock Controller）--------------------------------------
     `current_command_id`  bigint       NULL COMMENT '当前占用命令编号(指向 device_command.id；EXCLUSIVE 模式下的 CAS 抢占判断依据)',
     `lock_holder`         varchar(64)  NULL COMMENT '锁持有方(command_no / USER:1 / TASK:xxx)',
-    `lock_type`           varchar(32)  NULL COMMENT '锁类型: COMMAND 命令占用/MANUAL 人工/MANUAL_MAINTENANCE 维护锁',
+    `lock_type`           varchar(32)  NULL COMMENT '锁类型: COMMAND 命令占用/MANUAL 人工/MAINTENANCE 维护(MANUAL/MAINTENANCE 的人工加锁入口未实现，预留)',
     `lock_acquired_time`  datetime     NULL COMMENT '锁获取时间',
     `lock_expire_time`    datetime     NULL COMMENT '锁过期时间(锁必须能过期，否则设备永久锁死)',
     `lock_reason`         varchar(255) NULL COMMENT '加锁原因(人工/维护加锁时必填)',
@@ -242,49 +240,47 @@ CREATE TABLE `device_codec` (
 
 -- -----------------------------------------------------------------------------
 -- 6. device_command  命令（只增不改；三态调用统一落点；核心表）
---   ★ 幂等三键分工 / 状态与等待原因正交 / 四个时间戳 / 乐观锁
+--   ★ 状态与等待原因正交 / 四个时间戳 / 溯源三字段(source_type/source_ref/attempt)
 -- -----------------------------------------------------------------------------
 CREATE TABLE `device_command` (
     `id`                bigint        NOT NULL COMMENT '主键(雪花)=commandNo',
     `command_no`        varchar(64)   NOT NULL COMMENT '命令编号(对外返回的 commandNo；可与 id 相同或业务规则生成)',
     -- ★ 业务定位（v4 吸收：幂等作用域必须含业务维度，否则重试被吞）---------------
     `source_type`       varchar(32)   NULL COMMENT '★调用来源: FLOW 调度流程/MANUAL 手工/API 外部调用/DEVICE 设备自触发/INTERNAL 内部调用',
-    `business_exec_id`  varchar(64)   NULL COMMENT '★上游业务执行标识(流程场景=flow executionId；直接执行=execId；为空即「不做业务幂等」，NULL 不参与唯一)',
-    `node_id`           varchar(64)   NULL COMMENT '★上游节点标识(流程节点编码；直接执行固定 direct；非流程内部调用用明确业务节点编码)',
+    `source_ref`        varchar(128)  NULL COMMENT '来源引用(如 flow:{executionId}:{nodeId}:{attempt}；与 source_type/attempt 一起回答这次调用是谁发起的)',
     `attempt`           int           NOT NULL DEFAULT 1 COMMENT '★同一业务节点的第几次尝试(从 1 起；每次重试必须是新记录，否则调度域看不到第 2 次执行)',
-    -- 设备（先落事实再抢设备 → CREATED 阶段可空）--------------------------------
-    `device_id`         bigint        NULL COMMENT '设备编号(device_info.id)；★CREATED 阶段为空：抢不到设备也要留痕，资源缺口才可量化',
-    `device_code`       varchar(64)   NULL COMMENT '设备编码(冗余，编码寻址)；CREATED 阶段为空',
+    -- 设备 ------------------------------------------------------------------------
+    `device_id`         bigint        NOT NULL COMMENT '设备编号(device_info.id)',
+    `device_code`       varchar(64)   NOT NULL COMMENT '设备编码(冗余，编码寻址)',
     `device_type_code`  varchar(64)   NULL COMMENT '设备类型编码(快照)',
     `action_code`       varchar(64)   NOT NULL COMMENT '动作编码',
-    `param_set_id`      bigint        NULL COMMENT '参数集编号(可空=直接传参不套参数集)',
+    `param_set_id`      bigint        NULL COMMENT '参数集编号(预留：当前版本直接传参，不落参数集引用)',
     -- 三态调用两维度（v3 核心）------------------------------------------------
     `dispatch_mode`     varchar(16)   NOT NULL DEFAULT 'ASYNC' COMMENT '下发方式: SYNC 同步/ASYNC 异步（⚠️与「忙闲预检」无关，预检见 device_action.need_busy_check）',
     `result_mode`       varchar(16)   NOT NULL DEFAULT 'POLL' COMMENT '回收方式: SYNC_RETURN 同步返回/CALLBACK 回调/POLL 轮询',
     `poll_count`        int           NOT NULL DEFAULT 0 COMMENT '已轮询次数(用于判断是否达 poll_max_times)',
-    `next_poll_time`    datetime      NULL COMMENT '下次轮询时间(POLL 调度用)',
+    `next_poll_time`    datetime      NULL COMMENT '下次轮询时间(预留：真机轮询未实现，当前仅仿真链路轮询)',
     -- ★ 等待原因（与 status 正交：status 说「走到哪」，waiting_for 说「在等什么」）--
-    `waiting_for`       varchar(32)   NULL COMMENT '★等待原因: SLOT_AVAILABLE 等空闲设备/DEVICE_CALLBACK 等回调/POLL_TICK 等下次轮询/MANUAL_APPROVE 等人工审批/EXTERNAL_EVENT 等外部事件',
-    -- 状态机（v4 生命周期：先落事实再抢设备）------------------------------------
-    `status`            varchar(32)   NOT NULL DEFAULT 'CREATED' COMMENT '状态机: CREATED 已创建(未选设备)/ACQUIRED 已抢占设备/SENT 已下发/WAITING 等结果(看 waiting_for)/SUCCEEDED 成功/FAILED 失败/TIMED_OUT 超时/CANCELLED 取消',
-    `device_job_id`     varchar(128)  NULL COMMENT '设备侧作业编号(驱动返回的 vendor job id；仅用于轮询与物理取消，**不作幂等键**)',
-    -- 进度（observable 命令）---------------------------------------------------
-    `progress_percent`  int           NULL COMMENT '进度百分比 0-100',
-    `current_step`      varchar(128)  NULL COMMENT '当前步骤(如 孵育/读取/回位)',
-    `step_total`        int           NULL COMMENT '总步骤数',
-    `eta_sec`           int           NULL COMMENT '预计剩余时间(秒)',
+    `waiting_for`       varchar(32)   NULL COMMENT '★等待原因(与 status 正交): DEVICE_CALLBACK 等回调/POLL_TICK 等下次轮询；其余取值(SLOT_AVAILABLE/MANUAL_APPROVE/EXTERNAL_EVENT)预留',
+    -- 状态机（下发即占用；无独立创建态）------------------------------------------
+    `status`            varchar(32)   NOT NULL DEFAULT 'ACQUIRED' COMMENT '状态: ACQUIRED 已占用(下发即占用，无独立创建态)/WAITING 等结果(看 waiting_for)/SUCCEEDED 成功/FAILED 失败/TIMED_OUT 超时/CANCELLED 取消(预留，取消入口未实现)；并发收口靠 updateIfStatus 条件更新',
+    `device_job_id`     varchar(128)  NULL COMMENT '设备侧作业编号(预留：驱动暂不返回 vendor job id；将来仅用于轮询与物理取消，不作幂等键)',
+    -- 进度（预留：observable 命令上报进度，当前无写入链路）-----------------------
+    `progress_percent`  int           NULL COMMENT '进度百分比 0-100(预留)',
+    `current_step`      varchar(128)  NULL COMMENT '当前步骤(如 孵育/读取/回位)(预留)',
+    `step_total`        int           NULL COMMENT '总步骤数(预留)',
+    `eta_sec`           int           NULL COMMENT '预计剩余时间(秒)(预留)',
     -- 参数与报文（快照 + 渲染后 payload，可复现）-------------------------------
     `params_json`       json          NULL COMMENT '参数快照(下发那一刻的参数，含默认值展开)',
     `payload_json`      json          NULL COMMENT '渲染后 payload(驱动真正发出去的报文，可复现)',
     `request_json`      json          NULL COMMENT '请求原文(排障生命线)',
     `response_json`     json          NULL COMMENT '响应原文(排障生命线)',
     `error_msg`         varchar(1024) NULL COMMENT '错误信息(失败/超时时写仪器原文)',
-    `recovery_action`   varchar(512)  NULL COMMENT '失败时的可操作恢复动作(如 重试/检查耗材/联系工程师)',
+    `recovery_action`   varchar(512)  NULL COMMENT '失败时的可操作恢复动作(预留：如 重试/检查耗材/联系工程师)',
     -- 结果引用（L0 原始数据）--------------------------------------------------
     `codec_code`        varchar(64)   NULL COMMENT '响应解析规则编码(device_codec.codec_code；为空则原始响应直接入 L0，不解析)',
     `data_raw_id`       bigint        NULL COMMENT '关联 L0 原始数据编号(device_data_raw.id)',
-    -- 幂等（三键分工中的前两键；第三键 uk_business 由上面三个业务字段组成）--------
-    `idempotent_key`    varchar(128)  NULL COMMENT '幂等键(拦截 MQTT QoS1/2 重投与 HTTP 重发；为空不参与唯一约束)',
+    -- 回调安全 --------------------------------------------------------------------
     `callback_token_hash` varchar(64) NULL COMMENT '★回调令牌 SHA-256 摘要(result_mode=CALLBACK 时必填)；**禁止存明文**；没有它任何人 POST 就能灌伪造测量数据',
     -- 追溯与操作 --------------------------------------------------------------
     `operator`          varchar(64)   NULL COMMENT '操作人(手工=登录用户；调度/设备=system 或设备编码)',
@@ -294,7 +290,6 @@ CREATE TABLE `device_command` (
     `sent_at`           datetime      NULL COMMENT '★报文实际发出时间(与 finished_at 之差 = 设备执行耗时)',
     `finished_at`       datetime      NULL COMMENT '进入终态的时间',
     `timeout_at`        datetime      NULL COMMENT '★本次执行超时截止时刻(超时回收任务按此扫描；CALLBACK 到期先降级 POLL 兜一次再判)',
-    `version`           int           NOT NULL DEFAULT 0 COMMENT '乐观锁版本号(每次状态流转递增)',
     `remark`            varchar(512)  NULL COMMENT '备注',
     -- 框架字段 ----------------------------------------------------------------
     `creator`           varchar(64)   NULL DEFAULT '' COMMENT '创建者',
@@ -305,14 +300,11 @@ CREATE TABLE `device_command` (
     `tenant_id`         bigint        NOT NULL DEFAULT 0 COMMENT '租户编号',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE KEY `uk_command_no` (`command_no`),
-    UNIQUE KEY `uk_idempotent` (`tenant_id`, `idempotent_key`),
-    UNIQUE KEY `uk_business` (`tenant_id`, `source_type`, `business_exec_id`, `node_id`, `attempt`),
     KEY `idx_device` (`device_id`, `create_time`),
     KEY `idx_status` (`status`, `timeout_at`),
-    KEY `idx_next_poll` (`next_poll_time`),
-    KEY `idx_business` (`business_exec_id`, `node_id`),
+    KEY `idx_source` (`source_type`, `source_ref`),
     KEY `idx_create_time` (`create_time`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '设备命令(只增不改；三态调用统一落点；状态机+等待原因+进度+幂等三键)';
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '设备命令(只增不改；三态调用统一落点；状态机+等待原因；溯源 source_type/source_ref/attempt)';
 
 -- -----------------------------------------------------------------------------
 -- 7. device_data_raw  L0 原始数据（不可变；解析器升级后可重建 L1/L2）

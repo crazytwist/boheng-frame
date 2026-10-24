@@ -189,14 +189,10 @@ public class DeviceInfoDO extends TenantBaseDO {
     private String concurrencyPolicy;
 
     /**
-     * 允许同时在途命令数(EXCLUSIVE 恒为 1；DEVICE_QUEUED 取仪器本地队列深度)
+     * 允许同时在途命令数(EXCLUSIVE 恒为 1；DEVICE_QUEUED 取仪器本地队列深度)。
+     * 当前在途数不落台账，实时数 device_command 未结束命令（countRunning），避免计数漂移
      */
     private Integer maxInflight;
-
-    /**
-     * 当前在途命令数(运行态；与 maxInflight 比较决定能否继续下发)
-     */
-    private Integer inflightCount;
 
     /**
      * 能力来源: DEVICE_DECLARED 驱动上报/MANUAL 手工(可覆盖)

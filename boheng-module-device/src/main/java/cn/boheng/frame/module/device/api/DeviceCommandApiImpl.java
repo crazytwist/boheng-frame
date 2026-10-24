@@ -19,9 +19,8 @@ import org.springframework.validation.annotation.Validated;
  * 复用 {@link DeviceHttpService} 的「校验 → 占用 → 落命令 → 下发」流程，
  * 把所有异常收成失败 DTO，不跨模块抛业务异常。
  *
- * <p>溯源说明：「哪个运行哪个节点哪次尝试发的哪条命令」由 Flow 侧
- * flow_step_execution.command_id 承担；设备命令表按调用入口记 MANUAL。
- * 设备域 v4 的 business_exec_id / node_id 幂等三键就绪后再把 FLOW 来源接上。
+ * <p>溯源：请求里的 sourceType / sourceRef / attempt 原样落到命令表，
+ * 「哪个运行哪个节点哪次尝试发的哪条命令」事后沿 source_ref 可查。</p>
  */
 @Service
 @Validated
@@ -62,8 +61,12 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
         invokeReq.setDeviceId(device.getId());
         invokeReq.setActionCode(req.getActionCode());
         invokeReq.setParamsJson(req.getParamsJson());
+        // 溯源来源透传：FLOW 场景 sourceRef 形如 flow:{executionId}:{nodeId}:{attempt}
+        DeviceCommandService.CommandSource source = new DeviceCommandService.CommandSource(
+                StrUtil.blankToDefault(req.getSourceType(), "MANUAL"),
+                req.getSourceRef(), req.getAttempt(), null);
         try {
-            DeviceInvokeRespVO resp = deviceHttpService.invoke(invokeReq);
+            DeviceInvokeRespVO resp = deviceHttpService.invoke(invokeReq, source);
             boolean ok = resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300;
             result.setCommandId(resp.getCommandId());
             result.setCommandNo(resp.getCommandNo());

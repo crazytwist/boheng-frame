@@ -36,7 +36,6 @@ export interface DeviceVO {
   busyCheckPolicy?: string
   concurrencyPolicy?: string
   maxInflight?: number
-  inflightCount?: number
   capabilitySource?: string
   telemetryJson?: string
   simulationMode?: boolean

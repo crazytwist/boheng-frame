@@ -18,6 +18,7 @@ public enum MovementTypeEnum {
     TAKE_OUT("TAKE_OUT", "下架"),
     MOVE("MOVE", "转移"),
     CONSUME("CONSUME", "消耗"),
+    DELETE("DELETE", "删除"),
     STATUS_CHANGE("STATUS_CHANGE", "状态变更"),
     RESERVE("RESERVE", "预留"),
     RELEASE("RELEASE", "释放预留"),
