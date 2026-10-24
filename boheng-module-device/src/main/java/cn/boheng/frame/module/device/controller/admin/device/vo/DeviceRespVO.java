@@ -48,6 +48,9 @@ public class DeviceRespVO {
     @Schema(description = "接入方式: HTTP/MQTT/NODE_RED/SIMULATED", example = "SIMULATED")
     private String connectionType;
 
+    @Schema(description = "任务接入模式: PULL/PUSH", example = "PUSH")
+    private String taskMode;
+
     @Schema(description = "接入地址", example = "http://192.168.1.100:8080")
     private String endpointUrl;
 

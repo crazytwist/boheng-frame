@@ -74,6 +74,16 @@
       </section>
 
       <section class="cat-block">
+        <div class="cat-kicker">任务接入</div>
+        <dl class="cat-facts">
+          <dt>任务模式</dt>
+          <dd>{{ device.taskMode === 'PULL' ? '设备拉取任务' : '平台接收任务' }}</dd>
+          <dt>任务参数</dt>
+          <dd>{{ device.taskMode === 'PULL' ? '由流程节点配置' : '沿用平台任务配置' }}</dd>
+        </dl>
+      </section>
+
+      <section class="cat-block">
         <div class="cat-kicker">占用状态</div>
         <dl class="cat-facts">
           <dt>当前状态</dt>

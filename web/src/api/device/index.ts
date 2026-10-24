@@ -13,6 +13,7 @@ export interface DeviceVO {
   driverType?: string
   status?: string
   connectionType?: string
+  taskMode?: 'PULL' | 'PUSH' | string
   endpointUrl?: string
   loginPath?: string
   loginMethod?: string

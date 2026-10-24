@@ -65,6 +65,7 @@ CREATE TABLE `device_info` (
     `status`              varchar(32)  NOT NULL DEFAULT 'OFFLINE' COMMENT '在线状态: ONLINE 在线/OFFLINE 离线/MAINTENANCE 维护中/FAULT 故障',
     -- 接入字段 ----------------------------------------------------------------
     `connection_type`     varchar(32)  NOT NULL DEFAULT 'HTTP' COMMENT '接入方式: HTTP 直连/MQTT 直连/NODE_RED 经Node-RED/SIMULATED 仿真',
+    `task_mode`           varchar(16)  NOT NULL DEFAULT 'PUSH' COMMENT '任务接入模式: PULL 设备主动拉取/PUSH 平台接收任务',
     `endpoint_url`        varchar(512) NULL COMMENT '接入地址(HTTP=base url；MQTT=broker host:port；NODE_RED=Node-RED http 入站节点 url)',
     `login_path`          varchar(255) NULL COMMENT '登录相对路径(如 /api/login)。与 endpoint_url 拼接；空表示调用前不登录',
     `login_method`        varchar(16)  NULL COMMENT '登录 HTTP 方法，默认 POST',
@@ -111,7 +112,8 @@ CREATE TABLE `device_info` (
     KEY `idx_type` (`device_type_code`),
     KEY `idx_status` (`status`),
     KEY `idx_driver` (`driver_type`),
-    KEY `idx_connection` (`connection_type`)
+    KEY `idx_connection` (`connection_type`),
+    KEY `idx_task_mode` (`task_mode`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '设备台账(设备管理与占用锁主表)';
 
 -- -----------------------------------------------------------------------------

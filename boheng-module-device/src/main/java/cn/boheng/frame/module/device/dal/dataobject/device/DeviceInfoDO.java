@@ -84,6 +84,9 @@ public class DeviceInfoDO extends TenantBaseDO {
      */
     private String connectionType;
 
+    /** 任务接入模式：PULL 设备主动拉取，PUSH 平台接收任务后下发。 */
+    private String taskMode;
+
     /**
      * 接入地址(HTTP=base url；MQTT=broker host:port；NODE_RED=Node-RED http 入站节点 url)
      */

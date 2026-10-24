@@ -117,6 +117,13 @@
       <el-table-column label="接入方式" align="center" width="100">
         <template #default="scope">{{ connectionTypeLabel(scope.row.connectionType) }}</template>
       </el-table-column>
+      <el-table-column label="任务模式" align="center" width="110">
+        <template #default="scope">
+          <el-tag :type="scope.row.taskMode === 'PULL' ? 'warning' : 'success'" size="small">
+            {{ scope.row.taskMode === 'PULL' ? '设备拉取' : '平台接收' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="设备状态" align="center" width="90">
         <template #default="scope">
           <el-tag :type="statusTagType(scope.row.status)">{{
@@ -324,10 +331,13 @@ const openActions = (device: DeviceVO) => {
   router.push({
     path: '/device/action',
     query: {
+      deviceId: device.id,
+      deviceName: device.deviceName,
       deviceTypeCode: device.deviceTypeCode,
       callbackEnabled: device.callbackEnabled ? 'true' : 'false',
       pollEnabled: device.pollEnabled ? 'true' : 'false',
-      callbackTimeoutSec: device.callbackTimeoutSec
+      callbackTimeoutSec: device.callbackTimeoutSec,
+      taskMode: device.taskMode || 'PUSH'
     }
   })
 }

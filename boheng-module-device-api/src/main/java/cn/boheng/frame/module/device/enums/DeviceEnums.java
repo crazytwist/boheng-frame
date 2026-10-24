@@ -47,6 +47,21 @@ public class DeviceEnums {
     }
 
     /**
+     * 任务接入模式：设备主动拉取，或平台主动接收并下发。
+     */
+    @Getter
+    @AllArgsConstructor
+    public enum TaskModeEnum {
+
+        PULL("PULL", "设备拉取任务"),
+        PUSH("PUSH", "平台接收任务");
+
+        private final String mode;
+        private final String name;
+
+    }
+
+    /**
      * 设备占用锁类型（对齐 SiLA Lock Controller）
      */
     @Getter

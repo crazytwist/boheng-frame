@@ -67,6 +67,10 @@ public class DeviceSaveReqVO {
     @Pattern(regexp = "HTTP|MQTT|NODE_RED|SIMULATED", message = "接入方式取值不正确")
     private String connectionType;
 
+    @Schema(description = "任务接入模式: PULL 设备主动拉取 / PUSH 平台接收任务", example = "PUSH")
+    @Pattern(regexp = "^$|PULL|PUSH", message = "任务接入模式取值不正确")
+    private String taskMode;
+
     @Schema(description = "接入地址", example = "http://192.168.1.100:8080")
     @Size(max = 512, message = "接入地址长度不能超过 512 个字符")
     @Pattern(regexp = "^$|^(?i)(https?|tcp|ssl|mqtts?|wss?)://.+", message = "接入地址格式不正确，须以 http://、https://、tcp://、ssl:// 等协议开头")

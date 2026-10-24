@@ -70,6 +70,16 @@
         </el-collapse-item>
       </el-collapse>
 
+      <el-divider content-position="left">任务接入模式</el-divider>
+      <el-form-item label="任务模式" prop="taskMode">
+        <el-radio-group v-model="formData.taskMode">
+          <el-radio-button label="PULL">设备拉取任务</el-radio-button>
+          <el-radio-button label="PUSH">平台接收任务</el-radio-button>
+        </el-radio-group>
+        <div class="field-tip">PUSH 复用现有平台任务链路；PULL 的任务参数由流程节点配置。</div>
+      </el-form-item>
+
+      <template v-if="formData.taskMode !== 'PULL'">
       <el-divider content-position="left">接入配置</el-divider>
       <el-row :gutter="20">
         <el-col :span="12">
@@ -269,6 +279,7 @@
       </el-alert>
         </el-collapse-item>
       </el-collapse>
+      </template>
     </el-form>
     <template #footer>
       <el-button :disabled="formLoading" type="primary" @click="submitForm">确 定</el-button>
@@ -305,6 +316,7 @@ const createEmptyFormData = (): DeviceVO => ({
   driverType: 'SIMULATED',
   status: 'OFFLINE',
   connectionType: 'SIMULATED',
+  taskMode: 'PUSH',
   endpointUrl: undefined,
   loginPath: undefined,
   loginMethod: 'POST',
@@ -371,6 +383,7 @@ const formRules = reactive({
   driverType: [{ required: true, message: '驱动类型不能为空', trigger: 'change' }],
   status: [{ required: true, message: '设备状态不能为空', trigger: 'change' }],
   connectionType: [{ required: true, message: '接入方式不能为空', trigger: 'change' }],
+  taskMode: [{ required: true, message: '任务模式不能为空', trigger: 'change' }],
   endpointUrl: [
     {
       validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {

@@ -53,6 +53,7 @@ type ParamDefinitionRow = { key: string; label: string; type: string; unit?: str
 const paramDefinitionRows = ref<ParamDefinitionRow[]>([])
 const codecOptions = ref<DeviceCodecVO[]>([])
 const fixedDeviceTypeCode = ref<string>()
+const pullMode = ref(false)
 
 const formRules = reactive({
   deviceTypeCode: [{ required: true, message: '设备类型不能为空', trigger: 'change' }],
@@ -149,6 +150,7 @@ const open = async (
     callbackEnabled?: boolean
     pollEnabled?: boolean
     callbackTimeoutSec?: number
+    taskMode?: string
   }
 ) => {
   dialogVisible.value = true
@@ -157,6 +159,7 @@ const open = async (
   formData.value = createEmptyFormData()
   paramDefinitionRows.value = []
   fixedDeviceTypeCode.value = context?.deviceTypeCode
+  pullMode.value = context?.taskMode === 'PULL'
   if (fixedDeviceTypeCode.value) formData.value.deviceTypeCode = fixedDeviceTypeCode.value
   if (type === 'create' && context) {
     formData.value.resultMode = context.callbackEnabled
@@ -183,6 +186,7 @@ const open = async (
       await loadParamSets()
       loadParamDefinitionRows()
       if (fixedDeviceTypeCode.value) formData.value.deviceTypeCode = fixedDeviceTypeCode.value
+      pullMode.value = context?.taskMode === 'PULL'
       if (!formData.value.bodyFormat) formData.value.bodyFormat = 'JSON'
       if (!formData.value.resultMode) formData.value.resultMode = 'SYNC_RETURN'
     } finally {
@@ -287,6 +291,7 @@ const emit = defineEmits<{ success: [] }>()
       label-width="120px"
     >
       <el-alert
+        v-if="!pullMode"
         title="按顺序完成：先定义参数，再设置默认值，最后配置设备请求模板"
         description="参数定义决定允许传入什么；参数集提供可复用的默认值；请求模板负责把参数转换成设备报文。"
         type="info"
@@ -380,6 +385,8 @@ const emit = defineEmits<{ success: [] }>()
         />
       </el-form-item>
 
+      <template v-if="!pullMode">
+
       <el-divider content-position="left">请求配置</el-divider>
       <el-row :gutter="20">
         <el-col :span="8">
@@ -422,6 +429,9 @@ const emit = defineEmits<{ success: [] }>()
         <el-input v-model="formData.requestTemplate" type="textarea" :rows="10" placeholder="使用 ${参数名} 引用参数；XML 报文格式下必须填写" />
         <div class="field-tip">可用参数示例：${sample.id}、${temperature}。请求模板只负责把参数转换为设备报文。</div>
       </el-dialog>
+      </template>
+
+      <!-- 参数定义属于任务类型；PULL 也需要在这里定义设备领取任务所需的参数。 -->
       <el-divider content-position="left">参数定义</el-divider>
       <el-form-item label="参数定义" class="compact-config-item">
         <el-button type="primary" plain @click="paramDefinitionDialog = true">配置参数定义</el-button>
@@ -448,6 +458,7 @@ const emit = defineEmits<{ success: [] }>()
           <el-button link type="primary" @click="formatParamSchema">格式化高级 JSON</el-button>
         </div>
       </el-dialog>
+      <template v-if="!pullMode">
       <el-form-item label="参数集" class="compact-config-item">
         <el-button type="primary" plain :disabled="!formData.deviceTypeCode || !formData.actionCode" @click="openParamSetConfig">配置参数集</el-button>
         <span class="field-tip inline-tip">{{ paramSets.length ? `已配置 ${paramSets.length} 个参数集` : '尚未配置参数集' }}</span>
@@ -532,7 +543,7 @@ const emit = defineEmits<{ success: [] }>()
               <el-input
                 v-model="formData.pollDoneExpr"
                 maxlength="255"
-                placeholder='轮询时使用，如 $.status == "DONE"'
+                placeholder="轮询时使用，如 $.status == &quot;DONE&quot;"
               />
             </el-form-item>
           </el-col>
@@ -578,6 +589,7 @@ const emit = defineEmits<{ success: [] }>()
           </el-form-item>
         </el-col>
       </el-row>
+      </template>
     </el-form>
     <template #footer>
       <el-button :disabled="formLoading" type="primary" @click="submitForm">确 定</el-button>

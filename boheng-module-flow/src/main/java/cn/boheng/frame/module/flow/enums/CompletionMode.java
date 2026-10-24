@@ -21,7 +21,7 @@ public enum CompletionMode {
     SIGNAL,
 
     /**
-     * 挂起到指定时刻，由定时任务发信号
+     * 挂起指定时长，由定时任务发信号
      */
     TIMER,
 
