@@ -185,6 +185,50 @@ public class FlowSignalDispatcher {
     }
 
     /**
+     * 机器端按 taskId 更新为已完成/失败时使用（无 callbackToken，与 updateTaskStatus 对齐）。
+     * 该入口仍然复用等待节点、流程状态和任务终态校验，避免外部状态更新绕过流程结算。
+     */
+    public boolean deviceTaskSignalTrusted(String taskNo, boolean success, String resultJson, String errorMessage) {
+        FlowDeviceTaskDO task = deviceTaskService.selectByTaskNo(taskNo);
+        if (task == null) {
+            return false;
+        }
+        return settleDeviceTask(task, success, resultJson, errorMessage);
+    }
+
+    private boolean settleDeviceTask(FlowDeviceTaskDO task, boolean success, String resultJson, String errorMessage) {
+        String taskNo = task.getTaskNo();
+        Long executionId = task.getExecutionId();
+        String nodeId = task.getNodeId();
+        Integer attempt = task.getAttempt();
+        FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
+        if (row == null || !"WAITING".equals(row.getStatus()) || !"DEVICE_CALLBACK".equals(row.getWaitingFor())
+                || !attempt.equals(row.getAttempt())) {
+            return false;
+        }
+        String signalId = "devicetask_" + executionId + "_" + nodeId + "_" + attempt;
+        if (signalMapper.selectBySignalId(signalId) != null) {
+            return false;
+        }
+        FlowExecutionDO execution = executionMapper.selectById(executionId);
+        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+            return false;
+        }
+        if (!deviceTaskService.finish(taskNo, success, resultJson, errorMessage)) {
+            return false;
+        }
+        log.info("[flow] 信号结算 type=DEVICE taskNo={} node={} success={}", taskNo, nodeId, success);
+        boolean settled = engine.settle(row, success
+                ? StepOutcome.success(StrUtil.blankToDefault(resultJson, "{\"completed\":true}"))
+                : StepOutcome.failed(StrUtil.blankToDefault(errorMessage, "设备任务失败")));
+        if (!settled) {
+            return false;
+        }
+        save(signalId, executionId, nodeId, attempt, row.getIterationNo(), "EXTERNAL", resultJson, success);
+        return true;
+    }
+
+    /**
      * 设备任务超时信号。扫描器发现 DEVICE_CALLBACK 到期时调用，按失败结算。
      */
     public void deviceTaskTimeout(Long executionId, String nodeId, Integer attempt) {

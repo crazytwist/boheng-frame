@@ -571,7 +571,7 @@ const loadOptions = async () => {
 const applyRoute = () => {
   const raw = route.query.definitionId
   if (Array.isArray(raw)) {
-    queryParams.definitionId = raw[0]
+    queryParams.definitionId = raw[0] ?? undefined
   } else if (raw) {
     // 不能 Number(raw)，否则 19 位雪花 ID 会发生精度丢失
     queryParams.definitionId = raw
