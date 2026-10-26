@@ -11,6 +11,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.StepStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.JoinFailurePolicy;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.JoinPolicy;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SkipReason;
+
 /**
  * 就绪判定器。纯函数：输入冻结图和节点执行行，输出就绪节点清单。
  *
@@ -50,7 +55,7 @@ public final class DagScheduler {
                 // 循环体尚未展开的节点：等待所属 loop 驱动，不参与本轮判定
                 continue;
             }
-            if (!"PENDING".equals(row.getStatus())) {
+            if (!StepStatus.PENDING.name().equals(row.getStatus())) {
                 continue;
             }
             List<FlowStepExecutionDO> dependencyRows = new ArrayList<>();
@@ -73,7 +78,7 @@ public final class DagScheduler {
             Outcome outcome = evaluate(joinPolicy, failurePolicy, dependencyRows);
             switch (outcome) {
                 case READY -> ready.add(node.getNodeId());
-                case FAIL -> skipByFailure.put(node.getNodeId(), "FAILURE");
+                case FAIL -> skipByFailure.put(node.getNodeId(), SkipReason.FAILURE.name());
                 case WAIT -> {
                 }
                 default -> {
@@ -106,18 +111,20 @@ public final class DagScheduler {
         boolean allTerminal = dependencies.stream().allMatch(DagScheduler::isTerminal);
         if (!allTerminal) {
             // ANY_SUCCESS 的提前放行：已有一个成功
-            if ("ANY_SUCCESS".equals(joinPolicy) && dependencies.stream().anyMatch(DagScheduler::isSatisfied)) {
+            if (JoinPolicy.ANY_SUCCESS.name().equals(joinPolicy)
+                    && dependencies.stream().anyMatch(DagScheduler::isSatisfied)) {
                 return Outcome.READY;
             }
             return Outcome.WAIT;
         }
-        switch (joinPolicy) {
-            case "ALL_DONE":
+        JoinPolicy policy = parseJoinPolicy(joinPolicy);
+        switch (policy) {
+            case ALL_DONE:
                 return Outcome.READY;
-            case "ANY_SUCCESS":
+            case ANY_SUCCESS:
                 return dependencies.stream().anyMatch(DagScheduler::isSatisfied)
                         ? Outcome.READY : Outcome.FAIL;
-            case "ALL_SUCCESS":
+            case ALL_SUCCESS:
             default:
                 return dependencies.stream().allMatch(DagScheduler::isSatisfied)
                         ? Outcome.READY : Outcome.FAIL;
@@ -125,30 +132,40 @@ public final class DagScheduler {
     }
 
     /**
+     * 将持久化策略安全转换为枚举，历史空值或脏值按最严格的全成功处理。
+     */
+    private static JoinPolicy parseJoinPolicy(String policy) {
+        try {
+            return JoinPolicy.valueOf(policy);
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            return JoinPolicy.ALL_SUCCESS;
+        }
+    }
+
+    /**
      * 终态判定：不再变化的状态
      */
     public static boolean isTerminal(FlowStepExecutionDO row) {
-        String status = row.getStatus();
-        return "SUCCESS".equals(status) || "FAILED".equals(status) || "DEAD".equals(status)
-                || "SKIPPED".equals(status) || "CANCELLED".equals(status);
+        return StepStatus.isTerminal(row.getStatus());
     }
 
     /**
      * 满足判定：成功，或「出口未选中」的裁剪（裁剪不是失败）
      */
     public static boolean isSatisfied(FlowStepExecutionDO row) {
-        if ("SUCCESS".equals(row.getStatus())) {
+        if (StepStatus.SUCCESS.name().equals(row.getStatus())) {
             return true;
         }
-        return "SKIPPED".equals(row.getStatus())
-                && ("BRANCH".equals(row.getSkipReason()) || "UPSTREAM".equals(row.getSkipReason()));
+        return StepStatus.SKIPPED.name().equals(row.getStatus())
+                && (SkipReason.BRANCH.name().equals(row.getSkipReason())
+                || SkipReason.UPSTREAM.name().equals(row.getSkipReason()));
     }
 
     /**
      * 前置判失败时本节点怎么处理：SKIP 裁剪，FAIL 跟着失败
      */
     public static boolean shouldSkip(String failurePolicy) {
-        return "SKIP".equals(failurePolicy);
+        return JoinFailurePolicy.SKIP.name().equals(failurePolicy);
     }
 
 }

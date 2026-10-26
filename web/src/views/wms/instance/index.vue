@@ -1,456 +1,568 @@
 <template>
   <ContentWrap title="物料实例">
-    <div class="instance-layout">
-      <!-- 左侧：实例树 -->
-      <div class="tree-panel">
-        <div class="panel-header">
-          <span class="panel-title">实例树</span>
-          <el-button v-hasPermi="['wms:material-instance:create']" type="primary" link @click="handleAddInstance">
-            <Icon class="mr-5px" icon="ep:plus" />
-            新增实例
-          </el-button>
-        </div>
+    <el-form
+      ref="queryFormRef"
+      :inline="true"
+      :model="queryParams"
+      class="-mb-15px"
+      label-width="72px"
+    >
+      <el-form-item label="实例" prop="instanceCode">
         <el-input
-          v-model="treeKeyword"
-          class="tree-search"
+          v-model="queryParams.instanceCode"
+          class="!w-220px"
           clearable
-          placeholder="搜索编码、名称或条码"
-          @input="filterTree"
+          placeholder="实例编码"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="名称" prop="instanceName">
+        <el-input
+          v-model="queryParams.instanceName"
+          class="!w-200px"
+          clearable
+          placeholder="实例名称"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="条码" prop="barcode">
+        <el-input
+          v-model="queryParams.barcode"
+          class="!w-180px"
+          clearable
+          placeholder="条码"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="状态" prop="instanceStatus">
+        <el-select
+          v-model="queryParams.instanceStatus"
+          class="!w-150px"
+          clearable
+          placeholder="全部状态"
         >
-          <template #prefix>
-            <Icon icon="ep:search" />
-          </template>
-        </el-input>
-        <el-tree
-          ref="treeRef"
-          v-loading="treeLoading"
-          class="instance-tree"
-          :data="instanceTree"
-          :props="{ label: 'instanceName', children: 'children' }"
-          node-key="id"
-          highlight-current
-          :expand-on-click-node="false"
-          :filter-node-method="filterNode"
-          @node-click="handleInstanceClick"
+          <el-option
+            v-for="item in statusOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="槽位" prop="rootSlotCode">
+        <el-input
+          v-model="queryParams.rootSlotCode"
+          class="!w-180px"
+          clearable
+          placeholder="槽位编码"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-button @click="handleQuery"><Icon class="mr-5px" icon="ep:search" />搜索</el-button>
+        <el-button @click="resetQuery"><Icon class="mr-5px" icon="ep:refresh" />重置</el-button>
+        <el-button
+          v-hasPermi="['wms:material-instance:create']"
+          plain
+          type="primary"
+          @click="handleAddInstance"
         >
-          <template #default="{ data }">
-            <div class="tree-node">
-              <Icon :icon="instanceIcon(data)" class="tree-node-icon" />
-              <span class="tree-node-label">{{ data.instanceName || data.instanceCode }}</span>
-              <span class="tree-node-status" :class="statusClass(data.instanceStatus)" />
-            </div>
-          </template>
-        </el-tree>
-      </div>
-
-      <!-- 右侧：实例详情 + 孔板可视化 -->
-      <div class="detail-panel">
-        <template v-if="currentInstance">
-          <!-- 详情头 -->
-          <div class="detail-header">
-            <div>
-              <div class="detail-title">{{ currentInstance.instanceName || currentInstance.instanceCode }}</div>
-              <div class="detail-sub">
-                {{ currentInstance.containerTypeCode || '未绑定容器' }} ·
-                <el-tag size="small" :type="statusTagType(currentInstance.instanceStatus)">
-                  {{ statusText(currentInstance.instanceStatus) }}
-                </el-tag>
-              </div>
-            </div>
-            <div class="detail-actions">
-              <el-button v-hasPermi="['wms:material-instance:create']" link type="primary" @click="handleAddChild(currentInstance)">
-                <Icon icon="ep:plus" class="mr-5px" />批量新增子实例
-              </el-button>
-              <el-button v-hasPermi="['wms:material-instance:update']" link type="primary" @click="handleEditInstance(currentInstance)">
-                <Icon icon="ep:edit" class="mr-5px" />编辑
-              </el-button>
-              <el-button v-hasPermi="['wms:material-instance:delete']" link type="danger" @click="handleDeleteInstance(currentInstance)">
-                <Icon icon="ep:delete" class="mr-5px" />删除
-              </el-button>
-            </div>
-          </div>
-
-          <!-- 基础信息 -->
-          <el-descriptions :column="2" border class="detail-desc">
-            <el-descriptions-item label="实例编码">{{ currentInstance.instanceCode }}</el-descriptions-item>
-            <el-descriptions-item label="条码">{{ currentInstance.barcode || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="内容物类型">{{ contentTypeText(currentInstance.contentType) }}</el-descriptions-item>
-            <el-descriptions-item label="当前体积">{{ currentInstance.currentVolUl != null ? currentInstance.currentVolUl + ' μL' : '—' }}</el-descriptions-item>
-            <el-descriptions-item label="落位槽位">{{ currentInstance.rootSlotCode || '未落位' }}</el-descriptions-item>
-            <el-descriptions-item label="父位置">{{ currentInstance.parentPositionCode || '顶层' }}</el-descriptions-item>
-          </el-descriptions>
-
-          <!-- 孔板平面图（CARRIER 且带子实例时展示） -->
-          <template v-if="isCarrierWithWells">
-            <div class="plate-title">
-              <span class="panel-title">孔位平面图</span>
-              <span class="panel-sub">{{ wellRows }} × {{ wellCols }}</span>
-            </div>
-            <div class="plate-legend">
-              <span class="legend-item"><span class="legend-dot well-filled" />有内容物</span>
-              <span class="legend-item"><span class="legend-dot well-alert" />告警</span>
-              <span class="legend-item"><span class="legend-dot well-empty" />空孔</span>
-            </div>
-            <div class="plate-grid" :style="plateGridStyle">
-              <div
-                v-for="cell in wellCells"
-                :key="cell.code"
-                class="well-cell"
-                :class="wellClass(cell)"
-                :title="wellTitle(cell)"
-                @click="cell && handleWellClick(cell)"
-              >
-                <span class="well-code">{{ cell.code }}</span>
-              </div>
-            </div>
-          </template>
-
-          <!-- 非载体或无可视化 -->
-          <el-empty v-else description="该实例无孔位结构" :image-size="80" />
-        </template>
-
-        <el-empty v-else description="请在左侧选择实例查看详情" />
-      </div>
-    </div>
+          <Icon class="mr-5px" icon="ep:plus" />新增实例
+        </el-button>
+      </el-form-item>
+    </el-form>
   </ContentWrap>
 
-  <!-- 实例新增/编辑表单 -->
+  <ContentWrap>
+    <div class="list-toolbar">
+      <div
+        ><span class="list-title">实例列表</span
+        ><span class="muted">共 {{ total }} 条，点击一行查看详情</span></div
+      >
+      <el-button :loading="loading" link @click="getList"
+        ><Icon class="mr-5px" icon="ep:refresh" />刷新</el-button
+      >
+    </div>
+    <el-table
+      v-loading="loading"
+      :data="list"
+      class="instance-table"
+      highlight-current-row
+      row-key="id"
+      @current-change="handleInstanceClick"
+      @row-dblclick="handleEditInstance"
+    >
+      <el-table-column label="实例" min-width="210" fixed="left">
+        <template #default="scope">
+          <div class="instance-cell">
+            <Icon :icon="instanceIcon(scope.row)" class="instance-icon" />
+            <div class="instance-main">
+              <span class="instance-name">{{
+                scope.row.instanceName || scope.row.instanceCode
+              }}</span>
+              <span class="instance-code">{{ scope.row.instanceCode }}</span>
+            </div>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" align="center" width="100">
+        <template #default="scope"
+          ><el-tag :type="statusType(scope.row.instanceStatus)" size="small">{{
+            statusText(scope.row.instanceStatus)
+          }}</el-tag></template
+        >
+      </el-table-column>
+      <el-table-column label="容器类型" min-width="145" show-overflow-tooltip>
+        <template #default="scope">{{ containerTypeText(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="内容物" min-width="145" show-overflow-tooltip>
+        <template #default="scope">{{ contentText(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="样本编号" min-width="145" prop="sampleId" show-overflow-tooltip />
+      <el-table-column label="体积 / 数量" align="right" width="120">
+        <template #default="scope">{{ amountText(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="所在区域 → 库位" min-width="230" show-overflow-tooltip>
+        <template #default="scope">{{ locationText(scope.row) }}</template>
+      </el-table-column>
+      <el-table-column label="条码" min-width="145" prop="barcode" show-overflow-tooltip />
+      <el-table-column
+        label="创建时间"
+        align="center"
+        width="170"
+        prop="createTime"
+        :formatter="dateFormatter"
+      />
+      <el-table-column label="操作" align="center" fixed="right" width="210">
+        <template #default="scope">
+          <el-button
+            v-hasPermi="['wms:material-instance:create']"
+            link
+            type="primary"
+            @click.stop="handleAddChild(scope.row)"
+            >层级详情</el-button
+          >
+          <el-button
+            v-hasPermi="['wms:material-instance:update']"
+            link
+            type="primary"
+            @click.stop="handleEditInstance(scope.row)"
+            >编辑</el-button
+          >
+          <el-button
+            v-hasPermi="['wms:material-instance:delete']"
+            link
+            type="danger"
+            @click.stop="handleDeleteInstance(scope.row)"
+            >删除</el-button
+          >
+        </template>
+      </el-table-column>
+    </el-table>
+    <Pagination
+      v-model:limit="queryParams.pageSize"
+      v-model:page="queryParams.pageNo"
+      :total="total"
+      @pagination="getList"
+    />
+  </ContentWrap>
+
+  <ContentWrap v-if="currentInstance">
+    <div class="detail-header">
+      <div class="detail-heading">
+        <Icon :icon="instanceIcon(currentInstance)" class="detail-icon" />
+        <div>
+          <div class="detail-title">{{
+            currentInstance.instanceName || currentInstance.instanceCode
+          }}</div>
+          <div class="detail-sub"
+            >{{ currentInstance.instanceCode }} ·
+            {{ currentInstance.containerTypeCode || '未绑定容器' }}</div
+          >
+        </div>
+      </div>
+      <div class="detail-actions">
+        <el-tag :type="statusType(currentInstance.instanceStatus)">{{
+          statusText(currentInstance.instanceStatus)
+        }}</el-tag>
+        <el-button link @click="currentInstance = undefined"><Icon icon="ep:close" /></el-button>
+      </div>
+    </div>
+    <el-descriptions :column="3" border class="detail-desc">
+      <el-descriptions-item label="条码">{{ currentInstance.barcode || '—' }}</el-descriptions-item>
+      <el-descriptions-item label="内容物类型">{{
+        contentTypeText(currentInstance.contentType)
+      }}</el-descriptions-item>
+      <el-descriptions-item label="样本编号">{{
+        currentInstance.sampleId || '—'
+      }}</el-descriptions-item>
+      <el-descriptions-item label="当前体积">{{
+        currentInstance.currentVolUl != null ? currentInstance.currentVolUl + ' μL' : '—'
+      }}</el-descriptions-item>
+      <el-descriptions-item label="落位槽位">{{
+        currentInstance.rootSlotCode || '未落位'
+      }}</el-descriptions-item>
+      <el-descriptions-item label="父位置">{{
+        currentInstance.parentPositionCode || '顶层'
+      }}</el-descriptions-item>
+    </el-descriptions>
+    <template v-if="isCarrierWithWells">
+      <div class="plate-title"
+        ><span class="list-title">孔位平面图</span
+        ><span class="muted">{{ wellRows }} × {{ wellCols }}</span></div
+      >
+      <div class="plate-legend">
+        <span class="legend-item"><span class="legend-dot well-filled"></span>有内容物</span>
+        <span class="legend-item"><span class="legend-dot well-alert"></span>告警</span>
+        <span class="legend-item"><span class="legend-dot well-empty"></span>空孔</span>
+      </div>
+      <div v-loading="detailLoading" class="plate-grid" :style="plateGridStyle">
+        <div
+          v-for="cell in wellCells"
+          :key="cell.code"
+          class="well-cell"
+          :class="wellClass(cell)"
+          :title="wellTitle(cell)"
+          @click="handleWellClick(cell)"
+        >
+          <span>{{ cell.code }}</span>
+        </div>
+      </div>
+    </template>
+  </ContentWrap>
+
   <InstanceForm ref="instanceFormRef" @success="handleFormSuccess" />
-  <!-- 子实例批量新增表单 -->
-  <InstanceBatchForm ref="batchFormRef" @success="handleFormSuccess" />
 </template>
 
 <script lang="ts" setup>
 import { MaterialInstanceApi, MaterialInstanceVO } from '@/api/wms/instance'
 import { ContainerTypeApi, ContainerTypeVO } from '@/api/wms/container'
+import { ContentDefApi, ContentDefVO } from '@/api/wms/content'
+import { SlotApi, SlotVO } from '@/api/wms/space/slot'
+import { ZoneApi, ZoneVO } from '@/api/wms/space/zone'
+import { formatDate } from '@/utils/formatTime'
 import InstanceForm from './InstanceForm.vue'
-import InstanceBatchForm from './InstanceBatchForm.vue'
 
 defineOptions({ name: 'WmsInstance' })
-
 const message = useMessage()
 const { t } = useI18n()
-
-// ========== 实例树 ==========
-const treeLoading = ref(false)
-const instanceTree = ref<MaterialInstanceVO[]>([])
+const router = useRouter()
+const loading = ref(false)
+const detailLoading = ref(false)
+const list = ref<MaterialInstanceVO[]>([])
+const total = ref(0)
 const containerTypes = ref<ContainerTypeVO[]>([])
-const treeRef = ref()
-const treeKeyword = ref('')
-
-const filterNode = (value: string, data: MaterialInstanceVO) => {
-  const keyword = value.trim().toLowerCase()
-  if (!keyword) return true
-  return [data.instanceName, data.instanceCode, data.barcode, data.contentDefCode, data.rootSlotCode, data.parentPositionCode]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .includes(keyword)
-}
-
-const filterTree = () => {
-  treeRef.value?.filter(treeKeyword.value)
-}
-
-const instanceIcon = (data: MaterialInstanceVO) => {
-  const ct = containerTypes.value.find((c) => c.id === data.containerTypeId)
-  if (ct?.hierarchyRole === 'CARRIER') return 'ep:grid'
-  if (ct?.hierarchyRole === 'WELL') return 'ep:circle-check'
-  return 'ep:takeaway-box'
-}
-
-const statusText = (s?: string) => {
-  const map: Record<string, string> = {
-    AVAILABLE: '可用',
-    RESERVED: '已预留',
-    IN_USE: '使用中',
-    USED: '已用完',
-    EXPIRED: '已过期',
-    DISCARDED: '已废弃'
-  }
-  return map[s || ''] || s || '—'
-}
-
-const statusTagType = (s?: string) => {
-  const map: Record<string, 'success' | 'primary' | 'warning' | 'danger' | 'info'> = {
-    AVAILABLE: 'success',
-    RESERVED: 'primary',
-    IN_USE: 'primary',
-    USED: 'info',
-    EXPIRED: 'warning',
-    DISCARDED: 'danger'
-  }
-  return map[s || ''] || 'info'
-}
-
-const statusClass = (s?: string) => {
-  const map: Record<string, string> = {
-    AVAILABLE: 'st-available',
-    RESERVED: 'st-reserved',
-    IN_USE: 'st-inuse',
-    USED: 'st-used',
-    EXPIRED: 'st-expired',
-    DISCARDED: 'st-discarded'
-  }
-  return map[s || ''] || 'st-available'
-}
-
-const contentTypeText = (t?: string) => {
-  if (!t) return '—'
-  if (t === 'EMPTY') return '空'
-  const map: Record<string, string> = {
-    REAGENT: '试剂',
-    STANDARD: '标准品',
-    BUFFER: '缓冲液',
-    SAMPLE: '样本',
-    WASTE: '废液',
-    MEDIA: '培养基',
-    SOLVENT: '溶剂',
-    OTHER: '其他'
-  }
-  return map[t] || t
-}
-
-/** 前端组树：按 parentInstanceId */
-const buildTree = (list: MaterialInstanceVO[]): MaterialInstanceVO[] => {
-  const map = new Map<number, MaterialInstanceVO>()
-  list.forEach((item) => map.set(item.id!, { ...item, children: [] }))
-  const roots: MaterialInstanceVO[] = []
-  list.forEach((item) => {
-    const node = map.get(item.id!)!
-    if (item.parentInstanceId != null && map.has(item.parentInstanceId)) {
-      map.get(item.parentInstanceId)!.children!.push(node)
-    } else {
-      roots.push(node)
-    }
-  })
-  return roots
-}
-
-const loadInstances = async () => {
-  treeLoading.value = true
-  try {
-    const [instances, cts] = await Promise.all([
-      MaterialInstanceApi.getMaterialInstanceList(),
-      ContainerTypeApi.getContainerTypeList()
-    ])
-    containerTypes.value = cts || []
-    instanceTree.value = buildTree(instances || [])
-    await nextTick()
-    filterTree()
-  } finally {
-    treeLoading.value = false
-  }
-}
-
-// ========== 详情 + 孔板 ==========
+const contentDefs = ref<ContentDefVO[]>([])
+const slots = ref<SlotVO[]>([])
+const zones = ref<ZoneVO[]>([])
 const currentInstance = ref<MaterialInstanceVO>()
+const currentChildren = ref<MaterialInstanceVO[]>([])
+const queryFormRef = ref()
+const queryParams = reactive({
+  pageNo: 1,
+  pageSize: 20,
+  instanceCode: undefined,
+  instanceName: undefined,
+  barcode: undefined,
+  instanceStatus: undefined,
+  rootSlotCode: undefined
+})
+
+const STATUS_META: Record<
+  string,
+  { label: string; type: 'success' | 'primary' | 'warning' | 'danger' | 'info' }
+> = {
+  AVAILABLE: { label: '可用', type: 'success' },
+  RESERVED: { label: '已预留', type: 'primary' },
+  IN_USE: { label: '使用中', type: 'primary' },
+  USED: { label: '已用完', type: 'info' },
+  EXPIRED: { label: '已过期', type: 'warning' },
+  DISCARDED: { label: '已废弃', type: 'danger' }
+}
+const statusOptions = Object.entries(STATUS_META).map(([value, meta]) => ({
+  value,
+  label: meta.label
+}))
+const statusText = (value?: string) => STATUS_META[value || '']?.label || value || '—'
+const statusType = (value?: string) => STATUS_META[value || '']?.type || 'info'
+const CONTENT_META: Record<string, string> = {
+  EMPTY: '空容器',
+  REAGENT: '试剂',
+  STANDARD: '标准品',
+  BUFFER: '缓冲液',
+  SAMPLE: '样本',
+  WASTE: '废液',
+  MEDIA: '培养基',
+  SOLVENT: '溶剂',
+  OTHER: '其他'
+}
+const contentTypeText = (value?: string) => CONTENT_META[value || ''] || value || '—'
+const containerTypeText = (row: MaterialInstanceVO) => {
+  const type = containerTypes.value.find(
+    (item) => item.id === row.containerTypeId || item.typeCode === row.containerTypeCode
+  )
+  return type?.typeName || row.containerTypeCode || '—'
+}
+const contentText = (row: MaterialInstanceVO) => {
+  const content = contentDefs.value.find(
+    (item) => item.id === row.contentDefId || item.contentCode === row.contentDefCode
+  )
+  return (
+    content?.contentName ||
+    (row.contentType === 'EMPTY' ? '空容器' : row.contentDefCode) ||
+    contentTypeText(row.contentType)
+  )
+}
+const zonePathMap = computed(() => {
+  const byCode = new Map(zones.value.map((item) => [item.zoneCode, item]))
+  const result = new Map<string, string>()
+  const resolve = (zone?: ZoneVO): string => {
+    if (!zone) return ''
+    const parent = zone.parentZoneCode ? byCode.get(zone.parentZoneCode) : undefined
+    return [parent ? resolve(parent) : '', zone.zoneName || zone.zoneCode]
+      .filter(Boolean)
+      .join(' → ')
+  }
+  zones.value.forEach((zone) => zone.zoneCode && result.set(zone.zoneCode, resolve(zone)))
+  return result
+})
+const locationText = (row: MaterialInstanceVO) => {
+  if (row.parentPositionCode) return `容器内 → ${row.parentPositionCode}`
+  const slot = slots.value.find(
+    (item) => item.id === row.rootSlotId || item.slotCode === row.rootSlotCode
+  )
+  if (!slot) return row.rootSlotCode || '未落位'
+  return [zonePathMap.value.get(slot.zoneCode || ''), slot.slotCode].filter(Boolean).join(' → ')
+}
+const instanceIcon = (row: MaterialInstanceVO) => {
+  const type = containerTypes.value.find((item) => item.id === row.containerTypeId)
+  return type?.hierarchyRole === 'CARRIER'
+    ? 'ep:grid'
+    : type?.hierarchyRole === 'WELL'
+      ? 'ep:circle-check'
+      : 'ep:takeaway-box'
+}
+const amountText = (row: MaterialInstanceVO) =>
+  row.currentVolUl != null
+    ? `${row.currentVolUl} μL`
+    : row.currentCount != null
+      ? `${row.currentCount} 个`
+      : '—'
+const dateFormatter = (_row: unknown, _column: unknown, value: unknown) =>
+  value ? formatDate(value as string | number | Date) : '—'
+
+const getList = async () => {
+  loading.value = true
+  try {
+    const data = await MaterialInstanceApi.getMaterialInstancePage(queryParams)
+    list.value = data.list || []
+    total.value = data.total || 0
+  } finally {
+    loading.value = false
+  }
+}
+const handleQuery = () => {
+  queryParams.pageNo = 1
+  currentInstance.value = undefined
+  getList()
+}
+const resetQuery = () => {
+  queryFormRef.value?.resetFields()
+  handleQuery()
+}
 
 const currentContainerType = computed(() =>
-  containerTypes.value.find((c) => c.id === currentInstance.value?.containerTypeId)
+  containerTypes.value.find((item) => item.id === currentInstance.value?.containerTypeId)
 )
-
 const wellRows = computed(() => currentContainerType.value?.wellRows || 0)
 const wellCols = computed(() => currentContainerType.value?.wellCols || 0)
-
-const isCarrierWithWells = computed(() =>
-  currentContainerType.value?.hierarchyRole === 'CARRIER' && wellRows.value > 0 && wellCols.value > 0
+const isCarrierWithWells = computed(
+  () =>
+    currentContainerType.value?.hierarchyRole === 'CARRIER' &&
+    wellRows.value > 0 &&
+    wellCols.value > 0
 )
-
-/** 孔的实例（当前实例的直接子节点） */
-const wellChildren = computed(() => currentInstance.value?.children || [])
-
-/** 位置码 → 子实例映射 */
-const wellMap = computed(() => {
-  const map = new Map<string, MaterialInstanceVO>()
-  wellChildren.value.forEach((w) => {
-    if (w.parentPositionCode) map.set(w.parentPositionCode, w)
-  })
-  return map
-})
-
-/** 生成孔位单元格（按 rows×cols，行字母 A/B/C… × 列号 1/2/3…） */
+const wellMap = computed(
+  () =>
+    new Map(
+      currentChildren.value
+        .filter((item) => item.parentPositionCode)
+        .map((item) => [item.parentPositionCode!, item])
+    )
+)
 const wellCells = computed(() => {
   const cells: { code: string; instance?: MaterialInstanceVO }[] = []
-  const rows = wellRows.value
-  const cols = wellCols.value
-  if (rows === 0 || cols === 0) return cells
-  for (let r = 0; r < rows; r++) {
-    const rowName = String.fromCharCode(65 + r)
-    for (let c = 0; c < cols; c++) {
-      const code = `${rowName}${c + 1}`
+  for (let row = 0; row < wellRows.value; row++)
+    for (let col = 1; col <= wellCols.value; col++) {
+      const code = `${String.fromCharCode(65 + row)}${col}`
       cells.push({ code, instance: wellMap.value.get(code) })
     }
-  }
   return cells
 })
-
-const plateGridStyle = computed(() => ({
-  gridTemplateColumns: `repeat(${wellCols.value}, 1fr)`
-}))
-
-const wellClass = (cell: { instance?: MaterialInstanceVO }) => {
-  const inst = cell.instance
-  if (!inst) return 'well-empty'
-  if (inst.instanceStatus === 'EXPIRED' || inst.instanceStatus === 'DISCARDED') return 'well-alert'
-  if (inst.contentType === 'EMPTY' || inst.contentType == null) return 'well-empty'
-  return 'well-filled'
-}
-
-const wellTitle = (cell: { code: string; instance?: MaterialInstanceVO }) => {
-  const inst = cell.instance
-  if (!inst) return `${cell.code} · 空孔`
-  return `${cell.code} · ${inst.instanceName || inst.instanceCode} · ${statusText(inst.instanceStatus)}`
-}
-
-// ========== 交互 ==========
-const instanceFormRef = ref()
-const batchFormRef = ref()
-
-const handleInstanceClick = (data: MaterialInstanceVO) => {
-  currentInstance.value = data
-}
-
-const handleAddInstance = () => {
-  instanceFormRef.value.open('create')
-}
-
-const handleAddChild = (data: MaterialInstanceVO) => {
-  batchFormRef.value.open(data)
-}
-
-const handleEditInstance = (data: MaterialInstanceVO) => {
-  instanceFormRef.value.open('update', data.id)
-}
-
-const handleDeleteInstance = async (data: MaterialInstanceVO) => {
+const plateGridStyle = computed(() => ({ gridTemplateColumns: `repeat(${wellCols.value}, 1fr)` }))
+const loadChildren = async (row: MaterialInstanceVO) => {
+  currentChildren.value = []
+  if (!row.id || !isCarrierWithWells.value) return
+  detailLoading.value = true
   try {
-    await message.delConfirm(`确定删除实例「${data.instanceName || data.instanceCode}」吗？`)
+    const data = await MaterialInstanceApi.getMaterialInstancePage({
+      pageNo: 1,
+      pageSize: Math.max(wellRows.value * wellCols.value, 20),
+      parentInstanceId: row.id
+    })
+    currentChildren.value = data.list || []
+  } finally {
+    detailLoading.value = false
+  }
+}
+const handleInstanceClick = async (row?: MaterialInstanceVO) => {
+  if (!row) return
+  currentInstance.value = row
+  await nextTick()
+  await loadChildren(row)
+}
+const wellClass = (cell: { instance?: MaterialInstanceVO }) =>
+  !cell.instance || !cell.instance.contentType || cell.instance.contentType === 'EMPTY'
+    ? 'well-empty'
+    : ['EXPIRED', 'DISCARDED'].includes(cell.instance.instanceStatus || '')
+      ? 'well-alert'
+      : 'well-filled'
+const wellTitle = (cell: { code: string; instance?: MaterialInstanceVO }) =>
+  cell.instance
+    ? `${cell.code} · ${cell.instance.instanceName || cell.instance.instanceCode} · ${statusText(cell.instance.instanceStatus)}`
+    : `${cell.code} · 空孔`
+
+const instanceFormRef = ref()
+const handleAddInstance = () => instanceFormRef.value.open('create')
+const handleAddChild = (row: MaterialInstanceVO) =>
+  router.push({ name: 'WmsInstanceChildren', params: { parentId: row.id } })
+const handleEditInstance = (row: MaterialInstanceVO) => instanceFormRef.value.open('update', row.id)
+const handleDeleteInstance = async (row: MaterialInstanceVO) => {
+  try {
+    await message.delConfirm(`确定删除实例「${row.instanceName || row.instanceCode}」吗？`)
   } catch {
     return
   }
-  await MaterialInstanceApi.deleteMaterialInstance(data.id!)
+  await MaterialInstanceApi.deleteMaterialInstance(row.id!)
   message.success(t('common.delSuccess'))
-  currentInstance.value = undefined
-  loadInstances()
+  if (currentInstance.value?.id === row.id) currentInstance.value = undefined
+  await getList()
 }
-
-const handleFormSuccess = () => {
-  loadInstances()
+const handleFormSuccess = async () => {
+  await getList()
+  if (currentInstance.value) await handleInstanceClick(currentInstance.value)
 }
+const handleWellClick = (cell: { code: string; instance?: MaterialInstanceVO }) =>
+  cell.instance ? handleInstanceClick(cell.instance) : message.info(`${cell.code} 为空孔`)
 
-const handleWellClick = (cell: { code: string; instance?: MaterialInstanceVO }) => {
-  if (!cell.instance) {
-    message.info(`${cell.code} 为空孔`)
-    return
-  }
-  currentInstance.value = cell.instance
-}
-
-onMounted(() => {
-  loadInstances()
+onMounted(async () => {
+  const [, types, contents, slotList, zoneList] = await Promise.all([
+    getList(),
+    ContainerTypeApi.getContainerTypeList(),
+    ContentDefApi.getContentDefList(),
+    SlotApi.getSlotList(),
+    ZoneApi.getZoneList()
+  ])
+  containerTypes.value = types || []
+  contentDefs.value = contents || []
+  slots.value = slotList || []
+  zones.value = zoneList || []
 })
 </script>
 
 <style lang="scss" scoped>
-.instance-layout {
-  display: flex;
-  gap: 16px;
-  min-height: 560px;
-}
-
-.tree-panel {
-  width: 300px;
-  flex-shrink: 0;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.detail-panel {
-  flex: 1;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.panel-header {
+.list-toolbar,
+.detail-header,
+.detail-heading,
+.detail-actions,
+.instance-cell,
+.plate-title,
+.plate-legend,
+.legend-item {
   display: flex;
   align-items: center;
+}
+
+.list-toolbar,
+.detail-header {
   justify-content: space-between;
-  margin-bottom: 12px;
 }
 
-.tree-search {
-  margin-bottom: 12px;
+.list-toolbar {
+  margin-bottom: 14px;
 }
 
-.panel-title {
-  font-size: 14px;
-  font-weight: 500;
+.list-title {
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.panel-sub {
+.muted,
+.detail-sub {
+  margin-left: 10px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 
-.instance-tree {
-  .tree-node {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-    overflow: hidden;
-  }
-  .tree-node-icon {
-    color: var(--el-color-primary);
-  }
-  .tree-node-label {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tree-node-status {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
+.instance-table :deep(.el-table__row) {
+  cursor: pointer;
 }
 
-/* 实例状态圆点配色 */
-.st-available { background: #1d9e75; }
-.st-reserved { background: #378add; }
-.st-inuse { background: #185fa5; }
-.st-used { background: #888780; }
-.st-expired { background: #ba7517; }
-.st-discarded { background: #a32d2d; }
-
-.detail-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+.instance-cell,
+.detail-heading {
+  gap: 10px;
 }
 
-.detail-actions {
+.instance-icon,
+.detail-icon {
   flex-shrink: 0;
+  color: var(--el-color-primary);
 }
 
-.detail-title {
-  font-size: 16px;
+.detail-icon {
+  font-size: 24px;
+}
+
+.instance-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.instance-name,
+.instance-code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instance-name {
   font-weight: 500;
 }
 
-.detail-sub {
-  margin-top: 4px;
-  font-size: 13px;
+.instance-code {
+  margin-top: 2px;
+  font-size: 11px;
   color: var(--el-text-color-secondary);
-  display: flex;
-  align-items: center;
+}
+
+.detail-header {
+  margin-bottom: 16px;
+}
+
+.detail-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.detail-sub {
+  margin-top: 3px;
+  margin-left: 0;
+}
+
+.detail-actions,
+.plate-title,
+.legend-item {
   gap: 8px;
 }
 
@@ -459,76 +571,66 @@ onMounted(() => {
 }
 
 .plate-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin-bottom: 8px;
 }
 
 .plate-legend {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
   padding: 6px 12px;
+  margin-bottom: 12px;
   background: var(--el-fill-color-light);
   border-radius: 6px;
+  gap: 16px;
 }
 
 .legend-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 
 .legend-dot {
+  display: inline-block;
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  display: inline-block;
 }
 
 .plate-grid {
   display: grid;
+  max-width: 620px;
   gap: 6px;
-  max-width: 480px;
 }
 
 .well-cell {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 26px;
-  border-radius: 4px;
+  height: 28px;
+  font-size: 11px;
   cursor: pointer;
   border: 1px solid transparent;
+  border-radius: 4px;
   transition: all 0.12s;
+  align-items: center;
+  justify-content: center;
 }
 
 .well-cell:hover {
-  transform: scale(1.08);
-}
-
-.well-code {
-  font-size: 11px;
+  transform: scale(1.06);
 }
 
 .well-filled {
+  color: #085041;
   background: #e1f5ee;
   border-color: #0f6e56;
-  color: #085041;
 }
 
 .well-alert {
+  color: #791f1f;
   background: #fcebeb;
   border-color: #a32d2d;
-  color: #791f1f;
 }
 
 .well-empty {
+  color: var(--el-text-color-placeholder);
   background: #fff;
   border-color: var(--el-border-color);
-  color: var(--el-text-color-placeholder);
 }
 </style>

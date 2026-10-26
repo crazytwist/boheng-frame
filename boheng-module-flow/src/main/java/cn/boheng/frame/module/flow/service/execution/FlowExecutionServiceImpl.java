@@ -31,6 +31,9 @@ import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.ExecutionStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.TriggerType;
+
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_EXECUTION_CANCEL_STATUS;
 import static cn.boheng.frame.module.flow.enums.ErrorCodeConstants.FLOW_EXECUTION_DEFINITION_NOT_PUBLISHED;
@@ -99,7 +102,7 @@ public class FlowExecutionServiceImpl implements FlowExecutionService {
                     definition == null ? 0 : definition.getVersion());
         }
         return engine.start(definition, StrUtil.trimToNull(reqVO.getInputParams()),
-                "MANUAL", String.valueOf(SecurityFrameworkUtils.getLoginUserId()),
+                TriggerType.MANUAL.name(), String.valueOf(SecurityFrameworkUtils.getLoginUserId()),
                 StrUtil.trimToNull(reqVO.getBusinessKey()), null, null, null, null);
     }
 
@@ -117,7 +120,7 @@ public class FlowExecutionServiceImpl implements FlowExecutionService {
                         definition == null ? 0 : definition.getVersion());
             }
             return engine.start(definition, StrUtil.trimToNull(inputParams),
-                    "CRON", "job", StrUtil.trimToNull(businessKey), null, null, null, null);
+                    TriggerType.CRON.name(), "job", StrUtil.trimToNull(businessKey), null, null, null, null);
         });
     }
 
@@ -127,7 +130,8 @@ public class FlowExecutionServiceImpl implements FlowExecutionService {
     @Override
     public void cancelExecution(Long id) {
         FlowExecutionDO execution = requireExecution(id);
-        if (!"RUNNING".equals(execution.getStatus()) && !"PENDING".equals(execution.getStatus())) {
+        if (!ExecutionStatus.RUNNING.name().equals(execution.getStatus())
+                && !ExecutionStatus.PENDING.name().equals(execution.getStatus())) {
             throw exception(FLOW_EXECUTION_CANCEL_STATUS);
         }
         engine.cancel(id);

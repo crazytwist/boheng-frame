@@ -25,6 +25,12 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.ExecutionStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SignalType;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.StepStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * 信号分发。人工确认、定时到点、子流程终态都从统一入口进来：
  * 先落收件箱（signal_id 幂等），再定位目标节点行并结算。
@@ -80,16 +86,18 @@ public class FlowSignalDispatcher {
      */
     public boolean manualSignal(Long executionId, String nodeId, boolean success, String comment, String operator) {
         FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
-        if (row == null || !"WAITING".equals(row.getStatus()) || !"MANUAL".equals(row.getWaitingFor())) {
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.MANUAL.name().equals(row.getWaitingFor())) {
             return false;
         }
         String signalId = "manual_" + executionId + "_" + nodeId + "_" + row.getAttempt();
         if (signalMapper.selectBySignalId(signalId) != null) {
             return false; // 重复确认
         }
-        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "MANUAL", comment, success);
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(),
+                SignalType.MANUAL.name(), comment, success);
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution != null && "RUNNING".equals(execution.getStatus())) {
+        if (execution != null && ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             log.info("[flow] 信号结算 type=MANUAL node={} success={}", nodeId, success);
             engine.settle(row, success
                     ? StepOutcome.success("{\"confirmed\":true,\"comment\":\"" + safe(comment) + "\"}")
@@ -107,7 +115,7 @@ public class FlowSignalDispatcher {
             return;
         }
         save(signalId, child.getParentExecutionId(), child.getParentNodeId(), child.getParentAttempt(),
-                0, "CHILD", "{\"status\":\"" + child.getStatus() + "\"}", success);
+                0, SignalType.CHILD.name(), "{\"status\":\"" + child.getStatus() + "\"}", success);
         log.info("[flow] 信号结算 type=CHILD child={} parentNode={} success={}",
                 child.getExecutionNo(), child.getParentNodeId(), success);
         engine.onChildFinished(child.getParentExecutionId(), child.getParentNodeId(),
@@ -119,16 +127,18 @@ public class FlowSignalDispatcher {
      */
     public void timerSignal(Long executionId, String nodeId, Integer attempt) {
         FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
-        if (row == null || !"WAITING".equals(row.getStatus()) || !"TIMER".equals(row.getWaitingFor())) {
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.TIMER.name().equals(row.getWaitingFor())) {
             return;
         }
         String signalId = "timer_" + executionId + "_" + nodeId + "_" + row.getAttempt();
         if (signalMapper.selectBySignalId(signalId) != null) {
             return;
         }
-        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "TIMER", null, true);
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(),
+                SignalType.TIMER.name(), null, true);
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution != null && "RUNNING".equals(execution.getStatus())) {
+        if (execution != null && ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             log.info("[flow] 信号结算 type=TIMER node={}", nodeId);
             engine.settle(row, StepOutcome.success("{\"waited\":true}"));
         }
@@ -157,7 +167,8 @@ public class FlowSignalDispatcher {
         String nodeId = task.getNodeId();
         Integer attempt = task.getAttempt();
         FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
-        if (row == null || !"WAITING".equals(row.getStatus()) || !"DEVICE_CALLBACK".equals(row.getWaitingFor())
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.DEVICE_CALLBACK.name().equals(row.getWaitingFor())
                 || !attempt.equals(row.getAttempt())) {
             return false;
         }
@@ -166,7 +177,7 @@ public class FlowSignalDispatcher {
             return false; // 重复回报
         }
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             return false;
         }
         // 先抢任务行。抢不到说明超时或另一次回报已经收口，不能再结算，也不能占住信号号
@@ -180,7 +191,8 @@ public class FlowSignalDispatcher {
         if (!settled) {
             return false;
         }
-        save(signalId, executionId, nodeId, attempt, row.getIterationNo(), "EXTERNAL", resultJson, success);
+        save(signalId, executionId, nodeId, attempt, row.getIterationNo(),
+                SignalType.EXTERNAL.name(), resultJson, success);
         return true;
     }
 
@@ -189,7 +201,8 @@ public class FlowSignalDispatcher {
      */
     public void deviceTaskTimeout(Long executionId, String nodeId, Integer attempt) {
         FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(executionId, nodeId, 0);
-        if (row == null || !"WAITING".equals(row.getStatus()) || !"DEVICE_CALLBACK".equals(row.getWaitingFor())) {
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.DEVICE_CALLBACK.name().equals(row.getWaitingFor())) {
             return;
         }
         String signalId = "devicetask_timeout_" + executionId + "_" + nodeId + "_" + row.getAttempt();
@@ -197,7 +210,7 @@ public class FlowSignalDispatcher {
             return;
         }
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             return;
         }
         if (!deviceTaskService.timeout(executionId, nodeId, row.getAttempt())) {
@@ -207,7 +220,8 @@ public class FlowSignalDispatcher {
         if (!engine.settle(row, StepOutcome.failed("设备任务超时"))) {
             return;
         }
-        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(), "EXTERNAL", null, false);
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(),
+                SignalType.EXTERNAL.name(), null, false);
     }
 
     /**
@@ -217,8 +231,8 @@ public class FlowSignalDispatcher {
      * @param row 等待设备命令回调的步骤执行行
      */
     public void deviceCommandSignal(FlowStepExecutionDO row) {
-        if (row == null || !"WAITING".equals(row.getStatus())
-                || !"DEVICE_COMMAND_CALLBACK".equals(row.getWaitingFor())) {
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.DEVICE_COMMAND_CALLBACK.name().equals(row.getWaitingFor())) {
             return;
         }
         Long commandId;
@@ -229,8 +243,9 @@ public class FlowSignalDispatcher {
             return;
         }
         DeviceCommandResultDTO result = deviceCommandApi.getResult(commandId);
-        if (result == null || "ACQUIRED".equals(result.getStatus()) || "SENT".equals(result.getStatus())
-                || "WAITING".equals(result.getStatus())) {
+        if (result == null || CommandStatusEnum.ACQUIRED.getStatus().equals(result.getStatus())
+                || CommandStatusEnum.SENT.getStatus().equals(result.getStatus())
+                || CommandStatusEnum.WAITING.getStatus().equals(result.getStatus())) {
             return;
         }
         String signalId = "devicecommand_" + commandId;
@@ -238,10 +253,10 @@ public class FlowSignalDispatcher {
             return;
         }
         FlowExecutionDO execution = executionMapper.selectById(row.getExecutionId());
-        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             return;
         }
-        boolean success = "SUCCEEDED".equals(result.getStatus());
+        boolean success = CommandStatusEnum.SUCCEEDED.getStatus().equals(result.getStatus());
         Map<String, Object> output = new LinkedHashMap<>();
         output.put("commandId", result.getCommandId());
         output.put("commandNo", result.getCommandNo());
@@ -256,7 +271,7 @@ public class FlowSignalDispatcher {
             return;
         }
         save(signalId, row.getExecutionId(), row.getNodeId(), row.getAttempt(), row.getIterationNo(),
-                "EXTERNAL", payload, success);
+                SignalType.EXTERNAL.name(), payload, success);
     }
 
     /** 设备命令完成事件入口；找不到流程节点时视为人工/独立设备命令。 */

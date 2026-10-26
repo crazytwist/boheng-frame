@@ -37,6 +37,10 @@ import java.time.LocalDateTime;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_COMMAND_NOT_EXISTS;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandWaitingReasonEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.DispatchModeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ResultModeEnum;
 /**
  * 命令记录服务实现
  */
@@ -108,10 +112,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         row.setDeviceCode(device.getDeviceCode());
         row.setDeviceTypeCode(device.getDeviceTypeCode());
         row.setActionCode(action.getActionCode());
-        row.setDispatchMode("SYNC");
-        row.setResultMode("SYNC_RETURN");
+        row.setDispatchMode(DispatchModeEnum.SYNC.getMode());
+        row.setResultMode(ResultModeEnum.SYNC_RETURN.getMode());
         row.setPollCount(0);
-        row.setStatus("ACQUIRED");
+        row.setStatus(CommandStatusEnum.ACQUIRED.getStatus());
         row.setParamsJson(jsonText(paramsJson));
         row.setCodecCode(StrUtil.trimToNull(codecCode));
         row.setOperator(StrUtil.blankToDefault(src.operator(),
@@ -134,7 +138,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         LocalDateTime now = LocalDateTime.now();
         boolean ok = resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300;
-        command.setStatus(ok ? "SUCCEEDED" : "FAILED");
+        command.setStatus(ok ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
         command.setSentAt(now);
         command.setFinishedAt(now);
         command.setCodecCode(StrUtil.blankToDefault(StrUtil.trimToNull(codecCode), command.getCodecCode()));
@@ -162,10 +166,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         if (command == null || isTerminal(command.getStatus())) {
             return;
         }
-        command.setDispatchMode("ASYNC");
-        command.setResultMode("CALLBACK");
-        command.setStatus("WAITING");
-        command.setWaitingFor("DEVICE_CALLBACK");
+        command.setDispatchMode(DispatchModeEnum.ASYNC.getMode());
+        command.setResultMode(ResultModeEnum.CALLBACK.getMode());
+        command.setStatus(CommandStatusEnum.WAITING.getStatus());
+        command.setWaitingFor(CommandWaitingReasonEnum.DEVICE_CALLBACK.getReason());
         command.setSentAt(LocalDateTime.now());
         command.setTimeoutAt(timeoutAt);
         command.setCallbackTokenHash(tokenHash);
@@ -192,17 +196,17 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     @Transactional(rollbackFor = Exception.class)
     public boolean completeCallback(Long commandId, String body, String contentType) {
         DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
-        if (command == null || !"WAITING".equals(command.getStatus())) {
+        if (command == null || !CommandStatusEnum.WAITING.getStatus().equals(command.getStatus())) {
             return false;
         }
         LocalDateTime now = LocalDateTime.now();
         String failure = callbackFailure(body);
         DeviceCommandDO claim = new DeviceCommandDO();
         claim.setId(commandId);
-        claim.setStatus(failure == null ? "SUCCEEDED" : "FAILED");
+        claim.setStatus(failure == null ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
         claim.setWaitingFor("");
         claim.setFinishedAt(now);
-        if (!deviceCommandMapper.updateIfStatus(claim, "WAITING")) {
+        if (!deviceCommandMapper.updateIfStatus(claim, CommandStatusEnum.WAITING.getStatus())) {
             return false;
         }
         command.setErrorMsg(failure == null ? null : limit(failure, 1000));
@@ -217,7 +221,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         result.setErrorMsg(command.getErrorMsg());
         deviceCommandMapper.updateById(result);
         deviceInfoMapper.releaseOccupy(command.getDeviceId(), command.getId());
-        command.setStatus(failure == null ? "SUCCEEDED" : "FAILED");
+        command.setStatus(failure == null ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
         publishCompleted(command);
         return true;
     }
@@ -233,13 +237,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         DeviceCommandDO update = new DeviceCommandDO();
         update.setId(commandId);
-        update.setStatus("TIMED_OUT");
+        update.setStatus(CommandStatusEnum.TIMED_OUT.getStatus());
         update.setWaitingFor("");
         update.setFinishedAt(LocalDateTime.now());
         update.setErrorMsg(limit(message, 1000));
-        if (deviceCommandMapper.updateIfStatus(update, "WAITING")) {
+        if (deviceCommandMapper.updateIfStatus(update, CommandStatusEnum.WAITING.getStatus())) {
             deviceInfoMapper.releaseOccupy(command.getDeviceId(), command.getId());
-            command.setStatus("TIMED_OUT");
+            command.setStatus(CommandStatusEnum.TIMED_OUT.getStatus());
             publishCompleted(command);
         }
     }
@@ -309,7 +313,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         if (command == null || isTerminal(command.getStatus())) {
             return;
         }
-        command.setStatus("FAILED");
+        command.setStatus(CommandStatusEnum.FAILED.getStatus());
         command.setFinishedAt(LocalDateTime.now());
         command.setErrorMsg(limit(message, 1000));
         deviceCommandMapper.updateById(command);
@@ -346,9 +350,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             return;
         }
         command.setPollCount(pollCount);
-        command.setWaitingFor(done ? "" : "POLL_TICK");
+        command.setWaitingFor(done ? "" : CommandWaitingReasonEnum.POLL_TICK.getReason());
         if (!done) {
-            command.setStatus("WAITING");
+            command.setStatus(CommandStatusEnum.WAITING.getStatus());
         }
         deviceCommandMapper.updateById(command);
     }
@@ -493,7 +497,10 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      * 命令是否已经进入终态
      */
     private static boolean isTerminal(String status) {
-        return "SUCCEEDED".equals(status) || "FAILED".equals(status) || "TIMED_OUT".equals(status) || "CANCELLED".equals(status);
+        return CommandStatusEnum.SUCCEEDED.getStatus().equals(status)
+                || CommandStatusEnum.FAILED.getStatus().equals(status)
+                || CommandStatusEnum.TIMED_OUT.getStatus().equals(status)
+                || CommandStatusEnum.CANCELLED.getStatus().equals(status);
     }
 
     /**

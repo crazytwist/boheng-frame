@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SubflowCompletionPolicy;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SubflowDispatchMode;
+
 /**
  * subflow 子流程。SINGLE 引用一个子流程创建一个子执行；
  * FANOUT 调 FlowDispatchAction 算出拆分计划，按计划扇出 N 个子执行
@@ -65,12 +68,12 @@ public class SubflowStepType implements StepTypeDescriptor {
             issues.add(new FlowIssue(nodeId, "子流程节点缺少配置"));
             return;
         }
-        String mode = StrUtil.blankToDefault(subflow.getDispatchMode(), "SINGLE");
-        if ("SINGLE".equals(mode)) {
+        String mode = StrUtil.blankToDefault(subflow.getDispatchMode(), SubflowDispatchMode.SINGLE.name());
+        if (SubflowDispatchMode.SINGLE.name().equals(mode)) {
             if (StrUtil.isBlank(subflow.getPipelineKey())) {
                 issues.add(new FlowIssue(nodeId, "子流程节点要写明引用的流程编码"));
             }
-        } else if ("FANOUT".equals(mode)) {
+        } else if (SubflowDispatchMode.FANOUT.name().equals(mode)) {
             if (subflow.getDispatch() == null || !"bean".equals(subflow.getDispatch().getKind())
                     || StrUtil.isBlank(subflow.getDispatch().getBeanName())) {
                 issues.add(new FlowIssue(nodeId, "扇出节点要配置分发 Bean"));
@@ -78,8 +81,10 @@ public class SubflowStepType implements StepTypeDescriptor {
                 issues.add(new FlowIssue(nodeId,
                         "扇出分发 Bean【" + subflow.getDispatch().getBeanName() + "】没有注册"));
             }
-            String policy = StrUtil.blankToDefault(subflow.getCompletionPolicy(), "ALL_SUCCESS");
-            if (!"ALL_SUCCESS".equals(policy) && !"ANY_SUCCESS".equals(policy)) {
+            String policy = StrUtil.blankToDefault(subflow.getCompletionPolicy(),
+                    SubflowCompletionPolicy.ALL_SUCCESS.name());
+            if (!SubflowCompletionPolicy.ALL_SUCCESS.name().equals(policy)
+                    && !SubflowCompletionPolicy.ANY_SUCCESS.name().equals(policy)) {
                 issues.add(new FlowIssue(nodeId, "扇出完成策略只能是 ALL_SUCCESS 或 ANY_SUCCESS"));
             }
         } else {

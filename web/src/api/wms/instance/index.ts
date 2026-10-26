@@ -40,7 +40,7 @@ export const MaterialInstanceApi = {
   },
 
   // 查询实例详情
-  getMaterialInstance: async (id: number) => {
+  getMaterialInstance: async (id: number | string) => {
     return await request.get({ url: '/wms/material-instance/get?id=' + id })
   },
 
@@ -61,7 +61,7 @@ export const MaterialInstanceApi = {
   },
 
   // 删除实例
-  deleteMaterialInstance: async (id: number) => {
+  deleteMaterialInstance: async (id: number | string) => {
     return await request.delete({ url: '/wms/material-instance/delete?id=' + id })
   },
 

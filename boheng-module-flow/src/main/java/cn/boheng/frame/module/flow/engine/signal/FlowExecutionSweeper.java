@@ -19,6 +19,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.ExecutionStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * 流程后台扫描器。每 20 秒一轮：
  * ① TIMER 等待到点 → 发定时信号唤醒；
@@ -98,7 +101,7 @@ public class FlowExecutionSweeper {
     private void scanWaitingSteps() {
         List<FlowExecutionDO> running = executionMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<FlowExecutionDO>()
-                        .eq(FlowExecutionDO::getStatus, "RUNNING"));
+                        .eq(FlowExecutionDO::getStatus, ExecutionStatus.RUNNING.name()));
         for (FlowExecutionDO execution : running) {
             try {
                 TenantUtils.execute(execution.getTenantId(), () -> scanOne(execution));
@@ -115,7 +118,7 @@ public class FlowExecutionSweeper {
         List<FlowStepExecutionDO> waiting = stepExecutionMapper.selectWaiting(execution.getId());
         LocalDateTime now = LocalDateTime.now();
         for (FlowStepExecutionDO row : waiting) {
-            if ("DEVICE_COMMAND_CALLBACK".equals(row.getWaitingFor())) {
+            if (WaitingReason.DEVICE_COMMAND_CALLBACK.name().equals(row.getWaitingFor())) {
                 signalDispatcher.deviceCommandSignal(row);
                 continue;
             }
@@ -123,9 +126,9 @@ public class FlowExecutionSweeper {
                 continue; // MANUAL 等人，没有期限
             }
             if (!now.isBefore(row.getDeadlineAt())) {
-                if ("TIMER".equals(row.getWaitingFor())) {
+                if (WaitingReason.TIMER.name().equals(row.getWaitingFor())) {
                     signalDispatcher.timerSignal(execution.getId(), row.getNodeId(), row.getAttempt());
-                } else if ("DEVICE_CALLBACK".equals(row.getWaitingFor())) {
+                } else if (WaitingReason.DEVICE_CALLBACK.name().equals(row.getWaitingFor())) {
                     signalDispatcher.deviceTaskTimeout(execution.getId(), row.getNodeId(), row.getAttempt());
                 }
             }

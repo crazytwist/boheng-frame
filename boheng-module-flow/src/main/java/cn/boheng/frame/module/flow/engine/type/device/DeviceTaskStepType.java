@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * device.task 设备异步任务。执行时把任务投递到队列（不直接调设备），
  * 机器端拉取执行后回报完成，再由信号路由器结算节点继续推进。
@@ -70,7 +72,7 @@ public class DeviceTaskStepType implements StepTypeDescriptor, StepExecutor {
         String taskNo = deviceTaskService.enqueue(
                 ctx.getExecutionId(), ctx.getNodeId(), ctx.getAttempt(), ctx.getIterationNo(),
                 config.getDeviceCode(), config.getActionCode(), ctx.getParams());
-        return StepOutcome.waiting("DEVICE_CALLBACK", taskNo);
+        return StepOutcome.waiting(WaitingReason.DEVICE_CALLBACK.name(), taskNo);
     }
 
 }

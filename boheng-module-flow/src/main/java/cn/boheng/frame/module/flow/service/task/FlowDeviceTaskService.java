@@ -19,6 +19,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.DeviceTaskEventType;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.DeviceTaskStatus;
+
 /**
  * 设备异步任务队列服务。任务不推给设备，而是入库等机器端拉取：
  * <p>节点入队（PENDING）→ 机器端认领（CLAIMED）→ 回报（DONE/FAILED）。
@@ -27,22 +30,6 @@ import java.util.Map;
 @Service
 @Validated
 public class FlowDeviceTaskService {
-
-    /**
-     * 事件类型
-     */
-    private static final String EVENT_CREATED = "CREATED";
-    private static final String EVENT_CLAIMED = "CLAIMED";
-    private static final String EVENT_DONE = "DONE";
-    private static final String EVENT_FAILED = "FAILED";
-
-    /**
-     * 任务状态
-     */
-    private static final String STATUS_PENDING = "PENDING";
-    private static final String STATUS_CLAIMED = "CLAIMED";
-    private static final String STATUS_DONE = "DONE";
-    private static final String STATUS_FAILED = "FAILED";
 
     /**
      * 任务表
@@ -80,10 +67,10 @@ public class FlowDeviceTaskService {
                 .deviceCode(deviceCode)
                 .actionCode(actionCode)
                 .paramsJson(params == null || params.isEmpty() ? null : JSONUtil.toJsonStr(params))
-                .status(STATUS_PENDING)
+                .status(DeviceTaskStatus.PENDING.name())
                 .build();
         deviceTaskMapper.insert(task);
-        writeEvent(task, null, STATUS_PENDING, EVENT_CREATED, null, null);
+        writeEvent(task, null, DeviceTaskStatus.PENDING.name(), DeviceTaskEventType.CREATED.name(), null, null);
         return taskNo;
     }
 
@@ -116,7 +103,8 @@ public class FlowDeviceTaskService {
                     : Duration.between(task.getCreateTime(), LocalDateTime.now()).toMillis();
             if (deviceTaskMapper.claim(task.getId(), workerId, waitMs) == 1) {
                 FlowDeviceTaskDO claimed = deviceTaskMapper.selectById(task.getId());
-                writeEvent(claimed, STATUS_PENDING, STATUS_CLAIMED, EVENT_CLAIMED, workerId, null);
+                writeEvent(claimed, DeviceTaskStatus.PENDING.name(), DeviceTaskStatus.CLAIMED.name(),
+                        DeviceTaskEventType.CLAIMED.name(), workerId, null);
                 return claimed;
             }
             // 认领失败 = 被别的机器端抢走，重试再取一条
@@ -134,12 +122,13 @@ public class FlowDeviceTaskService {
         }
         Long executeMs = task.getClaimedAt() == null ? null
                 : Duration.between(task.getClaimedAt(), LocalDateTime.now()).toMillis();
-        String toStatus = success ? STATUS_DONE : STATUS_FAILED;
+        String toStatus = (success ? DeviceTaskStatus.DONE : DeviceTaskStatus.FAILED).name();
         if (deviceTaskMapper.finish(task.getId(), toStatus, resultJson, errorMessage, executeMs) != 1) {
             return false;
         }
         writeEvent(task, task.getStatus(), toStatus,
-                success ? EVENT_DONE : EVENT_FAILED, task.getClaimedBy(), resultJson);
+                (success ? DeviceTaskEventType.DONE : DeviceTaskEventType.FAILED).name(),
+                task.getClaimedBy(), resultJson);
         return true;
     }
 
@@ -151,7 +140,8 @@ public class FlowDeviceTaskService {
         if (task == null) {
             return false;
         }
-        if (!STATUS_PENDING.equals(task.getStatus()) && !STATUS_CLAIMED.equals(task.getStatus())) {
+        if (!DeviceTaskStatus.PENDING.name().equals(task.getStatus())
+                && !DeviceTaskStatus.CLAIMED.name().equals(task.getStatus())) {
             return false;
         }
         Long executeMs = task.getClaimedAt() == null ? null
@@ -160,7 +150,8 @@ public class FlowDeviceTaskService {
         if (deviceTaskMapper.timeoutIfOpen(task.getId(), executeMs) != 1) {
             return false;
         }
-        writeEvent(task, fromStatus, STATUS_FAILED, EVENT_FAILED, task.getClaimedBy(), "{\"timeout\":true}");
+        writeEvent(task, fromStatus, DeviceTaskStatus.FAILED.name(), DeviceTaskEventType.FAILED.name(),
+                task.getClaimedBy(), "{\"timeout\":true}");
         return true;
     }
 

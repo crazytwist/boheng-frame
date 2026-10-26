@@ -9,6 +9,8 @@ import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.StepStatus;
+
 /**
  * 节点执行表。
  */
@@ -64,14 +66,14 @@ public interface FlowStepExecutionMapper extends BaseMapperX<FlowStepExecutionDO
     default List<FlowStepExecutionDO> selectWaiting(Long executionId) {
         return selectList(new LambdaQueryWrapperX<FlowStepExecutionDO>()
                 .eq(FlowStepExecutionDO::getExecutionId, executionId)
-                .eq(FlowStepExecutionDO::getStatus, "WAITING"));
+                .eq(FlowStepExecutionDO::getStatus, StepStatus.WAITING.name()));
     }
 
     /** 按设备命令定位等待中的流程节点，设备完成事件使用。 */
     default FlowStepExecutionDO selectWaitingByCommandId(Long commandId) {
         return selectOne(new LambdaQueryWrapperX<FlowStepExecutionDO>()
                 .eq(FlowStepExecutionDO::getCommandId, commandId)
-                .eq(FlowStepExecutionDO::getStatus, "WAITING")
+                .eq(FlowStepExecutionDO::getStatus, StepStatus.WAITING.name())
                 .last("LIMIT 1"));
     }
 

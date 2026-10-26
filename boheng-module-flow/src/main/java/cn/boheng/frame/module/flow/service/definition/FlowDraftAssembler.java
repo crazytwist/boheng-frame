@@ -20,6 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SubflowDispatchMode;
+
 /**
  * 把一个流程版本的节点行 + 能力行装配成 FlowNodeDraft 列表。
  * 草稿装配是「类型生效规则」的唯一实现：
@@ -104,7 +106,7 @@ public class FlowDraftAssembler {
         if (FlowConstants.STEP_SUBFLOW.equals(draft.getStepType()) && draft.getTypeConfig() != null) {
             SubflowConfig subflow = JSONUtil.toBean(draft.getTypeConfig(), SubflowConfig.class);
             if (subflow != null && subflow.getDispatchMode() != null
-                    && "SINGLE".equals(subflow.getDispatchMode())) {
+                    && SubflowDispatchMode.SINGLE.name().equals(subflow.getDispatchMode())) {
                 draft.setSubflowTargetKey(subflow.getPipelineKey());
             }
         }

@@ -19,6 +19,9 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Map;
 
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * device.command 调一次设备动作。只依赖设备契约 {@link DeviceCommandApi}，
  * 不反向依赖设备实现模块。回调动作下发并被设备受理后进入持久化等待，
@@ -91,8 +94,8 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
             String error = result == null ? "设备无响应" : result.getErrorMessage();
             return StepOutcome.failed(StrUtil.blankToDefault(error, "设备命令失败"));
         }
-        if ("WAITING".equals(result.getStatus())) {
-            return StepOutcome.waiting("DEVICE_COMMAND_CALLBACK", String.valueOf(result.getCommandId()),
+        if (CommandStatusEnum.WAITING.getStatus().equals(result.getStatus())) {
+            return StepOutcome.waiting(WaitingReason.DEVICE_COMMAND_CALLBACK.name(), String.valueOf(result.getCommandId()),
                     result.getCommandId(), result.getCommandNo());
         }
         Map<String, Object> output = new java.util.LinkedHashMap<>();

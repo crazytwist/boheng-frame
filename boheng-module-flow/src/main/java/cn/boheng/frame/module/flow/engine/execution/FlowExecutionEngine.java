@@ -43,6 +43,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.ExecutionStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.StepStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SubflowDispatchMode;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SubflowCompletionPolicy;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.TriggerType;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * 流程执行引擎。一次运行的生命周期都在这里推进：
  * 启动（冻结图 + 初始化节点行）→ 就绪判定 → CAS 认领 → 分发执行 → 结算 → 再推进，
@@ -152,7 +159,7 @@ public class FlowExecutionEngine {
                 .version(definition.getVersion())
                 .definitionId(definition.getId())
                 .checksum(definition.getChecksum())
-                .status("RUNNING")
+                .status(ExecutionStatus.RUNNING.name())
                 .triggerType(triggerType)
                 .triggeredBy(triggeredBy)
                 .businessKey(businessKey)
@@ -195,7 +202,7 @@ public class FlowExecutionEngine {
                 if (bodyNodes.contains(node.getNodeId())) {
                     continue;
                 }
-                insertStepRow(execution.getId(), node, 0, 1, "PENDING");
+                insertStepRow(execution.getId(), node, 0, 1, StepStatus.PENDING.name());
             }
             advance(execution.getId());
             return execution.getId();
@@ -228,18 +235,18 @@ public class FlowExecutionEngine {
      */
     public void cancel(Long executionId) {
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             return;
         }
         List<FlowStepExecutionDO> rows = stepExecutionMapper.selectByExecutionId(executionId);
         for (FlowStepExecutionDO row : rows) {
-            if ("PENDING".equals(row.getStatus())) {
-                row.setStatus("CANCELLED");
+            if (StepStatus.PENDING.name().equals(row.getStatus())) {
+                row.setStatus(StepStatus.CANCELLED.name());
                 row.setFinishedAt(LocalDateTime.now());
                 stepExecutionMapper.updateById(row);
             }
         }
-        finalizeExecution(executionId, "CANCELLED", null, null);
+        finalizeExecution(executionId, ExecutionStatus.CANCELLED.name(), null, null);
     }
 
     // ==================== 推进 ====================
@@ -250,7 +257,7 @@ public class FlowExecutionEngine {
      */
     public void advance(Long executionId) {
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             return;
         }
         // 重绑执行维度：advance 会被信号/工作线程反复触发，确保日志始终指向本条运行
@@ -268,7 +275,7 @@ public class FlowExecutionEngine {
             RuntimeNode node = graph.node(nodeId);
             boolean skip = node != null && DagScheduler.shouldSkip(StrUtil.blankToDefault(
                     node.getJoinFailurePolicy(), FlowConstants.DEFAULT_JOIN_FAILURE_POLICY));
-            row.setStatus(skip ? "SKIPPED" : "DEAD");
+            row.setStatus((skip ? StepStatus.SKIPPED : StepStatus.DEAD).name());
             row.setSkipReason(skip ? reason : null);
             row.setErrorCode(skip ? null : "FLOW_JOIN_FAILED");
             row.setErrorMessage(skip ? null : "前置未按汇合策略满足");
@@ -312,15 +319,15 @@ public class FlowExecutionEngine {
     private boolean claim(FlowStepExecutionDO row) {
         LocalDateTime startedAt = LocalDateTime.now();
         FlowStepExecutionDO patch = new FlowStepExecutionDO();
-        patch.setStatus("RUNNING");
+        patch.setStatus(StepStatus.RUNNING.name());
         patch.setStartedAt(startedAt);
         boolean won = stepExecutionMapper.update(patch,
                 new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<FlowStepExecutionDO>()
                         .eq(FlowStepExecutionDO::getId, row.getId())
-                        .eq(FlowStepExecutionDO::getStatus, "PENDING")) == 1;
+                        .eq(FlowStepExecutionDO::getStatus, StepStatus.PENDING.name())) == 1;
         if (won) {
             // 内存状态要和库一致，后面的 settle 靠它做 WHERE status=RUNNING
-            row.setStatus("RUNNING");
+            row.setStatus(StepStatus.RUNNING.name());
             row.setStartedAt(startedAt);
         }
         return won;
@@ -424,7 +431,7 @@ public class FlowExecutionEngine {
         }
         // 只从 RUNNING / WAITING 收口。成功回报和超时同时进来时，后到的一方改不到行
         String fromStatus = row.getStatus();
-        if (!"RUNNING".equals(fromStatus) && !"WAITING".equals(fromStatus)) {
+        if (!StepStatus.RUNNING.name().equals(fromStatus) && !StepStatus.WAITING.name().equals(fromStatus)) {
             log.info("[flow] 结算跳过，步骤不在可结算状态 node={} status={}", row.getNodeId(), fromStatus);
             return false;
         }
@@ -434,7 +441,7 @@ public class FlowExecutionEngine {
         RuntimeNode node = graph.node(row.getNodeId());
         switch (outcome.getKind()) {
             case SUCCESS -> {
-                row.setStatus("SUCCESS");
+                row.setStatus(StepStatus.SUCCESS.name());
                 row.setOutputData(outcome.getOutputJson());
                 row.setFinishedAt(LocalDateTime.now());
                 if (!casStep(row, fromStatus)) {
@@ -449,18 +456,19 @@ public class FlowExecutionEngine {
             case FAILED -> {
                 int maxAttempts = effectiveMaxAttempts(graph, node, row);
                 if (row.getAttempt() < maxAttempts && isRetryable(node)) {
-                    row.setStatus("FAILED");
+                    row.setStatus(StepStatus.FAILED.name());
                     row.setErrorMessage(outcome.getErrorMessage());
                     row.setFinishedAt(LocalDateTime.now());
                     if (!casStep(row, fromStatus)) {
                         return false;
                     }
-                    insertStepRow(row.getExecutionId(), node, row.getIterationNo(), row.getAttempt() + 1, "PENDING");
+                    insertStepRow(row.getExecutionId(), node, row.getIterationNo(), row.getAttempt() + 1,
+                            StepStatus.PENDING.name());
                     log.info("[flow] 节点失败将重试 node={} iter={} attempt={} err={}",
                             row.getNodeId(), row.getIterationNo(), row.getAttempt(),
                             StrUtil.nullToEmpty(outcome.getErrorMessage()));
                 } else {
-                    row.setStatus("DEAD");
+                    row.setStatus(StepStatus.DEAD.name());
                     row.setErrorMessage(outcome.getErrorMessage());
                     row.setFinishedAt(LocalDateTime.now());
                     if (!casStep(row, fromStatus)) {
@@ -479,7 +487,7 @@ public class FlowExecutionEngine {
                 }
             }
             case WAITING -> {
-                row.setStatus("WAITING");
+                row.setStatus(StepStatus.WAITING.name());
                 row.setWaitingFor(outcome.getWaitingFor());
                 row.setWaitRef(outcome.getWaitRef());
                 row.setCommandId(outcome.getCommandId());
@@ -492,7 +500,7 @@ public class FlowExecutionEngine {
                         row.getNodeId(), outcome.getWaitingFor());
             }
             case BRANCH -> {
-                row.setStatus("SUCCESS");
+                row.setStatus(StepStatus.SUCCESS.name());
                 row.setSelectedBranch(outcome.getBranchKey());
                 row.setOutputData(outcome.getOutputJson());
                 row.setFinishedAt(LocalDateTime.now());
@@ -536,12 +544,12 @@ public class FlowExecutionEngine {
      * 等待截止时刻：TIMER 的 waitRef 就是到期时刻文本；设备等待按节点超时
      */
     private LocalDateTime deadlineOf(StepOutcome outcome, PipelineGraph graph, RuntimeNode node) {
-        if ("TIMER".equals(outcome.getWaitingFor()) && StrUtil.isNotBlank(outcome.getWaitRef())) {
+        if (WaitingReason.TIMER.name().equals(outcome.getWaitingFor()) && StrUtil.isNotBlank(outcome.getWaitRef())) {
             return LocalDateTime.parse(outcome.getWaitRef());
         }
         // 设备异步任务：按节点超时给等待截止时刻，超时扫描按它判失败；
         // 配成负数（-1）表示永不超时，不落 deadline，扫描器会跳过
-        if ("DEVICE_CALLBACK".equals(outcome.getWaitingFor())) {
+        if (WaitingReason.DEVICE_CALLBACK.name().equals(outcome.getWaitingFor())) {
             long timeoutMs = effectiveTimeout(graph, node);
             if (timeoutMs < 0) {
                 return null;
@@ -582,14 +590,14 @@ public class FlowExecutionEngine {
                                 FlowStepExecutionDO loopRow) {
         List<RuntimeNode> body = loopBody(graph, loopNode);
         if (body.isEmpty()) {
-            loopRow.setStatus("SUCCESS");
+            loopRow.setStatus(StepStatus.SUCCESS.name());
             loopRow.setFinishedAt(LocalDateTime.now());
             stepExecutionMapper.updateById(loopRow);
             advance(execution.getId());
             return;
         }
         for (RuntimeNode bodyNode : body) {
-            insertStepRow(execution.getId(), bodyNode, 0, 1, "PENDING");
+            insertStepRow(execution.getId(), bodyNode, 0, 1, StepStatus.PENDING.name());
         }
         advance(execution.getId());
     }
@@ -603,12 +611,12 @@ public class FlowExecutionEngine {
                 continue;
             }
             FlowStepExecutionDO loopRow = latest.get(node.getNodeId());
-            if (loopRow == null || !"RUNNING".equals(loopRow.getStatus())) {
+            if (loopRow == null || !StepStatus.RUNNING.name().equals(loopRow.getStatus())) {
                 continue;
             }
             List<RuntimeNode> body = loopBody(graph, node);
             if (body.isEmpty()) {
-                loopRow.setStatus("SUCCESS");
+                loopRow.setStatus(StepStatus.SUCCESS.name());
                 loopRow.setFinishedAt(LocalDateTime.now());
                 stepExecutionMapper.updateById(loopRow);
                 continue;
@@ -642,11 +650,12 @@ public class FlowExecutionEngine {
             }
             if (again) {
                 for (RuntimeNode bodyNode : body) {
-                    insertStepRow(execution.getId(), bodyNode, currentIteration + 1, 1, "PENDING");
+                    insertStepRow(execution.getId(), bodyNode, currentIteration + 1, 1,
+                            StepStatus.PENDING.name());
                 }
             } else {
                 String outputJson = JSONUtil.toJsonStr(Map.of("iterations", currentIteration + 1));
-                loopRow.setStatus("SUCCESS");
+                loopRow.setStatus(StepStatus.SUCCESS.name());
                 loopRow.setOutputData(outputJson);
                 loopRow.setFinishedAt(LocalDateTime.now());
                 stepExecutionMapper.updateById(loopRow);
@@ -701,7 +710,8 @@ public class FlowExecutionEngine {
             settle(row, StepOutcome.failed("子流程节点缺少配置"));
             return;
         }
-        boolean fanout = "FANOUT".equals(StrUtil.blankToDefault(config.getDispatchMode(), "SINGLE"));
+        boolean fanout = SubflowDispatchMode.FANOUT.name().equals(
+                StrUtil.blankToDefault(config.getDispatchMode(), SubflowDispatchMode.SINGLE.name()));
         List<cn.boheng.frame.module.flow.engine.type.config.DispatchPlanEntry> plan;
         if (fanout) {
             plan = dispatchPlan(graph, execution, node, row, config);
@@ -714,7 +724,7 @@ public class FlowExecutionEngine {
         if (plan.isEmpty()) {
             // 空计划：无组可拆，节点直接成功
             String outputJson = JSONUtil.toJsonStr(Map.of("children", 0));
-            row.setStatus("SUCCESS");
+            row.setStatus(StepStatus.SUCCESS.name());
             row.setOutputData(outputJson);
             row.setFinishedAt(LocalDateTime.now());
             stepExecutionMapper.updateById(row);
@@ -735,14 +745,14 @@ public class FlowExecutionEngine {
             String businessKey = fanoutBusinessKey(execution.getId(), node.getNodeId(), row.getAttempt(), i);
             FlowExecutionDO existing = findByBusinessKey(businessKey);
             if (existing == null) {
-                start(child, entry.getInputJson(), "CHILD", StrUtil.nullToEmpty(execution.getTriggeredBy()),
+                start(child, entry.getInputJson(), TriggerType.CHILD.name(), StrUtil.nullToEmpty(execution.getTriggeredBy()),
                         businessKey, execution.getId(), node.getNodeId(), row.getAttempt(),
                         fanout ? i : null);
                 created++;
             }
         }
-        row.setStatus("WAITING");
-        row.setWaitingFor("CHILD");
+        row.setStatus(StepStatus.WAITING.name());
+        row.setWaitingFor(WaitingReason.CHILD.name());
         row.setWaitRef(execution.getId() + ":" + node.getNodeId() + ":" + row.getAttempt());
         row.setOutputData(JSONUtil.toJsonStr(Map.of("children", plan.size())));
         stepExecutionMapper.updateById(row);
@@ -784,7 +794,7 @@ public class FlowExecutionEngine {
     public void onChildFinished(Long parentExecutionId, String parentNodeId, Integer parentAttempt,
                                 Integer groupIndex, boolean childSuccess) {
         FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(parentExecutionId, parentNodeId, 0);
-        if (row == null || !"WAITING".equals(row.getStatus()) || !row.getAttempt().equals(parentAttempt)) {
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus()) || !row.getAttempt().equals(parentAttempt)) {
             return;
         }
         FlowExecutionDO parent = executionMapper.selectById(parentExecutionId);
@@ -792,24 +802,23 @@ public class FlowExecutionEngine {
             return;
         }
         List<FlowExecutionDO> children = executionMapper.selectByParent(parentExecutionId, parentNodeId, parentAttempt);
-        boolean allTerminal = children.stream().allMatch(c -> !"RUNNING".equals(c.getStatus())
-                && !"PENDING".equals(c.getStatus()));
+        boolean allTerminal = children.stream().allMatch(c -> ExecutionStatus.isTerminal(c.getStatus()));
         if (!allTerminal) {
             return;
         }
-        boolean anySuccess = children.stream().anyMatch(c -> "SUCCESS".equals(c.getStatus()));
-        boolean allSuccess = children.stream().allMatch(c -> "SUCCESS".equals(c.getStatus()));
+        boolean anySuccess = children.stream().anyMatch(c -> ExecutionStatus.SUCCESS.name().equals(c.getStatus()));
+        boolean allSuccess = children.stream().allMatch(c -> ExecutionStatus.SUCCESS.name().equals(c.getStatus()));
         FlowDefinitionDO definition = definitionMapper.selectById(parent.getDefinitionId());
         PipelineGraph graph = definition == null ? null : freeze(definition);
         RuntimeNode node = graph == null ? null : graph.node(parentNodeId);
-        String policy = "ANY_SUCCESS";
+        String policy = SubflowCompletionPolicy.ANY_SUCCESS.name();
         if (node != null) {
             cn.boheng.frame.module.flow.engine.type.config.SubflowConfig config =
                     (cn.boheng.frame.module.flow.engine.type.config.SubflowConfig) typeRegistry.parseConfig(FlowConstants.STEP_SUBFLOW, node.getTypeConfig());
-            policy = config == null ? "ALL_SUCCESS"
-                    : StrUtil.blankToDefault(config.getCompletionPolicy(), "ALL_SUCCESS");
+            policy = config == null ? SubflowCompletionPolicy.ALL_SUCCESS.name()
+                    : StrUtil.blankToDefault(config.getCompletionPolicy(), SubflowCompletionPolicy.ALL_SUCCESS.name());
         }
-        boolean ok = "ANY_SUCCESS".equals(policy) ? anySuccess : allSuccess;
+        boolean ok = SubflowCompletionPolicy.ANY_SUCCESS.name().equals(policy) ? anySuccess : allSuccess;
         List<Map<String, Object>> summary = new ArrayList<>();
         children.forEach(c -> summary.add(Map.of(
                 "executionId", c.getId(),
@@ -817,7 +826,7 @@ public class FlowExecutionEngine {
                 "groupIndex", c.getParentGroupIndex() == null ? -1 : c.getParentGroupIndex(),
                 "status", c.getStatus())));
         String outputJson = JSONUtil.toJsonStr(Map.of("children", children.size(), "detail", summary));
-        row.setStatus(ok ? "SUCCESS" : "DEAD");
+        row.setStatus((ok ? StepStatus.SUCCESS : StepStatus.DEAD).name());
         row.setOutputData(outputJson);
         if (!ok) {
             row.setErrorCode("FLOW_CHILD_FAILED");
@@ -840,7 +849,7 @@ public class FlowExecutionEngine {
      */
     private void checkFinish(Long executionId, PipelineGraph graph) {
         FlowExecutionDO execution = executionMapper.selectById(executionId);
-        if (execution == null || !"RUNNING".equals(execution.getStatus())) {
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
             return;
         }
         List<FlowStepExecutionDO> rows = stepExecutionMapper.selectByExecutionId(executionId);
@@ -848,22 +857,22 @@ public class FlowExecutionEngine {
         if (!allTerminal) {
             return;
         }
-        boolean hasDead = rows.stream().anyMatch(r -> "DEAD".equals(r.getStatus())
-                || "FAILED".equals(r.getStatus()));
+        boolean hasDead = rows.stream().anyMatch(r -> StepStatus.DEAD.name().equals(r.getStatus())
+                || StepStatus.FAILED.name().equals(r.getStatus()));
         if (hasDead) {
-            finalizeExecution(executionId, "FAILED", "FLOW_STEP_DEAD", "存在失败节点");
+            finalizeExecution(executionId, ExecutionStatus.FAILED.name(), "FLOW_STEP_DEAD", "存在失败节点");
             return;
         }
         // 汇总各顶层节点输出
         Map<String, Object> output = new LinkedHashMap<>();
         for (FlowStepExecutionDO row : rows) {
-            if ("SUCCESS".equals(row.getStatus()) && StrUtil.isNotBlank(row.getOutputData())) {
+            if (StepStatus.SUCCESS.name().equals(row.getStatus()) && StrUtil.isNotBlank(row.getOutputData())) {
                 output.put(row.getNodeId(), JSONUtil.parseObj(row.getOutputData()));
             }
         }
         execution.setOutputData(JSONUtil.toJsonStr(output));
         executionMapper.updateById(execution);
-        finalizeExecution(executionId, "SUCCESS", null, null);
+        finalizeExecution(executionId, ExecutionStatus.SUCCESS.name(), null, null);
     }
 
     /**
@@ -872,13 +881,13 @@ public class FlowExecutionEngine {
     private void failExecution(Long executionId, String errorCode, String errorMessage) {
         List<FlowStepExecutionDO> rows = stepExecutionMapper.selectByExecutionId(executionId);
         for (FlowStepExecutionDO row : rows) {
-            if ("PENDING".equals(row.getStatus())) {
-                row.setStatus("CANCELLED");
+            if (StepStatus.PENDING.name().equals(row.getStatus())) {
+                row.setStatus(StepStatus.CANCELLED.name());
                 row.setFinishedAt(LocalDateTime.now());
                 stepExecutionMapper.updateById(row);
             }
         }
-        finalizeExecution(executionId, "FAILED", errorCode, errorMessage);
+        finalizeExecution(executionId, ExecutionStatus.FAILED.name(), errorCode, errorMessage);
     }
 
     /**
@@ -900,7 +909,7 @@ public class FlowExecutionEngine {
         // 子执行：通知父节点
         if (execution.getParentExecutionId() != null && execution.getParentNodeId() != null
                 && execution.getParentAttempt() != null) {
-            signalDispatcher.dispatchChildSignal(execution, "SUCCESS".equals(status));
+            signalDispatcher.dispatchChildSignal(execution, ExecutionStatus.SUCCESS.name().equals(status));
         }
     }
 

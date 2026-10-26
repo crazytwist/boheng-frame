@@ -128,6 +128,26 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/wms-instance',
+    component: Layout,
+    name: 'WmsInstanceRoot',
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'children/:parentId',
+        component: () => import('@/views/wms/instance/children/index.vue'),
+        name: 'WmsInstanceChildren',
+        meta: {
+          title: '子实例管理',
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          activeMenu: '/wms/instance'
+        }
+      }
+    ]
+  },
+  {
     path: '/fms/auxiliary',
     component: Layout,
     name: 'FmsAuxiliaryRoot',

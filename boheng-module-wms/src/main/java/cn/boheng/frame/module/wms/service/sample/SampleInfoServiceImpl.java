@@ -9,6 +9,8 @@ import cn.boheng.frame.module.wms.dal.dataobject.instance.MaterialInstanceDO;
 import cn.boheng.frame.module.wms.dal.dataobject.sample.SampleInfoDO;
 import cn.boheng.frame.module.wms.dal.mysql.instance.MaterialInstanceMapper;
 import cn.boheng.frame.module.wms.dal.mysql.sample.SampleInfoMapper;
+import cn.boheng.frame.module.wms.enums.SampleDeriveTypeEnum;
+import cn.boheng.frame.module.wms.enums.SampleSourceEnum;
 import cn.boheng.frame.module.wms.enums.SampleStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,15 +41,14 @@ import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_STATUS_
 public class SampleInfoServiceImpl implements SampleInfoService {
 
     /**
-     * 原始样本的衍生类型
-     */
-    private static final String DERIVE_ORIGINAL = "ORIGINAL";
-
-    /**
      * 合法衍生类型。衍生样本（parentSampleId 非空）必须落在其中，
      * 原始样本强制 ORIGINAL，二者互斥保证谱系字段一致。
      */
-    private static final Set<String> DERIVE_TYPES = Set.of("SPLIT", "ALIQUOT", "MERGE", "ADD_REAGENT");
+    private static final Set<SampleDeriveTypeEnum> DERIVE_TYPES = EnumSet.of(
+            SampleDeriveTypeEnum.SPLIT,
+            SampleDeriveTypeEnum.ALIQUOT,
+            SampleDeriveTypeEnum.MERGE,
+            SampleDeriveTypeEnum.ADD_REAGENT);
 
     /**
      * 样本状态合法流转表（键=当前态，值=可流转到的目标态集合）。
@@ -54,15 +56,16 @@ public class SampleInfoServiceImpl implements SampleInfoService {
      * IN_PROCESS 分支 SPLIT / REJECTED / LOST；LOST 从装载前任意态均可；
      * 终态 ARCHIVED / REJECTED / LOST 不可再流转。
      */
-    private static final Map<String, Set<String>> STATUS_TRANSITIONS = Map.of(
-            "REGISTERED", Set.of("LOADED", "REJECTED", "LOST"),
-            "LOADED", Set.of("IN_PROCESS", "REJECTED", "LOST"),
-            "IN_PROCESS", Set.of("COMPLETED", "SPLIT", "REJECTED", "LOST"),
-            "SPLIT", Set.of("COMPLETED"),
-            "COMPLETED", Set.of("ARCHIVED"),
-            "ARCHIVED", Set.of(),
-            "REJECTED", Set.of(),
-            "LOST", Set.of());
+    private static final Map<SampleStatusEnum, Set<SampleStatusEnum>> STATUS_TRANSITIONS = Map.of(
+            SampleStatusEnum.REGISTERED, EnumSet.of(SampleStatusEnum.LOADED, SampleStatusEnum.REJECTED, SampleStatusEnum.LOST),
+            SampleStatusEnum.LOADED, EnumSet.of(SampleStatusEnum.IN_PROCESS, SampleStatusEnum.REJECTED, SampleStatusEnum.LOST),
+            SampleStatusEnum.IN_PROCESS, EnumSet.of(SampleStatusEnum.COMPLETED, SampleStatusEnum.SPLIT,
+                    SampleStatusEnum.REJECTED, SampleStatusEnum.LOST),
+            SampleStatusEnum.SPLIT, EnumSet.of(SampleStatusEnum.COMPLETED),
+            SampleStatusEnum.COMPLETED, EnumSet.of(SampleStatusEnum.ARCHIVED),
+            SampleStatusEnum.ARCHIVED, EnumSet.noneOf(SampleStatusEnum.class),
+            SampleStatusEnum.REJECTED, EnumSet.noneOf(SampleStatusEnum.class),
+            SampleStatusEnum.LOST, EnumSet.noneOf(SampleStatusEnum.class));
 
     @Resource
     private SampleInfoMapper sampleInfoMapper;
@@ -84,10 +87,10 @@ public class SampleInfoServiceImpl implements SampleInfoService {
             sample.setRootSampleId(sample.getSampleId());
             sample.setGeneration(sample.getGeneration() == null ? 0 : sample.getGeneration());
             // 原始样本的衍生类型无条件固定为 ORIGINAL，不接受前端透传
-            sample.setDeriveType(DERIVE_ORIGINAL);
+            sample.setDeriveType(SampleDeriveTypeEnum.ORIGINAL.name());
         } else {
             // 衍生样本：衍生类型必须落在合法集合（非空、非 ORIGINAL）
-            if (StrUtil.isBlank(sample.getDeriveType()) || !DERIVE_TYPES.contains(sample.getDeriveType())) {
+            if (StrUtil.isBlank(sample.getDeriveType()) || !isDerivedType(sample.getDeriveType())) {
                 throw exception(SAMPLE_DERIVE_TYPE_INVALID);
             }
             SampleInfoDO parent = sampleInfoMapper.selectBySampleId(sample.getParentSampleId());
@@ -104,7 +107,7 @@ public class SampleInfoServiceImpl implements SampleInfoService {
         }
         // 5. 来源缺省为「手动」
         if (StrUtil.isBlank(sample.getSource())) {
-            sample.setSource("MANUAL");
+            sample.setSource(SampleSourceEnum.MANUAL.name());
         }
 
         sampleInfoMapper.insert(sample);
@@ -222,9 +225,34 @@ public class SampleInfoServiceImpl implements SampleInfoService {
         if (from == null || from.equals(to)) {
             return;
         }
-        Set<String> allowed = STATUS_TRANSITIONS.getOrDefault(from, Set.of());
-        if (!allowed.contains(to)) {
+        SampleStatusEnum fromStatus = parseSampleStatus(from);
+        SampleStatusEnum toStatus = parseSampleStatus(to);
+        Set<SampleStatusEnum> allowed = fromStatus == null ? Set.of()
+                : STATUS_TRANSITIONS.getOrDefault(fromStatus, Set.of());
+        if (toStatus == null || !allowed.contains(toStatus)) {
             throw exception(SAMPLE_STATUS_TRANSITION_INVALID, sampleId, from, to);
+        }
+    }
+
+    /**
+     * 判断接口传入值是否为允许的衍生方式。
+     */
+    private boolean isDerivedType(String deriveType) {
+        try {
+            return DERIVE_TYPES.contains(SampleDeriveTypeEnum.valueOf(deriveType));
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    /**
+     * 将数据库字符串安全转换为样本状态；历史脏值按未知状态处理。
+     */
+    private SampleStatusEnum parseSampleStatus(String status) {
+        try {
+            return status == null ? null : SampleStatusEnum.valueOf(status);
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
     }
 }

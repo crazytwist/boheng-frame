@@ -10,6 +10,8 @@ import org.apache.ibatis.annotations.Mapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
+
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
 /**
  * 命令记录 Mapper
  */
@@ -36,7 +38,8 @@ public interface DeviceCommandMapper extends BaseMapperX<DeviceCommandDO> {
     default long countRunning(Long deviceId) {
         return selectCount(new LambdaQueryWrapperX<DeviceCommandDO>()
                 .eq(DeviceCommandDO::getDeviceId, deviceId)
-                .in(DeviceCommandDO::getStatus, "ACQUIRED", "SENT", "WAITING"));
+                .in(DeviceCommandDO::getStatus, CommandStatusEnum.ACQUIRED.getStatus(),
+                        CommandStatusEnum.SENT.getStatus(), CommandStatusEnum.WAITING.getStatus()));
     }
 
     /**
@@ -44,7 +47,7 @@ public interface DeviceCommandMapper extends BaseMapperX<DeviceCommandDO> {
      */
     default List<DeviceCommandDO> selectExpiredWaiting(LocalDateTime before) {
         return selectList(new LambdaQueryWrapperX<DeviceCommandDO>()
-                .eq(DeviceCommandDO::getStatus, "WAITING")
+                .eq(DeviceCommandDO::getStatus, CommandStatusEnum.WAITING.getStatus())
                 .lt(DeviceCommandDO::getTimeoutAt, before));
     }
 
@@ -53,12 +56,14 @@ public interface DeviceCommandMapper extends BaseMapperX<DeviceCommandDO> {
      */
     default int failStaleAcquired(LocalDateTime before) {
         return update(null, new LambdaUpdateWrapper<DeviceCommandDO>()
-                .set(DeviceCommandDO::getStatus, "FAILED")
+                .set(DeviceCommandDO::getStatus, CommandStatusEnum.FAILED.getStatus())
                 .set(DeviceCommandDO::getWaitingFor, "")
                 .set(DeviceCommandDO::getFinishedAt, LocalDateTime.now())
                 .set(DeviceCommandDO::getErrorMsg, "调用中断，未拿到结果")
-                .and(w -> w.in(DeviceCommandDO::getStatus, "ACQUIRED", "SENT")
-                        .or(o -> o.eq(DeviceCommandDO::getStatus, "WAITING").isNull(DeviceCommandDO::getTimeoutAt)))
+                .and(w -> w.in(DeviceCommandDO::getStatus, CommandStatusEnum.ACQUIRED.getStatus(),
+                                CommandStatusEnum.SENT.getStatus())
+                        .or(o -> o.eq(DeviceCommandDO::getStatus, CommandStatusEnum.WAITING.getStatus())
+                                .isNull(DeviceCommandDO::getTimeoutAt)))
                 .lt(DeviceCommandDO::getAcquiredAt, before));
     }
 

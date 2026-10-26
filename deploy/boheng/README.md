@@ -28,7 +28,7 @@
 
 > - `PORT_WEB / PORT_SERVER / PORT_MYSQL / PORT_REDIS` 在 `.env` 里覆盖。
 > - 调试用：解开 `server/mysql/redis` 服务的 `ports:` 注释即可让公网直连后端 API / MySQL / Redis。
-> - 服务器侧只对公网开放 **28081**，所有前端访问与 API 调用都走这一个端口（Nginx 把 `/admin-api/、/app-api/` 反代到内网 boheng.server:48080）。
+> - 服务器侧只对公网开放 **28081**，所有前端访问与 API 调用都走这一个端口（Nginx 把 `/admin-api/、/app-api/` 反代到内网 boheng.server:48088）。
 
 ## 三、目录结构
 
@@ -95,7 +95,7 @@ cp .env.example .env
 后端 API:  http://<SSH_HOST>:28081/admin-api  ← 同端口，由前端 Nginx 反代
 ```
 
-> 服务器侧只开 **28081** 一个公网端口。docker compose 里 web 容器端口映射 `${PORT_WEB:-28081}:80`，后端通过 Nginx 反代 `/admin-api/、/app-api/` 访问 `boheng.server:48080`。**改 web 端口必须同步通知服务器侧开端口**，否则会立刻掉线。
+> 服务器侧只开 **28081** 一个公网端口。docker compose 里 web 容器端口映射 `${PORT_WEB:-28081}:80`，后端通过 Nginx 反代 `/admin-api/、/app-api/` 访问 `boheng.server:48088`。**改 web 端口必须同步通知服务器侧开端口**，否则会立刻掉线。
 
 ## 六、说明
 

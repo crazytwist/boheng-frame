@@ -11,6 +11,8 @@ import org.apache.ibatis.annotations.Mapper;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.DeviceTaskStatus;
+
 /**
  * 设备异步任务队列表。
  */
@@ -55,7 +57,7 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
      */
     default FlowDeviceTaskDO selectClaimable(String deviceCode, List<String> actionCodes) {
         return selectOne(new LambdaQueryWrapperX<FlowDeviceTaskDO>()
-                .eq(FlowDeviceTaskDO::getStatus, "PENDING")
+                .eq(FlowDeviceTaskDO::getStatus, DeviceTaskStatus.PENDING.name())
                 .and(w -> w.isNull(FlowDeviceTaskDO::getDeviceCode)
                         .or().eq(FlowDeviceTaskDO::getDeviceCode, deviceCode))
                 .in(FlowDeviceTaskDO::getActionCode, actionCodes)
@@ -68,13 +70,13 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
      */
     default int claim(Long id, String claimedBy, Long waitMs) {
         FlowDeviceTaskDO patch = new FlowDeviceTaskDO();
-        patch.setStatus("CLAIMED");
+        patch.setStatus(DeviceTaskStatus.CLAIMED.name());
         patch.setClaimedBy(claimedBy);
         patch.setClaimedAt(LocalDateTime.now());
         patch.setWaitMs(waitMs);
         return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getId, id)
-                .eq(FlowDeviceTaskDO::getStatus, "PENDING"));
+                .eq(FlowDeviceTaskDO::getStatus, DeviceTaskStatus.PENDING.name()));
     }
 
     /**
@@ -88,7 +90,7 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
         patch.setExecuteMs(executeMs);
         return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getId, id)
-                .eq(FlowDeviceTaskDO::getStatus, "CLAIMED"));
+                .eq(FlowDeviceTaskDO::getStatus, DeviceTaskStatus.CLAIMED.name()));
     }
 
     /**
@@ -96,12 +98,13 @@ public interface FlowDeviceTaskMapper extends BaseMapperX<FlowDeviceTaskDO> {
      */
     default int timeoutIfOpen(Long id, Long executeMs) {
         FlowDeviceTaskDO patch = new FlowDeviceTaskDO();
-        patch.setStatus("FAILED");
+        patch.setStatus(DeviceTaskStatus.FAILED.name());
         patch.setErrorMessage("设备任务超时");
         patch.setExecuteMs(executeMs);
         return update(patch, new LambdaUpdateWrapper<FlowDeviceTaskDO>()
                 .eq(FlowDeviceTaskDO::getId, id)
-                .in(FlowDeviceTaskDO::getStatus, "PENDING", "CLAIMED"));
+                .in(FlowDeviceTaskDO::getStatus,
+                        DeviceTaskStatus.PENDING.name(), DeviceTaskStatus.CLAIMED.name()));
     }
 
 }

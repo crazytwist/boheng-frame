@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * manual.task 人工确认。执行即挂起，等人在运行页确认；
  * 确认接口写一条 MANUAL 信号，由信号路由器结算节点。
@@ -60,7 +62,8 @@ public class ManualTaskStepType implements StepTypeDescriptor, StepExecutor {
      */
     @Override
     public StepOutcome execute(StepExecutionContext ctx) {
-        return StepOutcome.waiting("MANUAL", ctx.getExecutionId() + ":" + ctx.getNodeId() + ":" + ctx.getAttempt());
+        return StepOutcome.waiting(WaitingReason.MANUAL.name(),
+                ctx.getExecutionId() + ":" + ctx.getNodeId() + ":" + ctx.getAttempt());
     }
 
 }

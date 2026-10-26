@@ -5,6 +5,7 @@ import cn.boheng.frame.module.wms.api.dto.SampleSummaryDTO;
 import cn.boheng.frame.module.wms.controller.admin.sample.vo.SampleInfoSaveReqVO;
 import cn.boheng.frame.module.wms.dal.dataobject.sample.SampleInfoDO;
 import cn.boheng.frame.module.wms.service.sample.SampleInfoService;
+import cn.boheng.frame.module.wms.enums.SampleSourceEnum;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
@@ -47,7 +48,7 @@ public class SampleApiImpl implements SampleApi {
         saveReqVO.setBatchNo(reqDTO.getBatchNo());
         saveReqVO.setOrderNo(reqDTO.getOrderNo());
         saveReqVO.setPriority(reqDTO.getPriority());
-        saveReqVO.setSource(StrUtil.blankToDefault(reqDTO.getSource(), "MANUAL"));
+        saveReqVO.setSource(StrUtil.blankToDefault(reqDTO.getSource(), SampleSourceEnum.MANUAL.name()));
         // 登记即「已登记」态；后续经 updateStatus 流转
         saveReqVO.setStatus(SampleStatus.REGISTERED);
         sampleInfoService.createSample(saveReqVO);

@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.WaitingReason;
+
 /**
  * timer.wait 定时等待。执行器算出到期时刻即返回等待，
  * 由后台扫描器到点发信号唤醒——不依赖外部定时组件，扫描粒度 30 秒。
@@ -71,7 +73,7 @@ public class TimerWaitStepType implements StepTypeDescriptor, StepExecutor {
         TimerWaitConfig config = ctx.config();
         LocalDateTime deadline;
         deadline = LocalDateTime.now().plusSeconds(config.getWaitSeconds());
-        return StepOutcome.waiting("TIMER", deadline.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        return StepOutcome.waiting(WaitingReason.TIMER.name(), deadline.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     }
 
 }

@@ -19,6 +19,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.ExecutionStatus;
+
 /**
  * 节点执行的工作线程池。设备命令是阻塞调用（设备域内部等回调），
  * 绝不能挂在 HTTP 线程或引擎推进线程上——这里用固定守护线程池承接，
@@ -100,7 +102,7 @@ public class FlowExecutionWorker {
             FlowLogContextHolder.setNodeId(nodeId);
             try {
                 FlowExecutionDO fresh = executionMapper.selectById(executionId);
-                if (fresh == null || !"RUNNING".equals(fresh.getStatus())) {
+                if (fresh == null || !ExecutionStatus.RUNNING.name().equals(fresh.getStatus())) {
                     return;
                 }
                 log.info("[flow] 设备任务下发 node={} iter={} attempt={}",

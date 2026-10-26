@@ -16,6 +16,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.StepStatus;
+import static cn.boheng.frame.module.flow.enums.FlowRuntimeEnums.SkipReason;
+
 /**
  * 分支激活与裁剪。拿路由节点已经算好的出口 key：
  * ① 查 branches 找目标节点编码；② 未选中出口的目标及其全部下游标 SKIPPED/BRANCH；
@@ -70,12 +73,12 @@ public class BranchResolver {
         for (String nodeId : visited) {
             FlowStepExecutionDO row = stepExecutionMapper.selectLatestAttempt(
                     routeRow.getExecutionId(), nodeId, iterationNo);
-            if (row == null || !"PENDING".equals(row.getStatus())) {
+            if (row == null || !StepStatus.PENDING.name().equals(row.getStatus())) {
                 continue;
             }
-            row.setStatus("SKIPPED");
+            row.setStatus(StepStatus.SKIPPED.name());
             row.setSkipReason(skipped.contains(nodeId)
-                    ? SkippedReasonOf(routeNode, nodeId) : "UPSTREAM");
+                    ? skippedReasonOf(routeNode, nodeId) : SkipReason.UPSTREAM.name());
             row.setFinishedAt(LocalDateTime.now());
             stepExecutionMapper.updateById(row);
         }
@@ -84,8 +87,8 @@ public class BranchResolver {
     /**
      * 直接目标按出口归属判断原因：不是本次选中出口的目标记 BRANCH
      */
-    private String SkippedReasonOf(RuntimeNode routeNode, String nodeId) {
-        return "BRANCH";
+    private String skippedReasonOf(RuntimeNode routeNode, String nodeId) {
+        return SkipReason.BRANCH.name();
     }
 
 }
