@@ -23,7 +23,11 @@
 | `01-WMS物料模块.md` | WMS 物料、槽位和流水设计 |
 | `02-Device设备模块.md` | Device 设备、命令和状态设计 |
 | `03-Flow流程模块.md` | Flow 流程定义与执行设计 |
-| `04-Transport与资源调度设计.md` | Transport、资源和调度演进方案 |
+| `04-Scheduler调度模块.md` | Scheduler、Resource 和求解器设计 |
+| `05-Data数据模块.md` | 数据采集、治理、处理和资产设计 |
+| `06-Workflow呈现模块.md` | Workflow、流程定义和业务呈现设计 |
+| `07-Transport运输域终版设计.md` | Transport 运输域终版设计 |
+| `04-Transport与资源调度设计.md` | Transport 早期讨论稿（补充材料） |
 | `05-Transport-V1-DDL.sql` | Transport V1.0 十张表 DDL |
 
 仓库中的 `doc/` 和 `sql/mysql/` 保留为正式源码文档与数据库脚本；本目录用于集中查看和同步 Notion 设计资料。
