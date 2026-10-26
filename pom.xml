@@ -30,6 +30,7 @@
         <module>boheng-module-device-api</module>
         <module>boheng-module-device</module>
         <module>boheng-module-flow</module>
+        <module>boheng-module-transport</module>
 <!--        <module>boheng-module-hrm</module>-->
 <!--        <module>boheng-module-fms</module>-->
         <!--        <module>boheng-module-im</module>-->

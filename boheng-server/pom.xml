@@ -142,6 +142,13 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- Transport V1.0：以 AGV 为首个执行载体的运输业务域 -->
+        <dependency>
+            <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-transport</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- HRM 人力资源管理模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->
 <!--            <groupId>cn.boheng</groupId>-->

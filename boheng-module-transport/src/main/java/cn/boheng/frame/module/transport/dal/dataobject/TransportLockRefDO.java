@@ -1,0 +1,4 @@
+package cn.boheng.frame.module.transport.dal.dataobject;
+import cn.boheng.frame.framework.tenant.core.db.TenantBaseDO; import com.baomidou.mybatisplus.annotation.*; import lombok.*; import java.time.LocalDateTime;
+/** Transport 与本地锁或 Resource 租约的关联 DO。 */ @Data @EqualsAndHashCode(callSuper=true) @TableName("transport_lock_ref") @Builder @NoArgsConstructor @AllArgsConstructor
+public class TransportLockRefDO extends TenantBaseDO { @TableId(type=IdType.ASSIGN_ID) private Long id; private Long orderId; private Long stopId; private Long operationId; private String lockMode; private String lockRef; private String resourceType; private String resourceKey; private String scopeType; private Long fencingToken; private String status; private LocalDateTime acquiredAt; private LocalDateTime expireAt; private LocalDateTime releasedAt; private String releaseReason; }

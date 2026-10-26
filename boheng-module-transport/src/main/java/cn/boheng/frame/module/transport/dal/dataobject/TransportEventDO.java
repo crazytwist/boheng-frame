@@ -1,0 +1,4 @@
+package cn.boheng.frame.module.transport.dal.dataobject;
+import cn.boheng.frame.framework.tenant.core.db.TenantBaseDO; import com.baomidou.mybatisplus.annotation.*; import lombok.*; import java.time.LocalDateTime;
+/** Transport 事件流水 DO，只增不改。 */ @Data @EqualsAndHashCode(callSuper=true) @TableName("transport_event") @Builder @NoArgsConstructor @AllArgsConstructor
+public class TransportEventDO extends TenantBaseDO { @TableId(type=IdType.ASSIGN_ID) private Long id; private String eventNo; private Long requestId; private Long orderId; private Long stopId; private Long operationId; private Long itemId; private Long handoverId; private String eventType; private String beforeStatus; private String afterStatus; private String eventPayload; private String sourceType; private String sourceRef; private LocalDateTime occurredAt; private Boolean published; private LocalDateTime publishedAt; private String traceId; private String idempotencyKey; }

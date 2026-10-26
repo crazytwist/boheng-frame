@@ -1,0 +1,4 @@
+package cn.boheng.frame.module.transport.dal.dataobject;
+import cn.boheng.frame.framework.tenant.core.db.TenantBaseDO; import com.baomidou.mybatisplus.annotation.*; import lombok.*; import java.time.LocalDateTime;
+/** Transport 交接证据 DO，只增不改。 */ @Data @EqualsAndHashCode(callSuper=true) @TableName("transport_handover_evidence") @Builder @NoArgsConstructor @AllArgsConstructor
+public class TransportHandoverEvidenceDO extends TenantBaseDO { @TableId(type=IdType.ASSIGN_ID) private Long id; private Long sessionId; private String evidenceSide; private String evidenceType; private Long deviceId; private Long deviceCommandId; private String expectedValue; private String actualValue; private Boolean matched; private String evidencePayload; private LocalDateTime collectedAt; private Boolean valid; private String invalidReason; }
