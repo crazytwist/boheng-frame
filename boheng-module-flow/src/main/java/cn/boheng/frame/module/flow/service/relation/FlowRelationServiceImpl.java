@@ -20,6 +20,7 @@ import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.boheng.frame.module.flow.service.definition.model.FlowNodeDraft;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -147,6 +148,10 @@ public class FlowRelationServiceImpl implements FlowRelationService {
                 .x(reqVO.getX())
                 .y(reqVO.getY())
                 .build();
+        // 路由节点的运行时调度读取节点表 branches，不能只依赖 typeConfig 内的分支配置。
+        if (FlowConstants.STEP_ROUTE.equals(row.getStepType())) {
+            row.setBranches(routeBranchesOf(row.getTypeConfig()));
+        }
         flowNodeMapper.insert(row);
         assertStructure(definition.getId());
         return row.getId();
@@ -197,6 +202,11 @@ public class FlowRelationServiceImpl implements FlowRelationService {
             row.setBranches(route && !reqVO.getBranches().isEmpty()
                     ? JSONUtil.toJsonStr(reqVO.getBranches()) : null);
         }
+        // typeConfig 是路由配置的主来源；保存配置时同步到运行时使用的节点分支字段。
+        if (FlowConstants.STEP_ROUTE.equals(StrUtil.isNotBlank(row.getStepType())
+                ? row.getStepType() : effectiveStepTypeOf(row)) && reqVO.getTypeConfig() != null) {
+            row.setBranches(routeBranchesOf(row.getTypeConfig()));
+        }
         // 参数映射
         if (reqVO.getMappings() != null) {
             row.setInputMapping(reqVO.getMappings().isEmpty() ? null
@@ -216,6 +226,19 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         }
         flowNodeMapper.updateById(row);
         assertStructure(row.getDefinitionId());
+    }
+
+    /**
+     * 从路由类型配置中提取运行时分支映射。
+     * typeConfig 与 flow_node.branches 保留两份是为了兼容校验配置和运行时调度，保存时必须保持一致。
+     */
+    private String routeBranchesOf(String typeConfig) {
+        if (StrUtil.isBlank(typeConfig)) {
+            return null;
+        }
+        JSONObject config = JSONUtil.parseObj(typeConfig);
+        Object branches = config.get("branches");
+        return branches == null ? null : JSONUtil.toJsonStr(branches);
     }
 
     /**

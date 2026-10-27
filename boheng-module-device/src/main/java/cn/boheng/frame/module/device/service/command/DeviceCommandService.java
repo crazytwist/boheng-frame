@@ -87,6 +87,11 @@ public interface DeviceCommandService {
     String getStatus(Long commandId);
 
     /**
+     * 读取命令原始响应，并按命令绑定的解析规则返回结构化 JSON。
+     */
+    String getParsedOutput(Long commandId);
+
+    /**
      * 命令记录分页
      */
     PageResult<DeviceCommandRespVO> getCommandPage(DeviceCommandPageReqVO pageReqVO);

@@ -106,7 +106,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         DeviceCommandDO row = new DeviceCommandDO();
         row.setCommandNo("C" + IdUtil.getSnowflakeNextIdStr());
         row.setSourceType(StrUtil.blankToDefault(src.sourceType(), "MANUAL"));
-        row.setSourceRef(StrUtil.trimToNull(src.sourceRef()));
+        // 数据库部署中 source_ref 为必填；人工调试没有业务单号时，用命令号生成可追溯的来源引用。
+        row.setSourceRef(StrUtil.blankToDefault(StrUtil.trimToNull(src.sourceRef()),
+                "manual:" + row.getCommandNo()));
         row.setAttempt(src.attempt() == null || src.attempt() < 1 ? 1 : src.attempt());
         row.setDeviceId(device.getId());
         row.setDeviceCode(device.getDeviceCode());
@@ -255,6 +257,29 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     public String getStatus(Long commandId) {
         DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
         return command == null ? null : command.getStatus();
+    }
+
+    /**
+     * 用命令绑定的解析规则重新解析原始响应，供流程引擎消费结构化结果。
+     */
+    @Override
+    public String getParsedOutput(Long commandId) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
+        if (command == null || StrUtil.isBlank(command.getCodecCode()) || command.getDataRawId() == null) {
+            return null;
+        }
+        DeviceDataRawDO raw = deviceDataRawMapper.selectById(command.getDataRawId());
+        DeviceCodecDO codec = deviceCodecMapper.selectByCodecCode(command.getCodecCode());
+        if (raw == null || codec == null || (codec.getStatus() != null && codec.getStatus() != 0)) {
+            return null;
+        }
+        try {
+            JSONObject parsed = DeviceCodecParser.parse(codec.getParseType(), codec.getFieldMapping(),
+                    codec.getRegexPattern(), textOf(raw.getRawJson()));
+            return parsed == null ? null : parsed.toString();
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     /**

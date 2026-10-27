@@ -261,7 +261,13 @@ public class FlowSignalDispatcher {
         output.put("commandId", result.getCommandId());
         output.put("commandNo", result.getCommandNo());
         output.put("status", result.getStatus());
-        output.put("body", result.getOutputJson());
+        // 设备域已按动作绑定的解析规则产出结构化结果；流程节点直接映射 sampleCount 等字段。
+        String resultJson = StrUtil.blankToDefault(result.getParsedOutputJson(), result.getOutputJson());
+        if (StrUtil.isNotBlank(resultJson) && JSONUtil.isTypeJSONObject(resultJson)) {
+            output.putAll(JSONUtil.parseObj(resultJson));
+        } else {
+            output.put("body", resultJson);
+        }
         String payload = JSONUtil.toJsonStr(output);
         boolean settled = engine.settle(row, success
                 ? StepOutcome.success(payload)

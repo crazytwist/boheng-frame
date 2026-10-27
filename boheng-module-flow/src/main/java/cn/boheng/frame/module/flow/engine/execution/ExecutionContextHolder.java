@@ -91,7 +91,12 @@ public class ExecutionContextHolder {
             return;
         }
         for (String field : mapping.keySet()) {
-            Object value = output.get(field);
+            // 输出映射支持点路径和数组下标，例如 body.sampleCount、body.items[0].value。
+            // 先按完整路径读取；旧配置仍兼容直接读取顶层字段。
+            Object value = pathGet(output, field);
+            if (value == null && output.containsKey(field)) {
+                value = output.get(field);
+            }
             Object contextKeyObj = mapping.get(field);
             String contextKey = contextKeyObj == null ? null : contextKeyObj.toString();
             save(executionId, FlowConstants.NS_NODE, nodeId, iterationNo,

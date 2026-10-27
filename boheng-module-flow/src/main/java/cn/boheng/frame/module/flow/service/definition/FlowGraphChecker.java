@@ -141,7 +141,8 @@ public final class FlowGraphChecker {
                     continue;
                 }
                 // 1. 源字段必须是能力声明的输出
-                if (!declared.isEmpty() && !declared.contains(field)) {
+                String declaredField = sourceFieldName(field);
+                if (!declared.isEmpty() && !declared.contains(declaredField)) {
                     issues.add(new FlowIssue(node.getNodeId(),
                             "节点【" + labelOf(node) + "】的输出映射字段【" + field + "】不在能力声明的输出里（声明："
                                     + String.join("、", declared) + "）"));
@@ -156,6 +157,19 @@ public final class FlowGraphChecker {
                 }
             }
         }
+    }
+
+    /**
+     * 输出映射允许使用 body.sampleCount、body.items[0].value 等路径，契约校验按路径末段匹配输出声明。
+     */
+    private static String sourceFieldName(String path) {
+        String field = path;
+        int dot = field.lastIndexOf('.');
+        if (dot >= 0 && dot + 1 < field.length()) {
+            field = field.substring(dot + 1);
+        }
+        int bracket = field.indexOf('[');
+        return bracket >= 0 ? field.substring(0, bracket) : field;
     }
 
     /**

@@ -35,6 +35,11 @@ public class DeviceCommandResultDTO {
     private String outputJson;
 
     /**
+     * 按设备动作绑定的解析规则转换后的结构化结果，供流程节点输出映射使用。
+     */
+    private String parsedOutputJson;
+
+    /**
      * 失败时的错误说明
      */
     private String errorMessage;

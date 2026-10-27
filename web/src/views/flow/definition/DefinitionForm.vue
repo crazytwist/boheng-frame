@@ -98,7 +98,9 @@ const emit = defineEmits<{ success: [] }>()
       </el-form-item>
       <el-form-item label="入参声明">
         <JsonKeyValueEditor v-model="formData.inputParams" />
-        <div class="field-tip">声明启动这条流程要传的参数（值即默认值）。启动时未填会用它兜底，参数映射里的「入参」来源也按它给字段候选。</div>
+        <div class="field-tip">
+          声明启动这条流程要传的参数（值即默认值）。参数含义填每行「注释」即可，保存时会写入元数据，启动与映射不会把注释当作入参字段。
+        </div>
       </el-form-item>
     </el-form>
     <template #footer>

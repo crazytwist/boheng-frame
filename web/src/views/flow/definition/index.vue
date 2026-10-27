@@ -37,9 +37,9 @@
         <template #default="scope">v{{ scope.row.version }}</template>
       </el-table-column>
       <el-table-column label="步骤数" align="center" prop="nodeCount" width="80" />
-      <el-table-column label="默认出参" align="center" width="100">
+      <el-table-column label="默认入参" align="center" width="100">
         <template #default="scope">
-          <el-button link type="primary" @click="openOutput(scope.row)">查看 JSON</el-button>
+          <el-button link type="primary" @click="openInput(scope.row)">查看</el-button>
         </template>
       </el-table-column>
       <el-table-column label="状态" align="center" width="100">
@@ -117,14 +117,23 @@
   <DefinitionForm ref="formRef" @success="getList" />
   <DefinitionDetailDrawer ref="detailRef" />
   <FlowIssuePanel ref="issueRef" />
-  <el-dialog v-model="outputVisible" title="默认出参" width="680px" append-to-body>
-    <pre class="output-json">{{ outputJson || '{}' }}</pre>
+  <el-dialog v-model="inputVisible" title="默认入参" width="680px" append-to-body>
+    <p class="input-hint">未手动传参时，流程启动会使用下列默认值（与引擎实际合并入参一致，不含内部注释字段）。</p>
+    <pre class="input-json">{{ inputJson || '{}' }}</pre>
+    <div v-if="inputComments.length" class="input-comments">
+      <div class="input-comments-title">参数说明</div>
+      <div v-for="item in inputComments" :key="item.key" class="input-comment-line">
+        <span class="input-comment-key">{{ item.key }}</span>
+        <span>{{ item.comment }}</span>
+      </div>
+    </div>
   </el-dialog>
 </template>
 
 <script lang="ts" setup>
 import { FlowDefinitionApi, FlowDefinitionVO } from '@/api/flow/definition'
 import { dateFormatter } from '@/utils/formatTime'
+import { formatFlowInputParamsForView, type FlowParamComment } from '@/utils/flowInputParams'
 import DefinitionForm from './DefinitionForm.vue'
 import DefinitionDetailDrawer from './DefinitionDetailDrawer.vue'
 import FlowIssuePanel from '@/components/flow/FlowIssuePanel.vue'
@@ -183,8 +192,9 @@ const resetQuery = () => {
 const formRef = ref()
 const detailRef = ref()
 const issueRef = ref()
-const outputVisible = ref(false)
-const outputJson = ref('')
+const inputVisible = ref(false)
+const inputJson = ref('')
+const inputComments = ref<FlowParamComment[]>([])
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
@@ -210,20 +220,12 @@ const handleValidate = async (row: FlowDefinitionVO) => {
   })
 }
 
-/** 从节点输出声明汇总默认出参，保持列表接口轻量，点击时再读取详情。 */
-const openOutput = async (row: FlowDefinitionVO) => {
-  const detail = await FlowDefinitionApi.get(row.id!)
-  const result: Record<string, unknown> = {}
-  for (const node of detail.nodes || []) {
-    if (!node.outputSchema?.trim()) continue
-    try {
-      result[node.name || node.nodeId] = JSON.parse(node.outputSchema)
-    } catch {
-      result[node.name || node.nodeId] = node.outputSchema
-    }
-  }
-  outputJson.value = JSON.stringify(result, null, 2)
-  outputVisible.value = true
+/** 展示 flow_definition.input_params：默认值与 __comments__ 分开展示。 */
+const openInput = (row: FlowDefinitionVO) => {
+  const { valuesText, comments } = formatFlowInputParamsForView(row.inputParams)
+  inputJson.value = valuesText
+  inputComments.value = comments
+  inputVisible.value = true
 }
 
 const handleRollbackDraft = async (row: FlowDefinitionVO) => {
@@ -300,8 +302,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.output-json {
-  max-height: 520px;
+.input-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.input-json {
+  max-height: 360px;
   margin: 0;
   padding: 14px;
   overflow: auto;
@@ -313,5 +322,32 @@ onMounted(() => {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
+}
+
+.input-comments {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.input-comments-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.input-comment-line {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+.input-comment-key {
+  display: inline-block;
+  min-width: 7em;
+  margin-right: 8px;
+  font-family: Monaco, Consolas, monospace;
+  color: #0f172a;
 }
 </style>

@@ -42,6 +42,7 @@
 <script lang="ts" setup>
 import { FlowStepApi, FlowStepVO, STEP_TYPES } from '@/api/flow/step'
 import CategoryDrawer from '@/views/device/components/CategoryDrawer.vue'
+import { formatFlowInputParamsForView } from '@/utils/flowInputParams'
 
 defineOptions({ name: 'FlowStepDetailDrawer' })
 
@@ -52,37 +53,20 @@ const step = ref<FlowStepVO>()
 const stepTypeLabel = (type?: string) =>
   STEP_TYPES.find((item) => item.value === type)?.label ?? type ?? '—'
 
-/** JSON 美化。stripComments 时剥掉参数注释保留键 __comments__ */
-const formatJson = (raw?: string, stripComments = false): string => {
+const formatJson = (raw?: string): string => {
   if (!raw?.trim()) return ''
   try {
-    const obj = JSON.parse(raw)
-    if (stripComments && typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
-      const { __comments__, ...rest } = obj
-      return JSON.stringify(rest, null, 2)
-    }
-    return JSON.stringify(obj, null, 2)
+    return JSON.stringify(JSON.parse(raw), null, 2)
   } catch {
     return raw
   }
 }
 
 const typeConfigText = computed(() => formatJson(step.value?.typeConfig))
-const defaultParamsText = computed(() => formatJson(step.value?.defaultParams, true))
+const defaultParamsView = computed(() => formatFlowInputParamsForView(step.value?.defaultParams))
+const defaultParamsText = computed(() => defaultParamsView.value.valuesText)
+const defaultComments = computed(() => defaultParamsView.value.comments)
 const outputSchemaText = computed(() => formatJson(step.value?.outputSchema))
-
-/** 默认输入里的参数注释，单独成行展示 */
-const defaultComments = computed<{ key: string; comment: string }[]>(() => {
-  const raw = step.value?.defaultParams
-  if (!raw?.trim()) return []
-  try {
-    const comments = JSON.parse(raw)?.__comments__
-    if (typeof comments !== 'object' || comments === null) return []
-    return Object.entries(comments).map(([key, comment]) => ({ key, comment: String(comment) }))
-  } catch {
-    return []
-  }
-})
 
 const open = async (id: number) => {
   visible.value = true

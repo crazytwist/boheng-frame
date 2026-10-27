@@ -17,6 +17,11 @@
     <dependencies>
         <dependency>
             <groupId>cn.boheng</groupId>
+            <artifactId>boheng-module-flow</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>cn.boheng</groupId>
             <artifactId>boheng-module-device-api</artifactId>
             <version>${revision}</version>
         </dependency>

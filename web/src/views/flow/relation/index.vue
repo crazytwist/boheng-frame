@@ -99,7 +99,7 @@
   </ContentWrap>
 
   <!-- 添加节点：挂能力 或 控制类节点 -->
-  <Dialog v-model="createVisible" title="添加节点" width="560px">
+  <Dialog v-model="createVisible" title="添加节点" width="760px">
     <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="90px">
       <el-form-item label="流程" prop="definitionId">
         <el-select v-model="createForm.definitionId" filterable placeholder="请选择草稿" class="!w-1/1">
@@ -119,7 +119,13 @@
       </el-form-item>
       <template v-if="createForm.mode === 'step'">
         <el-form-item label="步骤" prop="stepId">
-          <el-select v-model="createForm.stepId" filterable placeholder="请选择已有步骤" class="!w-1/1">
+          <el-select
+            v-model="createForm.stepId"
+            filterable
+            placeholder="请选择已有步骤"
+            class="!w-1/1"
+            @visible-change="onStepSelectVisibleChange"
+          >
             <el-option
               v-for="item in steps"
               :key="item.id"
@@ -144,7 +150,36 @@
             <el-option v-for="item in CONTROL_TYPES" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <template v-if="createTypeFields.length">
+        <template v-if="createForm.stepType === 'route'">
+          <el-form-item label="判断方式" required>
+            <el-alert title="按顺序逐行匹配，第一条满足条件的分支生效；未命中时走默认出口。" type="info" :closable="false" />
+          </el-form-item>
+          <el-form-item label="判断条件">
+            <div class="w-1/1">
+              <div v-for="(item, index) in createForm.routeCases" :key="index" class="flex items-center gap-5px mb-5px">
+                <el-input v-model="item.field" placeholder="字段，如 input.status" class="!w-180px" />
+                <el-select v-model="item.operator" class="!w-120px">
+                  <el-option label="等于" value="==" />
+                  <el-option label="不等于" value="!=" />
+                  <el-option label="大于" value=">" />
+                  <el-option label="大于等于" value=">=" />
+                  <el-option label="小于" value="<" />
+                  <el-option label="小于等于" value="<=" />
+                </el-select>
+                <el-input v-model="item.value" placeholder="值，如 READY" class="!w-150px" />
+                <el-select v-model="item.key" filterable placeholder="目标节点" class="!w-180px">
+                  <el-option v-for="opt in nodeOptions(createForm.definitionId)" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+                <el-button link type="danger" @click="createForm.routeCases.splice(index, 1)">删</el-button>
+              </div>
+              <el-button link type="primary" @click="createForm.routeCases.push(newRouteCase())">加条件</el-button>
+              <el-select v-model="createForm.defaultBranch" filterable clearable placeholder="默认目标节点" class="mt-5px !w-1/1">
+                <el-option v-for="opt in nodeOptions(createForm.definitionId)" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+            </div>
+          </el-form-item>
+        </template>
+        <template v-else-if="createTypeFields.length">
           <SchemaForm :fields="createTypeFields" v-model="createForm.typeConfig" />
         </template>
         <el-form-item v-else label="类型配置" prop="typeConfig">
@@ -175,7 +210,7 @@
   </Dialog>
 
   <!-- 编排编辑：前置 / 汇合 / 分支 / 配置 / 参数映射 -->
-  <Dialog v-model="editVisible" title="节点编排" width="720px">
+  <Dialog v-model="editVisible" title="节点编排" width="900px">
     <el-form :model="editForm" label-width="100px" v-loading="editLoading">
       <el-form-item label="节点">
         <span>{{ editForm.nodeId }}（{{ typeLabel(editForm.stepType) }}）</span>
@@ -224,7 +259,36 @@
           <el-option label="裁剪本节点（SKIP）" value="SKIP" />
         </el-select>
       </el-form-item>
-      <template v-if="editTypeFields.length">
+      <template v-if="editForm.stepType === 'route'">
+        <el-form-item label="判断方式">
+          <el-alert title="按顺序逐行匹配，第一条满足条件的分支生效；未命中时走默认出口。" type="info" :closable="false" />
+        </el-form-item>
+        <el-form-item label="判断条件">
+          <div class="w-1/1">
+            <div v-for="(item, index) in editForm.routeCases" :key="index" class="flex items-center gap-5px mb-5px">
+              <el-input v-model="item.field" placeholder="字段，如 input.status" class="!w-180px" />
+              <el-select v-model="item.operator" class="!w-120px">
+                <el-option label="等于" value="==" />
+                <el-option label="不等于" value="!=" />
+                <el-option label="大于" value=">" />
+                <el-option label="大于等于" value=">=" />
+                <el-option label="小于" value="<" />
+                <el-option label="小于等于" value="<=" />
+              </el-select>
+              <el-input v-model="item.value" placeholder="值，如 READY" class="!w-150px" />
+              <el-select v-model="item.key" filterable placeholder="目标节点" class="!w-180px">
+                <el-option v-for="opt in editNodeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+              <el-button link type="danger" @click="editForm.routeCases.splice(index, 1)">删</el-button>
+            </div>
+            <el-button link type="primary" @click="editForm.routeCases.push(newRouteCase())">加条件</el-button>
+            <el-select v-model="editForm.defaultBranch" filterable clearable placeholder="默认目标节点" class="mt-5px !w-1/1">
+              <el-option v-for="opt in editNodeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+          </div>
+        </el-form-item>
+      </template>
+      <template v-else-if="editTypeFields.length">
         <SchemaForm :fields="editTypeFields" v-model="editForm.typeConfig" />
       </template>
       <el-form-item v-else :label="editForm.isControl ? '类型配置' : '配置覆盖'">
@@ -236,8 +300,8 @@
           :placeholder="editForm.isControl ? '控制类节点必填' : '选填。节点级覆盖步骤上的配置 JSON'"
         />
       </el-form-item>
-      <!-- route 分支出口 -->
-      <el-form-item v-if="editForm.stepType === 'route'" label="分支出口">
+      <!-- 非路由节点的通用分支出口；路由节点分支已在“判断条件/默认目标节点”中配置 -->
+      <el-form-item v-if="editForm.stepType !== 'route'" label="分支出口">
         <div class="w-1/1">
           <div v-for="(branch, index) in editForm.branches" :key="index" class="flex items-center gap-5px mb-5px">
             <el-input v-model="branch.key" maxlength="32" placeholder="出口名" class="!w-120px" />
@@ -568,6 +632,12 @@ const loadOptions = async () => {
   steps.value = (await FlowStepApi.getList()) || []
 }
 
+/** 打开步骤选择器时刷新，避免步骤管理页新增后本页仍使用旧列表。 */
+const onStepSelectVisibleChange = async (visible: boolean) => {
+  if (!visible) return
+  steps.value = (await FlowStepApi.getList()) || []
+}
+
 const applyRoute = () => {
   const raw = route.query.definitionId
   if (Array.isArray(raw)) {
@@ -603,7 +673,9 @@ const createForm = reactive({
   name: '',
   stepType: undefined as string | undefined,
   typeConfig: '',
-  dependsOn: [] as string[]
+  dependsOn: [] as string[],
+  routeCases: [] as RouteCaseRow[],
+  defaultBranch: 'default'
 })
 const createRules = {
   definitionId: [{ required: true, message: '请选择流程', trigger: 'change' }],
@@ -620,6 +692,31 @@ const controlPlaceholder = computed(() => {
   return sample ? `配置 JSON，如 ${sample}` : '类型专属配置 JSON'
 })
 
+const newRouteCase = (): RouteCaseRow => ({ field: '', operator: '==', value: '', key: '' })
+const routeConfigFromCases = (cases: RouteCaseRow[], defaultBranch: string) => {
+  const valid = cases.filter((item) => item.field?.trim() && item.key?.trim())
+  const branches: Record<string, string[]> = {}
+  const expression = valid.reduceRight((fallback, item) => {
+    const value = item.value?.trim() ?? ''
+    const literal = /^-?\d+(\.\d+)?$/.test(value) || value === 'true' || value === 'false'
+      ? value : `'${value.replaceAll("'", "\\'")}'`
+    const branchKey = `case_${valid.indexOf(item) + 1}`
+    branches[branchKey] = [item.key.trim()]
+    return `${item.field.trim()} ${item.operator || '=='} ${literal} ? '${branchKey}' : ${fallback}`
+  }, "'default'")
+  branches.default = defaultBranch?.trim() ? [defaultBranch.trim()] : []
+  return JSON.stringify({ router: { kind: 'expression', expression, cases: valid, defaultKey: 'default' }, branches })
+}
+const parseRouteCases = (raw?: string) => {
+  try {
+    const config = raw ? JSON.parse(raw) : {}
+    if (Array.isArray(config?.router?.cases)) {
+      return { cases: config.router.cases.map((item: Partial<RouteCaseRow>) => ({ ...newRouteCase(), ...item })), defaultBranch: config.branches?.default?.[0] || 'default' }
+    }
+  } catch { /* 旧版表达式无法可靠反解析 */ }
+  return { cases: [newRouteCase()], defaultBranch: 'default' }
+}
+
 const openCreate = () => {
   createForm.mode = 'step'
   createForm.definitionId = selectedDefinition.value?.status === 'DRAFT' ? queryParams.definitionId as number : undefined
@@ -629,6 +726,8 @@ const openCreate = () => {
   createForm.stepType = undefined
   createForm.typeConfig = ''
   createForm.dependsOn = []
+  createForm.routeCases = [newRouteCase()]
+  createForm.defaultBranch = 'default'
   createVisible.value = true
 }
 
@@ -640,7 +739,7 @@ const submitCreate = async () => {
       message.error('控制类节点要填写节点编码')
       return
     }
-    if (!createForm.typeConfig?.trim()) {
+    if (createForm.stepType !== 'route' && !createForm.typeConfig?.trim()) {
       message.error('控制类节点要填写类型配置')
       return
     }
@@ -660,7 +759,9 @@ const submitCreate = async () => {
             nodeId: createForm.nodeId!.trim(),
             name: createForm.name!.trim(),
             stepType: createForm.stepType!,
-            typeConfig: createForm.typeConfig!.trim(),
+            typeConfig: createForm.stepType === 'route'
+              ? routeConfigFromCases(createForm.routeCases, createForm.defaultBranch)
+              : createForm.typeConfig!.trim(),
             dependsOn: createForm.dependsOn
           }
     )
@@ -678,6 +779,12 @@ const submitCreate = async () => {
 interface BranchRow {
   key: string
   targets: string[]
+}
+interface RouteCaseRow {
+  field: string
+  operator: string
+  value: string
+  key: string
 }
 interface MappingRow {
   param: string
@@ -708,7 +815,9 @@ const editForm = reactive({
   joinFailurePolicy: undefined as string | undefined,
   branches: [] as BranchRow[],
   mappings: [] as MappingRow[],
-  outputMapping: [] as OutputRow[]
+  outputMapping: [] as OutputRow[],
+  routeCases: [] as RouteCaseRow[],
+  defaultBranch: 'default'
 })
 const editNodeOptions = computed(() => nodeOptions(editDefinitionId.value))
 
@@ -877,6 +986,9 @@ const openEdit = async (row: FlowRelationVO) => {
     editForm.name = detail.name ?? ''
     editForm.stepId = detail.stepId
     editForm.typeConfig = detail.typeConfig ?? ''
+    const routeConfig = detail.stepType === 'route' ? parseRouteCases(detail.typeConfig) : { cases: [], defaultBranch: 'default' }
+    editForm.routeCases = routeConfig.cases
+    editForm.defaultBranch = routeConfig.defaultBranch
     editForm.dependsOn = [...(detail.dependsOn ?? [])]
     editForm.joinPolicy = detail.joinPolicy || undefined
     editForm.joinFailurePolicy = detail.joinFailurePolicy || undefined
@@ -903,9 +1015,16 @@ const submitEdit = async () => {
     return
   }
   const branches: Record<string, string[]> = {}
-  for (const branch of editForm.branches) {
-    if (branch.key?.trim()) {
-      branches[branch.key.trim()] = branch.targets
+  if (editForm.stepType === 'route') {
+    editForm.routeCases.forEach((item, index) => {
+      if (item.key?.trim()) branches[`case_${index + 1}`] = [item.key.trim()]
+    })
+    if (editForm.defaultBranch?.trim()) branches.default = [editForm.defaultBranch.trim()]
+  } else {
+    for (const branch of editForm.branches) {
+      if (branch.key?.trim()) {
+        branches[branch.key.trim()] = branch.targets
+      }
     }
   }
   const outputMapping: Record<string, string> = {}
@@ -919,7 +1038,9 @@ const submitEdit = async () => {
     await FlowRelationApi.update({
       id: editId.value,
       name: editForm.isControl ? editForm.name?.trim() : undefined,
-      typeConfig: editForm.typeConfig?.trim() || undefined,
+      typeConfig: editForm.stepType === 'route'
+        ? routeConfigFromCases(editForm.routeCases, editForm.defaultBranch)
+        : editForm.typeConfig?.trim() || undefined,
       dependsOn: editForm.dependsOn,
       joinPolicy: editForm.joinPolicy || '',
       joinFailurePolicy: editForm.joinFailurePolicy || '',

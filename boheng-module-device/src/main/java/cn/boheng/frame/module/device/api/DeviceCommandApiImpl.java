@@ -99,6 +99,7 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
             result.setStatus(command.getStatus());
             result.setSuccess("SUCCEEDED".equals(command.getStatus()));
             result.setOutputJson(command.getRawBody());
+            result.setParsedOutputJson(deviceCommandService.getParsedOutput(commandId));
             result.setErrorMessage(command.getErrorMsg());
         } catch (RuntimeException ex) {
             result.setStatus("FAILED");
