@@ -4,7 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.Map;
 
 /**
  * 参数集预设 创建/修改 Request VO
@@ -38,13 +40,10 @@ public class DeviceParamSetSaveReqVO {
     @Size(max = 64, message = "关联动作编码长度不能超过 64 个字符")
     private String actionCode;
 
-    @Schema(description = "参数取值 JSON（与 device_action.param_schema 对齐）",
+    @Schema(description = "参数取值对象（与 device_action.param_schema 对齐）",
             example = "{\"wavelength\":450,\"mode\":\"ABSORBANCE\"}")
-    /**
-     * 下发时的参数快照
-     */
-    @NotEmpty(message = "参数取值不能为空")
-    private String paramsJson;
+    @NotNull(message = "参数取值不能为空")
+    private Map<String, Object> paramsJson;
 
     @Schema(description = "是否已验证（只有已验证才能被用于发起命令）", example = "false")
     private Boolean validated;

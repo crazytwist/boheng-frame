@@ -57,8 +57,8 @@ device_measurement (1) ──< device_analysis_result (N)   measurement_id
 - **占用锁（对齐 SiLA）**：`currentCommandId/lockHolder/lockType/lockAcquiredTime/lockExpireTime/lockReason`
 
 ### device_action（动作）
-- `deviceTypeCode + actionCode`（唯一）、`paramSchema`（JSON：参数名→{label,type,unit,required,default}）
-- 下发：`httpMethod/bodyFormat/requestPath/requestTemplate`（`${param}` 占位）
+- `deviceTypeCode + actionCode`（唯一）、`paramSchema`（输入契约：参数名→{label,type,unit,required,default,constraints}）
+- 下发：`httpMethod/bodyFormat/requestPath`；`requestTemplate` 仅作为高级厂商报文映射（`${param}` 占位），普通 JSON 接口不配置
 - 回收：`resultMode`（SYNC_RETURN/CALLBACK/POLL）、`pollDoneExpr`、`codecCode`、`estimateDurationMs`
 
 ### device_command（命令，核心）
@@ -108,6 +108,26 @@ device_measurement (1) ──< device_analysis_result (N)   measurement_id
 
 `applyCodec`：取 codec → `DeviceCodecParser.parse`（JSON 字段映射 / REGEX 捕获组，**带 2 秒正则超时保护**）→ `ingest` 拆成 measurement + 孔级读数 + 分析结果。解析失败只记 `errorMsg`，**L0 原始数据保留**可重建。
 
+### 机制六：输入契约 → 参数集 → 设备报文
+
+设备动作采用“业务参数与厂商协议分离”的模型：
+
+1. `device_action.param_schema` 是动作输入的唯一契约，定义参数类型、必填、默认值和约束。
+2. `device_param_set.params_json` 是命名参数方案，只保存一组可复用取值，保存和标记已验证时必须符合动作输入契约。
+3. 流程映射或人工输入形成运行时覆盖值；进入设备域后统一由 `DeviceParamResolver` 展开默认值并执行校验。
+4. 最终业务参数写入 `device_command.params_json`，作为本次执行快照。
+5. 普通 JSON 接口不需要请求模板，最终参数直接序列化下发。
+6. 只有厂商字段名、嵌套结构或报文格式不同（如 XML、特殊 TEXT）时才配置 `request_template`；渲染后仍有未解析占位符时拒绝下发。
+7. 实际发送的报文写入 `device_command.payload_json/request_json`，用于排障和复现。
+
+参数值优先级遵循：
+
+```text
+输入契约默认值 → 参数集 → 流程映射或人工输入
+```
+
+其中输入契约负责“允许什么”，参数集负责“常用的一组值”，高级报文映射只负责“如何翻译成厂商协议”，三者不互相替代。
+
 ---
 
 ## 五、契约层（供 flow 调用）
@@ -134,6 +154,8 @@ flow 侧两种用法：
 4. **唯一键「生成列 + 唯一索引」**，逻辑删除后释放编码。
 5. **状态与等待原因正交**：`status` 表达「走到哪」，`waitingFor` 表达「在等什么」。
 6. **数据三层可重建**：L0 不可变 → L1 标准化 → L2 可重判。
+7. **输入契约单一来源**：参数默认值、类型、必填和约束只在 `param_schema` 定义；参数集与运行时输入统一通过后端解析器校验。
+8. **报文映射按需使用**：平台参数与厂商字段一致时直接下发 JSON；`request_template` 只处理协议差异，不作为必填配置。
 
 ---
 

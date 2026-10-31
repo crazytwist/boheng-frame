@@ -68,9 +68,13 @@ cp .env.example .env
 ```bash
 ./deploy.sh            # 复用已有 jar/dist，重建镜像并滚动更新；自动应用 SQL 增量迁移
 ./deploy.sh --build    # 代码有变更时，强制 mvn + pnpm 重新构建
+./deploy.sh --build --remote-build  # 推荐：完整构建，并由目标服务器构建 Docker 镜像
 ./deploy.sh --skip-migrate  # 只发代码，跳过数据库迁移
 ./deploy.sh --migrate-only  # 只跑 SQL 增量（不动代码/镜像/容器）
 ```
+
+不指定 `--remote-build` 时，脚本会先检测本机是否能读取 Docker Hub
+基础镜像；如果遇到代理错误或返回 HTML，会自动切换到目标服务器构建。
 
 ### 4. 数据库迁移（schema history）
 

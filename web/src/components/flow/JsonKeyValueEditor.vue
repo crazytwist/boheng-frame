@@ -1,13 +1,23 @@
 <template>
   <div class="kv-editor">
     <div v-for="(row, index) in rows" :key="index" class="kv-row">
-      <el-input v-model="row.key" :maxlength="64" :placeholder="mode === 'desc' ? '输出字段名' : '键'" class="!w-160px" />
+      <el-input
+        v-model="row.key"
+        :maxlength="64"
+        :placeholder="mode === 'desc' ? '输出字段名' : '键'"
+        class="!w-160px"
+      />
       <template v-if="mode === 'param'">
         <el-select v-model="row.type" class="!w-82px">
           <el-option v-for="t in TYPES" :key="t.value" :label="t.label" :value="t.value" />
         </el-select>
         <el-input v-model="row.value" maxlength="512" placeholder="值" class="kv-value" />
-        <el-input v-model="row.comment" maxlength="200" placeholder="注释：参数含义" class="kv-comment" />
+        <el-input
+          v-model="row.comment"
+          maxlength="200"
+          placeholder="注释：参数含义"
+          class="kv-comment"
+        />
       </template>
       <el-input
         v-else
@@ -19,7 +29,17 @@
       <el-button link type="danger" @click="remove(index)">删</el-button>
     </div>
     <div class="kv-actions">
-      <el-button link type="primary" @click="add">+ 加{{ mode === 'desc' ? '输出字段' : '参数' }}</el-button>
+      <el-button link type="primary" @click="add"
+        >+ 加{{ mode === 'desc' ? '输出字段' : '参数' }}</el-button
+      >
+      <el-button
+        v-if="mode === 'param' && suggestions.length"
+        link
+        type="primary"
+        @click="applySuggestions"
+      >
+        按参考字段补齐
+      </el-button>
       <el-button link type="primary" @click="openJsonDialog">JSON 格式转换</el-button>
     </div>
     <!-- JSON 转换弹框：粘贴一段 JSON，确定后解析进参数行 -->
@@ -55,6 +75,13 @@ interface KvRow {
   comment: string
 }
 
+interface KvSuggestion {
+  key: string
+  type?: string
+  value?: unknown
+  comment?: string
+}
+
 const TYPES = [
   { label: '文本', value: 'string' },
   { label: '数字', value: 'number' },
@@ -67,8 +94,12 @@ const TYPES = [
 const COMMENTS_KEY = '__comments__'
 
 const props = withDefaults(
-  defineProps<{ modelValue?: string; mode?: 'param' | 'desc' }>(),
-  { mode: 'param' }
+  defineProps<{
+    modelValue?: string
+    mode?: 'param' | 'desc'
+    suggestions?: KvSuggestion[]
+  }>(),
+  { mode: 'param', suggestions: () => [] }
 )
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
@@ -187,6 +218,19 @@ const add = () => {
   rows.value.push({ key: '', type: 'string', value: '', comment: '' })
 }
 
+const applySuggestions = () => {
+  const existing = new Set(rows.value.map((row) => row.key?.trim()).filter(Boolean))
+  for (const suggestion of props.suggestions) {
+    if (!suggestion.key || existing.has(suggestion.key)) continue
+    rows.value.push({
+      key: suggestion.key,
+      type: suggestion.type || typeOf(suggestion.value),
+      value: stringifyValue(suggestion.value),
+      comment: suggestion.comment || ''
+    })
+  }
+}
+
 const remove = (index: number) => {
   rows.value.splice(index, 1)
 }
@@ -230,11 +274,7 @@ const applyJson = () => {
 }
 
 // 行内容变化即序列化回父组件
-watch(
-  rows,
-  () => emitNow(),
-  { deep: true }
-)
+watch(rows, () => emitNow(), { deep: true })
 </script>
 
 <style lang="scss" scoped>

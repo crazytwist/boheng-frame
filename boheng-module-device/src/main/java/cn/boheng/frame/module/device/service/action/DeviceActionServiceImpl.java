@@ -33,6 +33,11 @@ public class DeviceActionServiceImpl implements DeviceActionService {
     @Resource
     private DeviceActionMapper deviceActionMapper;
     /**
+     * 设备动作输入契约解析器
+     */
+    @Resource
+    private DeviceParamResolver deviceParamResolver;
+    /**
      * 创建设备动作
      */
 
@@ -40,6 +45,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
     public Long createAction(DeviceActionSaveReqVO createReqVO) {
         // 校验「类型 + 动作」唯一性
         validateActionUnique(createReqVO.getId(), createReqVO.getDeviceTypeCode(), createReqVO.getActionCode());
+        deviceParamResolver.validateSchema(createReqVO.getParamSchema());
         normalizeRequest(createReqVO);
 
         // 插入
@@ -57,6 +63,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         validateActionExists(updateReqVO.getId());
         // 校验「类型 + 动作」唯一性
         validateActionUnique(updateReqVO.getId(), updateReqVO.getDeviceTypeCode(), updateReqVO.getActionCode());
+        deviceParamResolver.validateSchema(updateReqVO.getParamSchema());
         normalizeRequest(updateReqVO);
 
         // 更新

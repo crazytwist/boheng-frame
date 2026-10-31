@@ -10,6 +10,7 @@ import cn.boheng.frame.module.device.dal.mysql.command.DeviceCommandMapper;
 import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
 import cn.boheng.frame.module.device.service.callback.DeviceCallbackService;
 import cn.boheng.frame.module.device.service.callback.DeviceCallbackTicket;
+import cn.boheng.frame.module.device.service.action.DeviceParamResolver;
 import cn.boheng.frame.module.device.service.command.DeviceCommandService;
 import cn.boheng.frame.module.device.service.device.DeviceInfoService;
 import cn.boheng.frame.module.device.service.simulate.SimulateHttpService;
@@ -79,6 +80,11 @@ public class DeviceHttpService {
      */
     @Resource
     private DeviceCommandMapper deviceCommandMapper;
+    /**
+     * 设备动作输入契约解析器，统一展开默认值并校验最终参数
+     */
+    @Resource
+    private DeviceParamResolver deviceParamResolver;
 
     /**
      * 不等回调的调用占用设备多久。同步最长 20 秒、轮询最长 10 分钟，再留些余量
@@ -131,8 +137,9 @@ public class DeviceHttpService {
         if (callback && !simulate && !Boolean.TRUE.equals(device.getCallbackEnabled())) {
             throw exception(DEVICE_CALLBACK_DISABLED, device.getDeviceCode());
         }
+        String resolvedParamsJson = deviceParamResolver.resolve(action.getParamSchema(), reqVO.getParamsJson());
         String codecCode = StrUtil.blankToDefault(reqVO.getCodecCode(), action.getCodecCode());
-        DeviceCommandDO command = deviceCommandService.open(device, action, reqVO.getParamsJson(), codecCode, source);
+        DeviceCommandDO command = deviceCommandService.open(device, action, resolvedParamsJson, codecCode, source);
         boolean occupied = occupy(device, action, command, callback);
         boolean keepOccupied = false;
         DeviceCallbackTicket ticket = null;
@@ -142,9 +149,9 @@ public class DeviceHttpService {
                 deviceCommandService.markWaitingCallback(command.getId(), ticket.tokenHash(), ticket.timeoutAt());
             }
             DeviceInvokeRespVO resp = simulate
-                    ? simulateHttpService.exchange(device, action, reqVO.getParamsJson(), command.getId(),
+                    ? simulateHttpService.exchange(device, action, resolvedParamsJson, command.getId(),
                             command.getCommandNo(), ticket)
-                    : deviceHttpGateway.invoke(device, action, reqVO.getParamsJson(), command.getCommandNo(), ticket);
+                    : deviceHttpGateway.invoke(device, action, resolvedParamsJson, command.getCommandNo(), ticket);
             if (callback) {
                 acceptCallback(device, command, resp);
                 keepOccupied = occupied;
