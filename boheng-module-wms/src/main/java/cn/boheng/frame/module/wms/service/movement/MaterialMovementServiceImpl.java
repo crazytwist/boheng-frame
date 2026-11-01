@@ -55,18 +55,36 @@ public class MaterialMovementServiceImpl implements MaterialMovementService {
         if (StrUtil.isBlank(movement.getBizSource())) {
             movement.setBizSource(BIZ_SOURCE_MANUAL);
         }
+        // D1-a 预查：行键已存在则抛 MOVEMENT_IDEMPOTENT_DUPLICATE。
+        // 消耗等写操作在业务层捕获后 setRollbackOnly 并回放首次结果；
+        // 其他写路径保持「抛错 + 事务回滚」，避免半执行。
+        if (StrUtil.isNotBlank(movement.getIdempotentKey())) {
+            MaterialMovementDO existing = materialMovementMapper.selectByIdempotentKey(movement.getIdempotentKey());
+            if (existing != null) {
+                throw exception(MOVEMENT_IDEMPOTENT_DUPLICATE, movement.getIdempotentKey());
+            }
+        }
         // 流水只增不改：这里只有 insert，没有 update / delete
         try {
             materialMovementMapper.insert(movement);
         } catch (DuplicateKeyException e) {
-            // 由唯一索引 uk_idempotent 兜底：外部模块重复投递同一次操作时，只生效一次。
-            // 抛出后整个事务回滚，业务变更（落位 / 消耗）也随之撤销，不会出现半执行状态。
+            // 并发窗口：预查与 insert 之间另一事务已写入同一 uk_idempotent
             if (StrUtil.containsIgnoreCase(e.getMessage(), "uk_idempotent")) {
                 throw exception(MOVEMENT_IDEMPOTENT_DUPLICATE, movement.getIdempotentKey());
             }
             throw e;
         }
         return movement.getId();
+    }
+
+    @Override
+    public MaterialMovementDO getByIdempotentKey(String idempotentKey) {
+        return materialMovementMapper.selectByIdempotentKey(idempotentKey);
+    }
+
+    @Override
+    public List<MaterialMovementDO> listByBusinessIdempotentKey(String businessIdempotentKey) {
+        return materialMovementMapper.selectListByBusinessIdempotentKey(businessIdempotentKey);
     }
 
     @Override

@@ -284,6 +284,16 @@ class MaterialInstanceServiceImplTest {
         public List<MaterialMovementDO> getRecentMovementListBySlot(Long slotId, Integer limit) {
             return List.of();
         }
+
+        @Override
+        public MaterialMovementDO getByIdempotentKey(String idempotentKey) {
+            return null;
+        }
+
+        @Override
+        public List<MaterialMovementDO> listByBusinessIdempotentKey(String businessIdempotentKey) {
+            return List.of();
+        }
     }
 
     /**

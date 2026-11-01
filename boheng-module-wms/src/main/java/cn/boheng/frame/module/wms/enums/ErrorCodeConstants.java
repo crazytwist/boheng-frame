@@ -59,6 +59,8 @@ public interface ErrorCodeConstants {
     ErrorCode BATCH_PUT_IN_SLOTS_EMPTY = new ErrorCode(1_003_005_010, "批量铺货的目标槽位列表不能为空");
     ErrorCode BATCH_PUT_IN_MATERIAL_KIND_INVALID = new ErrorCode(1_003_005_011, "物料类型【{}】非法，仅支持 CONTENT / CONTAINER");
     ErrorCode BATCH_PUT_IN_CONTAINER_REQUIRED = new ErrorCode(1_003_005_012, "铺货试剂类物料必须指定容器类型");
+    ErrorCode INSTANCE_USE_STATUS_ILLEGAL = new ErrorCode(1_003_005_013, "实例【{}】当前状态为【{}】，不允许标记为使用中");
+    ErrorCode INSTANCE_RELEASE_STATUS_ILLEGAL = new ErrorCode(1_003_005_014, "实例【{}】当前状态为【{}】，不允许释放");
 
     // ========== 样本 1-003-006-000 ==========
     ErrorCode SAMPLE_NOT_EXISTS = new ErrorCode(1_003_006_000, "样本不存在");

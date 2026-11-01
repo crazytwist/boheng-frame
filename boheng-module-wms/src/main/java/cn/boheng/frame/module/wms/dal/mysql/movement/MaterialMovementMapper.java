@@ -101,4 +101,31 @@ public interface MaterialMovementMapper extends BaseMapperX<MaterialMovementDO> 
                 .orderByDesc(MaterialMovementDO::getId);
         return selectPage(pageParam, wrapper).getList();
     }
+
+    /**
+     * 按流水行幂等键精确查询（含 {@code businessKey#index}）。
+     */
+    default MaterialMovementDO selectByIdempotentKey(String idempotentKey) {
+        if (StrUtil.isBlank(idempotentKey)) {
+            return null;
+        }
+        return selectOne(MaterialMovementDO::getIdempotentKey, idempotentKey);
+    }
+
+    /**
+     * 按调用方业务幂等键前缀查询本批全部流水行（{@code businessKey#*}），按行键序号升序。
+     *
+     * <p>调用方传入的是不带 {@code #index} 的业务键；行键由 applyTrace 派生。</p>
+     */
+    default List<MaterialMovementDO> selectListByBusinessIdempotentKey(String businessIdempotentKey) {
+        if (StrUtil.isBlank(businessIdempotentKey)) {
+            return List.of();
+        }
+        String prefix = businessIdempotentKey + "#";
+        return selectList(new LambdaQueryWrapperX<MaterialMovementDO>()
+                .likeRight(MaterialMovementDO::getIdempotentKey, prefix)
+                .orderByAsc(MaterialMovementDO::getIdempotentKey)
+                .orderByAsc(MaterialMovementDO::getId));
+    }
+
 }

@@ -4,6 +4,12 @@ import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceBatchPutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeByContainerReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReleaseRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceSaveReqVO;
@@ -124,18 +130,22 @@ public interface MaterialInstanceService {
      * 精确消耗：items 中每一项都是被消耗的那个实例本身（可以是根实例也可以是子实例），
      * 支持离散计数（qty）与连续体积（volUl）。每个实例记一条 CONSUME 流水。
      *
+     * <p>同 {@code idempotentKey} 重复调用回放首次结果（D1-a），库存只扣一次。</p>
+     *
      * @param reqVO 消耗信息
-     * @return 流水编号列表（顺序与 items 一致）
+     * @return 统一消耗结果（流水 id + 实例 id + operationId）
      */
-    List<Long> consume(@Valid MaterialInstanceConsumeReqVO reqVO);
+    MaterialInstanceConsumeRespVO consume(@Valid MaterialInstanceConsumeReqVO reqVO);
 
     /**
      * 按容器消耗：调用方只知道「要从这个容器拿 N 个」，由后端按策略挑选可用子实例后逐个消耗。
      *
+     * <p>同 {@code idempotentKey} 重复调用回放首次结果（D1-a），库存只扣一次。</p>
+     *
      * @param reqVO 按容器消耗信息
-     * @return 实际被消耗掉的子实例编号列表
+     * @return 统一消耗结果（流水 id + 实例 id + operationId）
      */
-    List<Long> consumeByContainer(@Valid MaterialInstanceConsumeByContainerReqVO reqVO);
+    MaterialInstanceConsumeRespVO consumeByContainer(@Valid MaterialInstanceConsumeByContainerReqVO reqVO);
 
 
     // ==================== 查询 ====================
@@ -178,4 +188,20 @@ public interface MaterialInstanceService {
      * @return 未落位的顶层实例
      */
     List<MaterialInstanceDO> getUnplacedList();
+
+    /**
+     * 可用性检查（D4-a）：不通过返回结果对象，不抛业务拒绝。
+     */
+    MaterialInstanceCheckRespVO checkAvailability(@Valid MaterialInstanceCheckReqVO reqVO);
+
+    /**
+     * 最小 use：AVAILABLE/RESERVED → IN_USE（D2-a）。
+     */
+    MaterialInstanceUseReleaseRespVO use(@Valid MaterialInstanceUseReqVO reqVO);
+
+    /**
+     * 最小 release：IN_USE/RESERVED → AVAILABLE（D2-a）。
+     */
+    MaterialInstanceUseReleaseRespVO release(@Valid MaterialInstanceReleaseReqVO reqVO);
+
 }

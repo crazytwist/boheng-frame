@@ -111,19 +111,30 @@ export const MaterialInstanceApi = {
     return await request.post({ url: '/wms/material-instance/transfer', data })
   },
 
-  // 消耗（按实例精确消耗，供其他模块调用）
+  // 消耗（按实例精确消耗，供其他模块调用；返回统一 ConsumeResp）
   consume: async (data: any) => {
     return await request.post({ url: '/wms/material-instance/consume', data })
   },
 
-  // 消耗（按容器领取 N 个子实例）
+  // 消耗（按容器领取 N 个子实例；返回统一 ConsumeResp）
   consumeByContainer: async (data: {
     rootInstanceId: number
     count: number
     strategy?: string
     afterStatus?: string
     remark?: string
+    idempotentKey?: string
+    operationId?: string
+    bizSource?: string
   }) => {
     return await request.post({ url: '/wms/material-instance/consume-by-container', data })
   }
+}
+
+/** 消耗统一返回（W-1.6 / Phase C） */
+export interface MaterialInstanceConsumeRespVO {
+  movementIds?: number[]
+  consumedInstanceIds?: number[]
+  operationId?: string
+  idempotentReplay?: boolean
 }

@@ -42,7 +42,7 @@
 
 | # | 项 | 状态 |
 |---|---|---|
-| B1 | `consume` 与 `consume-by-container` 返回值语义不一致 | 🟠 |
+| B1 | `consume` 与 `consume-by-container` 返回值语义不一致 | ✅ Phase C |
 
 - **问题**：
   - `POST /wms/material-instance/consume` 返回 `List<Long>` = **流水 id**
