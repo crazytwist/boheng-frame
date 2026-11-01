@@ -9,6 +9,7 @@ import cn.boheng.frame.module.wms.enums.SampleSourceEnum;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
@@ -33,6 +34,27 @@ public class SampleApiImpl implements SampleApi {
 
     @Override
     public String registerSample(SampleRegisterReqDTO reqDTO) {
+        // 与批量共用 registerOne → createSample 同态幂等语义（避免同类自调用绕过事务代理）
+        return registerOne(reqDTO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<String> registerSamples(List<SampleRegisterReqDTO> reqDTOs) {
+        if (reqDTOs == null || reqDTOs.isEmpty()) {
+            return List.of();
+        }
+        List<String> sampleIds = new ArrayList<>(reqDTOs.size());
+        for (SampleRegisterReqDTO reqDTO : reqDTOs) {
+            sampleIds.add(registerOne(reqDTO));
+        }
+        return sampleIds;
+    }
+
+    /**
+     * 单条登记：委托 createSample（含同态幂等 / CONFLICT），返回业务编号。
+     */
+    private String registerOne(SampleRegisterReqDTO reqDTO) {
         SampleInfoSaveReqVO saveReqVO = new SampleInfoSaveReqVO();
         // 样本编号：调用方不传由 wms 生成（雪花，保证租户内唯一）
         saveReqVO.setSampleId(StrUtil.isBlank(reqDTO.getSampleId())

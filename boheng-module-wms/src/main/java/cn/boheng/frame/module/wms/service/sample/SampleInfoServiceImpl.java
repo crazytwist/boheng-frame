@@ -14,19 +14,23 @@ import cn.boheng.frame.module.wms.enums.SampleSourceEnum;
 import cn.boheng.frame.module.wms.enums.SampleStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
+import java.math.BigDecimal;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_DERIVE_TYPE_INVALID;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_HAS_INSTANCES;
+import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_ID_CONFLICT;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_ID_DUPLICATE;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_NOT_EXISTS;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_STATUS_TRANSITION_INVALID;
@@ -76,8 +80,11 @@ public class SampleInfoServiceImpl implements SampleInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSample(SampleInfoSaveReqVO createReqVO) {
-        // 1. 校验样本编号唯一性
-        validateSampleIdUnique(createReqVO.getId(), createReqVO.getSampleId());
+        // 1. 同态幂等：同 sampleId 已存在且关键属性一致 → 返回已有主键；不一致 → CONFLICT
+        SampleInfoDO existing = sampleInfoMapper.selectBySampleId(createReqVO.getSampleId());
+        if (existing != null) {
+            return resolveIdempotentOrConflict(existing, createReqVO);
+        }
 
         // 2. 组装样本
         SampleInfoDO sample = BeanUtils.toBean(createReqVO, SampleInfoDO.class);
@@ -110,8 +117,17 @@ public class SampleInfoServiceImpl implements SampleInfoService {
             sample.setSource(SampleSourceEnum.MANUAL.name());
         }
 
-        sampleInfoMapper.insert(sample);
-        return sample.getId();
+        try {
+            sampleInfoMapper.insert(sample);
+            return sample.getId();
+        } catch (DuplicateKeyException ex) {
+            // 并发下 uk_sample_id 撞键：再查一次，走与预查相同的同态/冲突分支
+            SampleInfoDO raced = sampleInfoMapper.selectBySampleId(createReqVO.getSampleId());
+            if (raced == null) {
+                throw ex;
+            }
+            return resolveIdempotentOrConflict(raced, createReqVO);
+        }
     }
 
     @Override
@@ -190,6 +206,44 @@ public class SampleInfoServiceImpl implements SampleInfoService {
     @Override
     public List<SampleInfoDO> getSampleList() {
         return sampleInfoMapper.selectList();
+    }
+
+
+    /**
+     * 同态幂等判定：关键属性一致则回放已有主键；否则拒绝覆盖。
+     * 关键属性口径见 doc/06 W-1.2：sampleType / contentDefCode / containerTypeCode / initialVolUl / orderNo。
+     */
+    private Long resolveIdempotentOrConflict(SampleInfoDO existing, SampleInfoSaveReqVO req) {
+        if (sameRegistrationKeyFields(existing, req)) {
+            return existing.getId();
+        }
+        throw exception(SAMPLE_ID_CONFLICT, req.getSampleId());
+    }
+
+    /**
+     * 登记幂等关键字段是否一致（空白与 null 视为相等；体积用 compareTo）。
+     */
+    @VisibleForTesting
+    boolean sameRegistrationKeyFields(SampleInfoDO existing, SampleInfoSaveReqVO req) {
+        return eqBlank(existing.getSampleType(), req.getSampleType())
+                && eqBlank(existing.getContentDefCode(), req.getContentDefCode())
+                && eqBlank(existing.getContainerTypeCode(), req.getContainerTypeCode())
+                && eqDecimal(existing.getInitialVolUl(), req.getInitialVolUl())
+                && eqBlank(existing.getOrderNo(), req.getOrderNo());
+    }
+
+    private static boolean eqBlank(String a, String b) {
+        return Objects.equals(StrUtil.blankToDefault(a, null), StrUtil.blankToDefault(b, null));
+    }
+
+    private static boolean eqDecimal(BigDecimal a, BigDecimal b) {
+        if (a == null && b == null) {
+            return true;
+        }
+        if (a == null || b == null) {
+            return false;
+        }
+        return a.compareTo(b) == 0;
     }
 
     // ==================== 校验 ====================

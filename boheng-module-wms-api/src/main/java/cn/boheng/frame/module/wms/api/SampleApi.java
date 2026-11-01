@@ -21,10 +21,24 @@ public interface SampleApi {
     /**
      * 登记样本（提前建档，无需实物）
      *
+     * <p>同态幂等：租户内 sampleId 已存在且关键属性
+     * （sampleType/contentDefCode/containerTypeCode/initialVolUl/orderNo）一致时，
+     * 返回已有编号且不新增行；不一致时抛 SAMPLE_ID_CONFLICT。</p>
+     *
      * @param reqDTO 登记信息
      * @return 样本业务编号（sampleId）
      */
     String registerSample(SampleRegisterReqDTO reqDTO);
+
+    /**
+     * 批量登记样本（整批单事务；任一冲突整批回滚）
+     *
+     * <p>幂等语义与 {@link #registerSample} 相同。</p>
+     *
+     * @param reqDTOs 登记信息列表
+     * @return 样本业务编号列表（顺序与入参一致）
+     */
+    List<String> registerSamples(List<SampleRegisterReqDTO> reqDTOs);
 
     /**
      * 更新样本状态（节点驱动流转；可顺带登记当前所在流程/节点）
