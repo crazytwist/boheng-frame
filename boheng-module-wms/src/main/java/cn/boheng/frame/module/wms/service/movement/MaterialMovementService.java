@@ -48,4 +48,15 @@ public interface MaterialMovementService {
      * @param limit  条数（为空取 10，最大 200）
      */
     List<MaterialMovementDO> getRecentMovementListBySlot(Long slotId, Integer limit);
+
+    /**
+     * 按流水行幂等键查询（含 {@code businessKey#index}）；不存在返回 null。
+     */
+    MaterialMovementDO getByIdempotentKey(String idempotentKey);
+
+    /**
+     * 按调用方业务幂等键查询本批全部流水（{@code businessKey#*}），按行键升序。
+     */
+    List<MaterialMovementDO> listByBusinessIdempotentKey(String businessIdempotentKey);
+
 }

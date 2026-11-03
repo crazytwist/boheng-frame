@@ -32,6 +32,12 @@ public interface ErrorCodeConstants {
     ErrorCode DEVICE_ACTION_PATH_MISSING = new ErrorCode(1_004_002_002, "设备动作【{}】未配置请求路径");
     /** 动作已停用 */
     ErrorCode DEVICE_ACTION_DISABLED = new ErrorCode(1_004_002_003, "设备动作【{}】已停用");
+    /** 动作输入契约不是受支持的 JSON 结构 */
+    ErrorCode DEVICE_ACTION_PARAM_SCHEMA_INVALID = new ErrorCode(1_004_002_004, "设备动作参数定义不合法：{}");
+    /** 动作收到的参数不符合输入契约 */
+    ErrorCode DEVICE_ACTION_PARAM_INVALID = new ErrorCode(1_004_002_005, "设备动作参数不合法：{}");
+    /** 高级报文映射渲染后仍存在未解析占位符 */
+    ErrorCode DEVICE_ACTION_TEMPLATE_INVALID = new ErrorCode(1_004_002_006, "设备动作报文映射不合法：{}");
 
     // ========== 设备属性（配置）1-004-003-000 ==========
     ErrorCode DEVICE_PROPERTY_NOT_EXISTS = new ErrorCode(1_004_003_000, "设备属性不存在");
@@ -40,6 +46,8 @@ public interface ErrorCodeConstants {
     // ========== 参数集（配置）1-004-004-000 ==========
     ErrorCode DEVICE_PARAM_SET_NOT_EXISTS = new ErrorCode(1_004_004_000, "参数集不存在");
     ErrorCode DEVICE_PARAM_SET_CODE_DUPLICATE = new ErrorCode(1_004_004_001, "已经存在编码为【{}】的参数集");
+    /** 参数集关联的设备动作不存在 */
+    ErrorCode DEVICE_PARAM_SET_ACTION_NOT_EXISTS = new ErrorCode(1_004_004_002, "参数集关联的设备动作不存在：设备类型【{}】、动作【{}】");
 
     // ========== 设备命令 1-004-001-000 ==========
     ErrorCode DEVICE_COMMAND_NOT_EXISTS = new ErrorCode(1_004_001_000, "设备命令不存在");

@@ -15,6 +15,11 @@ export interface DeviceParamSetVO {
   createTime?: Date
 }
 
+// 参数集保存请求：接口边界直接传 JSON 对象，避免二次字符串转义
+export interface DeviceParamSetSaveReqVO extends Omit<DeviceParamSetVO, 'paramsJson'> {
+  paramsJson: Record<string, unknown>
+}
+
 // 参数集预设 API
 export const DeviceParamSetApi = {
   // 查询参数集分页
@@ -33,18 +38,20 @@ export const DeviceParamSetApi = {
   },
 
   // 新增参数集
-  createParamSet: async (data: DeviceParamSetVO) => {
+  createParamSet: async (data: DeviceParamSetSaveReqVO) => {
     return await request.post({ url: '/device/param-set/create', data })
   },
 
   // 修改参数集
-  updateParamSet: async (data: DeviceParamSetVO) => {
+  updateParamSet: async (data: DeviceParamSetSaveReqVO) => {
     return await request.put({ url: '/device/param-set/update', data })
   },
 
   // 标记验证状态
   updateValidated: async (id: number, validated: boolean) => {
-    return await request.put({ url: `/device/param-set/update-validated?id=${id}&validated=${validated}` })
+    return await request.put({
+      url: `/device/param-set/update-validated?id=${id}&validated=${validated}`
+    })
   },
 
   // 删除参数集

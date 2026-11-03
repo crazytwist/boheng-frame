@@ -232,11 +232,28 @@ if [[ "$MIGRATE_ONLY" == "1" ]]; then
   exit 0
 fi
 
+# 本机构建需要能从 Docker Hub 读取基础镜像元数据。部分网络环境会返回
+# text/html（代理/镜像站错误页），此时自动改为目标服务器原生构建。
+if [[ "$REMOTE_BUILD" != "1" ]]; then
+  echo "▶ 检查本地 Docker 基础镜像访问 ..."
+  if ! docker buildx imagetools inspect eclipse-temurin:17-jre >/dev/null 2>&1 ||
+     ! docker buildx imagetools inspect nginx:1.27-alpine >/dev/null 2>&1; then
+    echo "⚠️  本机无法读取 Docker Hub 基础镜像，自动切换为 --remote-build"
+    REMOTE_BUILD=1
+  fi
+fi
+
 # ---------------------------- 1. 构建后端 jar ----------------------------
 JAR="$PROJECT_DIR/boheng-server/target/boheng-server.jar"
 if [[ "$BUILD" == "1" || ! -f "$JAR" ]]; then
   echo "▶ 构建后端 jar ..."
-  JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17 2>/dev/null || echo)}"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null || true)"
+  fi
+  [[ -n "${JAVA_HOME:-}" ]] || { echo "❌ 未找到 JDK 17，请先安装并配置 JAVA_HOME"; exit 1; }
+  export JAVA_HOME
+  export PATH="$JAVA_HOME/bin:$PATH"
+  echo "  Java: $("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1)"
   ( cd "$PROJECT_DIR" && mvn -pl boheng-server -am -DskipTests -Dmaven.test.skip=true package -q )
   [[ -f "$JAR" ]] || { echo "❌ 后端 jar 构建失败"; exit 1; }
 else
@@ -354,6 +371,24 @@ MYSQL_ROOT_USER="$(grep '^MYSQL_ROOT_USER=' .env | cut -d= -f2- | sed 's/^root$/
 
 echo "✅ 目标端容器已启动"
 $COMPOSE ps
+
+# 等待后端真正完成启动。compose 的 Up 只代表容器进程已拉起，
+# Spring Boot 初始化期间 Nginx 仍可能短暂返回 502。
+echo "▶ 等待后端 API 就绪 ..."
+READY=0
+for i in {1..90}; do
+  if docker exec boheng.web wget -q -O /dev/null http://boheng.server:48088/admin-api/system/auth/get-permission-info 2>/dev/null; then
+    READY=1
+    echo "✅ 后端 API 已就绪"
+    break
+  fi
+  sleep 2
+done
+if [[ "$READY" != "1" ]]; then
+  echo "❌ 后端 API 在 180 秒内未就绪"
+  docker logs --tail 100 boheng.server 2>&1 || true
+  exit 1
+fi
 REMOTE
 
 # 数据库迁移（容器起来后跑）

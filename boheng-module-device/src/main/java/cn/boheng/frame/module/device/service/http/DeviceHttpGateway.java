@@ -18,11 +18,13 @@ import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ENDPOINT_MISSING;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_HTTP_FAILED;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_LOGIN_FAILED;
+import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_TEMPLATE_INVALID;
 
 /**
  * 访问设备 HTTP：配置了登录路径时先取 token，失效后再登录一次并重试。
@@ -37,6 +39,8 @@ public class DeviceHttpGateway {
     private static final int DEFAULT_TTL_SEC = 1800;
     /** 写进命令记录的响应正文上限 */
     private static final int BODY_LIMIT = 4000;
+    /** 渲染后仍未替换的模板占位符。 */
+    private static final Pattern UNRESOLVED_PLACEHOLDER = Pattern.compile("\\$\\{[^}]+}");
     /**
      * 登录令牌缓存
      */
@@ -293,6 +297,9 @@ public class DeviceHttpGateway {
             String value = renderValue(entry.getValue());
             rendered = rendered.replace("${" + entry.getKey() + "}", value);
             rendered = rendered.replace("${$." + entry.getKey() + "}", value);
+        }
+        if (UNRESOLVED_PLACEHOLDER.matcher(rendered).find()) {
+            throw exception(DEVICE_ACTION_TEMPLATE_INVALID, "存在未解析占位符");
         }
         return rendered;
     }

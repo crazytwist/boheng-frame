@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.flow.engine.execution;
 
+import cn.boheng.frame.module.flow.service.error.FlowErrorRecordService;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowDefinitionDO;
 import cn.boheng.frame.module.flow.dal.dataobject.definition.FlowNodeDO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowBranchDecisionDO;
@@ -141,6 +142,13 @@ public class FlowExecutionEngine {
      */
     @Resource
     private DeviceApi deviceApi;
+
+    /**
+     * 统一错误记录（E-3）：FAILED/DEAD 结算后落库；可选以免单测未装该 Bean 时炸掉
+     */
+    @Resource
+    private FlowErrorRecordService errorRecordService;
+
 
     // ==================== 启动 ====================
 
@@ -462,6 +470,7 @@ public class FlowExecutionEngine {
                     if (!casStep(row, fromStatus)) {
                         return false;
                     }
+                    recordStepError(row, outcome.getErrorMessage(), true);
                     insertStepRow(row.getExecutionId(), node, row.getIterationNo(), row.getAttempt() + 1,
                             StepStatus.PENDING.name());
                     log.info("[flow] 节点失败将重试 node={} iter={} attempt={} err={}",
@@ -474,6 +483,7 @@ public class FlowExecutionEngine {
                     if (!casStep(row, fromStatus)) {
                         return false;
                     }
+                    recordStepError(row, outcome.getErrorMessage(), false);
                     if (node == null || !FlowConstants.FAIL_SKIP.equals(StrUtil.nullToEmpty(node.runFailureStrategy()))) {
                         // FAIL_FAST：整条运行失败，未开始的节点全部取消
                         failExecution(row.getExecutionId(), "FLOW_STEP_DEAD",
@@ -847,6 +857,22 @@ public class FlowExecutionEngine {
     /**
      * 终态检查：全部节点行终态 → 收尾运行。子执行收尾时给父发 CHILD 信号
      */
+
+    /**
+     * E-3：节点 FAILED/DEAD 后写入错误记录；失败不影响主结算路径。
+     */
+    private void recordStepError(FlowStepExecutionDO row, String errorMessage, boolean willRetry) {
+        if (errorRecordService == null) {
+            return;
+        }
+        try {
+            errorRecordService.recordStepFailure(row, errorMessage, willRetry);
+        } catch (Exception ex) {
+            log.warn("[flow] 写入错误记录失败 node={} attempt={}: {}",
+                    row.getNodeId(), row.getAttempt(), ex.getMessage());
+        }
+    }
+
     private void checkFinish(Long executionId, PipelineGraph graph) {
         FlowExecutionDO execution = executionMapper.selectById(executionId);
         if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {

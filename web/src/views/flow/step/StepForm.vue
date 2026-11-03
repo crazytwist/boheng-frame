@@ -4,6 +4,7 @@ import { STEP_TYPE_FIELDS } from '@/api/flow/stepSchema'
 import SchemaForm from '@/components/flow/SchemaForm.vue'
 import JsonKeyValueEditor from '@/components/flow/JsonKeyValueEditor.vue'
 import { DeviceInfoApi, DeviceVO } from '@/api/device'
+import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 
 defineOptions({ name: 'FlowStepForm' })
@@ -34,12 +35,24 @@ const formData = ref<FlowStepVO>(createEmpty())
 const formRules = reactive({
   stepKey: [
     { required: true, message: '步骤编码不能为空', trigger: 'blur' },
-    { pattern: /^[a-z][a-z0-9_]{0,31}$/, message: '小写字母开头，只含小写、数字和下划线', trigger: 'blur' }
+    {
+      pattern: /^[a-z][a-z0-9_]{0,31}$/,
+      message: '小写字母开头，只含小写、数字和下划线',
+      trigger: 'blur'
+    }
   ],
   name: [{ required: true, message: '步骤名称不能为空', trigger: 'blur' }],
   stepType: [{ required: true, message: '步骤类型不能为空', trigger: 'change' }],
-  timeoutSec: [{ required: true, message: '等待时间不能为空', trigger: 'change' },
-    { validator: (_r, v, cb) => (v === -1 || (v >= 1 && v <= 86400) ? cb() : cb(new Error('等待秒数须为 -1（永不超时）或 1~86400'))), trigger: 'change' }],
+  timeoutSec: [
+    { required: true, message: '等待时间不能为空', trigger: 'change' },
+    {
+      validator: (_r, v, cb) =>
+        v === -1 || (v >= 1 && v <= 86400)
+          ? cb()
+          : cb(new Error('等待秒数须为 -1（永不超时）或 1~86400')),
+      trigger: 'change'
+    }
+  ],
   maxAttempts: [{ required: true, message: '尝试次数不能为空', trigger: 'change' }]
 })
 const formRef = ref()
@@ -51,6 +64,7 @@ const isDeviceTask = computed(() => formData.value.stepType === 'device.task')
 const generateStepKey = () => `step_${Date.now().toString(36)}`
 const devices = ref<DeviceVO[]>([])
 const paramSets = ref<DeviceParamSetVO[]>([])
+const selectedAction = ref<DeviceActionVO>()
 const selectedParamSetId = ref<number | undefined>()
 const selectedParamSet = computed(() =>
   paramSets.value.find((item) => String(item.id) === String(selectedParamSetId.value))
@@ -59,13 +73,49 @@ const selectedTaskDevice = computed(() => {
   const config = parseConfig(formData.value.typeConfig)
   return devices.value.find((item) => String(item.deviceCode) === String(config.deviceCode))
 })
-const selectedTaskMode = computed(() => String(selectedTaskDevice.value?.taskMode || '').toUpperCase())
+const selectedTaskMode = computed(() =>
+  String(selectedTaskDevice.value?.taskMode || '').toUpperCase()
+)
 const isPullDevice = computed(() => {
   const config = parseConfig(formData.value.typeConfig)
   // PULL_TASK 是 PULL 模式的系统任务编码；即使旧接口暂未返回 taskMode，也要保证页面联动。
   return ['PULL', 'PULL_TASK'].includes(selectedTaskMode.value) || config.actionCode === 'PULL_TASK'
 })
 const isPullTask = computed(() => isDeviceTask.value && isPullDevice.value)
+
+const actionParamSuggestions = computed(() => {
+  if (!selectedAction.value?.paramSchema) return []
+  try {
+    const schema = JSON.parse(selectedAction.value.paramSchema) as Record<string, any>
+    return Object.entries(schema).map(([key, raw]) => {
+      const definition = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+      const defaultValue = Object.prototype.hasOwnProperty.call(definition, 'default')
+        ? definition.default
+        : raw && typeof raw === 'object'
+          ? undefined
+          : raw
+      const typeMap: Record<string, string> = {
+        INTEGER: 'number',
+        DECIMAL: 'number',
+        BOOLEAN: 'boolean',
+        OBJECT: 'object',
+        JSON: 'object',
+        ARRAY: 'array'
+      }
+      const notes = [definition.label || key, definition.required ? '必填' : '', definition.unit]
+        .filter(Boolean)
+        .join(' · ')
+      return {
+        key,
+        type: typeMap[String(definition.type || '').toUpperCase()] || undefined,
+        value: defaultValue,
+        comment: notes
+      }
+    })
+  } catch {
+    return []
+  }
+})
 
 /** 当前类型的类型配置字段表（驱动 SchemaForm） */
 const typeFields = computed(() => STEP_TYPE_FIELDS[formData.value.stepType ?? ''] ?? [])
@@ -88,6 +138,7 @@ const updateConfigField = (key: string, value?: any) => {
 
 const loadParamSets = async () => {
   paramSets.value = []
+  selectedAction.value = undefined
   selectedParamSetId.value = undefined
   if (isPullTask.value) {
     return
@@ -97,17 +148,27 @@ const loadParamSets = async () => {
   if (!config.deviceCode || !config.actionCode) return
   const device = devices.value.find((item) => String(item.deviceCode) === String(config.deviceCode))
   if (!device?.deviceTypeCode) return
+  const actions = await DeviceActionApi.getActionList({ deviceTypeCode: device.deviceTypeCode })
+  selectedAction.value = (actions || []).find(
+    (item: DeviceActionVO) => String(item.actionCode) === String(config.actionCode)
+  )
   const list = await DeviceParamSetApi.getParamSetList({
     deviceTypeCode: device.deviceTypeCode,
     actionCode: config.actionCode
   })
-  paramSets.value = (list || []).filter((item: DeviceParamSetVO) => item.validated !== false && item.status !== 1)
-  const configuredId = config.paramSetId === undefined || config.paramSetId === null || config.paramSetId === ''
-    ? undefined
-    : Number(config.paramSetId)
+  paramSets.value = (list || []).filter(
+    (item: DeviceParamSetVO) => item.validated !== false && item.status !== 1
+  )
+  const configuredId =
+    config.paramSetId === undefined || config.paramSetId === null || config.paramSetId === ''
+      ? undefined
+      : Number(config.paramSetId)
   selectedParamSetId.value = Number.isFinite(configuredId) ? configuredId : undefined
   // 编辑历史步骤时，即使参数集后来被停用/撤销验证，也保留当前绑定项，避免下拉框回显为空。
-  if (selectedParamSetId.value && !paramSets.value.some((item) => String(item.id) === String(selectedParamSetId.value))) {
+  if (
+    selectedParamSetId.value &&
+    !paramSets.value.some((item) => String(item.id) === String(selectedParamSetId.value))
+  ) {
     const configured = await DeviceParamSetApi.getParamSet(selectedParamSetId.value)
     if (
       configured &&
@@ -160,7 +221,9 @@ const open = async (type: string, id?: number) => {
   formLoading.value = true
   try {
     formData.value = await FlowStepApi.get(id)
-    selectedParamSetId.value = parseConfig(formData.value.typeConfig).paramSetId ? Number(parseConfig(formData.value.typeConfig).paramSetId) : undefined
+    selectedParamSetId.value = parseConfig(formData.value.typeConfig).paramSetId
+      ? Number(parseConfig(formData.value.typeConfig).paramSetId)
+      : undefined
     await loadParamSets()
   } finally {
     formLoading.value = false
@@ -218,11 +281,24 @@ const emit = defineEmits<{ success: [] }>()
 
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle" width="760px">
-    <el-form ref="formRef" v-loading="formLoading" :model="formData" :rules="formRules" label-width="100px">
+    <el-form
+      ref="formRef"
+      v-loading="formLoading"
+      :model="formData"
+      :rules="formRules"
+      label-width="100px"
+    >
       <el-form-item label="步骤编码" prop="stepKey">
-        <el-input v-model="formData.stepKey" maxlength="32" placeholder="系统自动生成，也可手动修改" :disabled="formType !== 'create'">
+        <el-input
+          v-model="formData.stepKey"
+          maxlength="32"
+          placeholder="系统自动生成，也可手动修改"
+          :disabled="formType !== 'create'"
+        >
           <template #append>
-            <el-button v-if="formType === 'create'" @click="formData.stepKey = generateStepKey()">重新生成</el-button>
+            <el-button v-if="formType === 'create'" @click="formData.stepKey = generateStepKey()"
+              >重新生成</el-button
+            >
           </template>
         </el-input>
         <div class="field-tip">系统已自动生成步骤编码；编码用于流程内部引用，创建后不可修改。</div>
@@ -231,16 +307,37 @@ const emit = defineEmits<{ success: [] }>()
         <el-input v-model="formData.name" maxlength="128" placeholder="请输入步骤名称，如 离心" />
       </el-form-item>
       <el-form-item label="步骤类型" prop="stepType">
-        <el-select v-model="formData.stepType" placeholder="请选择步骤类型" class="!w-1/1" :disabled="formType !== 'create'" @change="onTypeChange">
-          <el-option v-for="item in STEP_TYPES" :key="item.value" :label="item.label" :value="item.value" />
+        <el-select
+          v-model="formData.stepType"
+          placeholder="请选择步骤类型"
+          class="!w-1/1"
+          :disabled="formType !== 'create'"
+          @change="onTypeChange"
+        >
+          <el-option
+            v-for="item in STEP_TYPES"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </el-select>
       </el-form-item>
       <!-- 类型配置：按类型字段表动态渲染，收进 typeConfig JSON -->
       <template v-if="typeFields.length">
-        <SchemaForm :fields="typeFields" v-model="formData.typeConfig" @update:model-value="onConfigChanged" />
+        <SchemaForm
+          :fields="typeFields"
+          v-model="formData.typeConfig"
+          @update:model-value="onConfigChanged"
+        />
       </template>
       <el-form-item v-else label="类型配置">
-        <el-input v-model="formData.typeConfig" type="textarea" :rows="3" maxlength="4096" placeholder="类型专属配置 JSON" />
+        <el-input
+          v-model="formData.typeConfig"
+          type="textarea"
+          :rows="3"
+          maxlength="4096"
+          placeholder="类型专属配置 JSON"
+        />
       </el-form-item>
       <template v-if="(isDeviceCommand || isDeviceTask) && !isPullTask">
         <el-form-item :label="isDeviceTask ? '任务参数集' : '参数集'" :required="isDeviceTask">
@@ -253,10 +350,19 @@ const emit = defineEmits<{ success: [] }>()
             :placeholder="paramSets.length ? '请选择已验证参数集' : '请先选择设备和任务类型'"
             @change="onParamSetChange"
           >
-            <el-option v-for="item in paramSets" :key="item.id" :label="`${item.paramSetName}（${item.paramSetCode}）`" :value="Number(item.id)" />
+            <el-option
+              v-for="item in paramSets"
+              :key="item.id"
+              :label="`${item.paramSetName}（${item.paramSetCode}）`"
+              :value="Number(item.id)"
+            />
           </el-select>
           <div class="field-tip">
-            {{ isDeviceTask ? '任务参数集按设备类型和任务类型筛选；流程映射和默认输入可覆盖参数集默认值。' : '参数集按设备类型和动作自动筛选，仅显示已验证且启用的参数集；运行时会作为基础参数。' }}
+            {{
+              isDeviceTask
+                ? '任务参数集按设备类型和任务类型筛选；流程映射和默认输入可覆盖参数集默认值。'
+                : '参数集按设备类型和动作自动筛选，仅显示已验证且启用的参数集；运行时会作为基础参数。'
+            }}
             <span v-if="selectedParamSet">当前：{{ selectedParamSet.paramSetName }}</span>
           </div>
         </el-form-item>
@@ -264,28 +370,61 @@ const emit = defineEmits<{ success: [] }>()
       <!-- PULL 也需要在步骤定义中声明入参和默认值；节点编排时可覆盖这些值。 -->
       <el-form-item v-if="isPullTask" label="任务入参">
         <JsonKeyValueEditor v-model="formData.defaultParams" />
-        <div class="field-tip">在这里定义任务参数和默认值；流程节点可通过参数映射覆盖。此处不关联参数定义或参数集。</div>
+        <div class="field-tip"
+          >在这里定义任务参数和默认值；流程节点可通过参数映射覆盖。此处不关联参数定义或参数集。</div
+        >
       </el-form-item>
       <!-- PUSH 默认入参：自由键值对 -->
       <el-form-item v-else label="默认输入">
-        <JsonKeyValueEditor v-model="formData.defaultParams" />
-        <div class="field-tip">可选的步骤级覆盖值。执行时按“参数集 → 默认输入 → 流程参数映射”合并；__comments__ 仅用于说明。</div>
+        <div class="w-1/1">
+          <el-alert
+            v-if="actionParamSuggestions.length"
+            :title="`已读取动作输入契约：${actionParamSuggestions.length} 个参数`"
+            description="可按参考字段补齐；只添加缺失项，不覆盖当前内容。参数集仍是基础值，这里只配置步骤级默认覆盖。"
+            type="info"
+            :closable="false"
+            class="mb-8px"
+            show-icon
+          />
+          <JsonKeyValueEditor
+            v-model="formData.defaultParams"
+            :suggestions="actionParamSuggestions"
+          />
+          <div class="field-tip">
+            执行顺序：参数集基础值 → 步骤默认覆盖 → 节点参数覆盖；__comments__ 仅用于界面说明。
+          </div>
+        </div>
       </el-form-item>
       <!-- 输出声明：键=字段名，值=说明；发布期作为契约与节点输出映射校验 -->
       <el-form-item v-if="!isPullTask" label="输出声明">
         <JsonKeyValueEditor v-model="formData.outputSchema" mode="desc" />
-        <div class="field-tip">声明这一步会往流程上下文里写哪些字段。配了输出映射时，源字段必须落在声明里；留空 = 输出动态，不做契约校验。</div>
+        <div class="field-tip"
+          >声明这一步会往流程上下文里写哪些字段。配了输出映射时，源字段必须落在声明里；留空 =
+          输出动态，不做契约校验。</div
+        >
       </el-form-item>
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="等待(秒)" prop="timeoutSec">
-            <el-input-number v-model="formData.timeoutSec" :min="-1" :max="86400" controls-position="right" class="!w-1/1" />
+            <el-input-number
+              v-model="formData.timeoutSec"
+              :min="-1"
+              :max="86400"
+              controls-position="right"
+              class="!w-1/1"
+            />
             <div class="field-tip">-1 = 永不超时，其余 1~86400</div>
           </el-form-item>
         </el-col>
         <el-col :span="12">
           <el-form-item label="尝试次数" prop="maxAttempts">
-            <el-input-number v-model="formData.maxAttempts" :min="1" :max="5" controls-position="right" class="!w-1/1" />
+            <el-input-number
+              v-model="formData.maxAttempts"
+              :min="1"
+              :max="5"
+              controls-position="right"
+              class="!w-1/1"
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -296,7 +435,13 @@ const emit = defineEmits<{ success: [] }>()
         </el-radio-group>
       </el-form-item>
       <el-form-item label="说明">
-        <el-input v-model="formData.remark" type="textarea" :rows="2" maxlength="512" placeholder="选填" />
+        <el-input
+          v-model="formData.remark"
+          type="textarea"
+          :rows="2"
+          maxlength="512"
+          placeholder="选填"
+        />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -313,5 +458,4 @@ const emit = defineEmits<{ success: [] }>()
   line-height: 1.5;
   color: #909399;
 }
-
 </style>

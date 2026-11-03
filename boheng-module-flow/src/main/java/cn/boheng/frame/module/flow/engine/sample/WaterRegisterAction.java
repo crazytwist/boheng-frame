@@ -1,6 +1,7 @@
 package cn.boheng.frame.module.flow.engine.sample;
 
 import cn.boheng.frame.module.flow.engine.type.builtin.FlowBeanAction;
+import cn.boheng.frame.module.flow.enums.FlowTraceKeys;
 import cn.boheng.frame.module.wms.api.SampleApi;
 import cn.boheng.frame.module.wms.api.dto.SampleRegisterReqDTO;
 import cn.hutool.core.util.StrUtil;
@@ -24,6 +25,9 @@ import static cn.boheng.frame.module.flow.engine.sample.WaterQualitySupport.str;
  *
  * <p>样本是「业务对象」，先于实物（material_instance）建档；实例化时再把
  * sample_id 挂到实物上。本节点只做登记，不产生实物。</p>
+ *
+ * <p>节点重试走 {@link SampleApi#registerSamples} 批量同态幂等：同 taskNo 重复登记
+ * 不会因 uk_sample_id 失败。Flow 侧幂等键按 {@link FlowTraceKeys} 生成，写入产出便于追溯。</p>
  */
 @Component
 public class WaterRegisterAction implements FlowBeanAction {
@@ -48,7 +52,11 @@ public class WaterRegisterAction implements FlowBeanAction {
         String containerTypeCode = str(input.get("containerTypeCode"));
         String batchNo = str(input.get("batchNo"));
 
-        List<String> samples = new ArrayList<>(sampleCount);
+        Map<String, Object> sys = map(env.get("sys"));
+        Map<String, Object> safeArgs = args == null ? Map.of() : args;
+        String idempotentKey = buildRegisterIdempotentKey(sys, safeArgs);
+
+        List<SampleRegisterReqDTO> reqs = new ArrayList<>(sampleCount);
         for (int i = 1; i <= sampleCount; i++) {
             String sampleId = String.format("%s-%03d", taskNo, i);
             SampleRegisterReqDTO req = new SampleRegisterReqDTO();
@@ -60,14 +68,48 @@ public class WaterRegisterAction implements FlowBeanAction {
             req.setBatchNo(StrUtil.blankToDefault(batchNo, taskNo));
             req.setOrderNo(taskNo);
             req.setSource("IMPORT");
-            samples.add(sampleApi.registerSample(req));
+            reqs.add(req);
         }
+        List<String> samples = sampleApi.registerSamples(reqs);
+
         Map<String, Object> output = new LinkedHashMap<>();
         output.put("taskNo", taskNo);
         output.put("sampleCount", sampleCount);
         output.put("sampleType", sampleType);
         output.put("samples", samples);
+        if (StrUtil.isNotBlank(idempotentKey)) {
+            output.put("idempotentKey", idempotentKey);
+        }
         return JSONUtil.toJsonStr(output);
+    }
+
+    /**
+     * 按 Phase A 约定生成本节点登记操作的幂等键；缺执行上下文时返回 null（样本侧仍靠 sampleId 同态幂等）。
+     */
+    private String buildRegisterIdempotentKey(Map<String, Object> sys, Map<String, Object> args) {
+        Long executionId = toLong(sys.get("executionId"));
+        if (executionId == null) {
+            return null;
+        }
+        String nodeId = StrUtil.blankToDefault(str(args.get("nodeId")), beanName());
+        int iterationNo = intOf(sys.get("iterationNo"), 0);
+        int attempt = intOf(sys.get("attempt"), 1);
+        return FlowTraceKeys.idempotentKey(executionId, nodeId, iterationNo, attempt,
+                FlowTraceKeys.OP_REGISTER_SAMPLE);
+    }
+
+    private static Long toLong(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value instanceof String s && StrUtil.isNotBlank(s)) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
 }

@@ -11,7 +11,12 @@
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="参数集编码" prop="paramSetCode">
-            <el-input v-model="formData.paramSetCode" maxlength="64" placeholder="系统自动生成" :disabled="formType === 'update'" />
+            <el-input
+              v-model="formData.paramSetCode"
+              maxlength="64"
+              placeholder="系统自动生成"
+              :disabled="formType === 'update'"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -100,7 +105,7 @@
 </template>
 
 <script lang="ts" setup>
-import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
+import { DeviceParamSetApi, DeviceParamSetSaveReqVO, DeviceParamSetVO } from '@/api/device/paramSet'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 
@@ -131,16 +136,22 @@ const formData = ref<DeviceParamSetVO>(createEmptyFormData())
 
 const syncDefinition = async () => {
   if (!formData.value.deviceTypeCode || !formData.value.actionCode) return
-  const list = await DeviceActionApi.getActionList({ deviceTypeCode: formData.value.deviceTypeCode })
+  const list = await DeviceActionApi.getActionList({
+    deviceTypeCode: formData.value.deviceTypeCode
+  })
   const action = (list || []).find((item) => item.actionCode === formData.value.actionCode)
   if (!action?.paramSchema) return
   try {
     const schema = JSON.parse(action.paramSchema)
     const current = formData.value.paramsJson ? JSON.parse(formData.value.paramsJson) : {}
     const result: Record<string, any> = {}
-    Object.keys(schema).forEach((key) => { result[key] = current[key] ?? '' })
+    Object.keys(schema).forEach((key) => {
+      result[key] = current[key] ?? schema[key]?.default ?? ''
+    })
     formData.value.paramsJson = JSON.stringify(result, null, 2)
-  } catch { /* 保存时统一校验 */ }
+  } catch {
+    /* 保存时统一校验 */
+  }
 }
 
 const formRules = reactive({
@@ -215,19 +226,27 @@ const submitForm = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   // 参数取值必须是合法 JSON
+  let paramsJson: Record<string, unknown>
   try {
-    JSON.parse(formData.value.paramsJson!)
+    paramsJson = JSON.parse(formData.value.paramsJson!)
+    if (!paramsJson || Array.isArray(paramsJson) || typeof paramsJson !== 'object') {
+      throw new Error('参数取值必须是 JSON 对象')
+    }
   } catch {
     message.error('参数取值不是合法的 JSON，请检查后重试')
     return
   }
+  const requestData: DeviceParamSetSaveReqVO = {
+    ...formData.value,
+    paramsJson
+  }
   formLoading.value = true
   try {
     if (formType.value === 'create') {
-      await DeviceParamSetApi.createParamSet(formData.value)
+      await DeviceParamSetApi.createParamSet(requestData)
       message.success(t('common.createSuccess'))
     } else {
-      await DeviceParamSetApi.updateParamSet(formData.value)
+      await DeviceParamSetApi.updateParamSet(requestData)
       message.success(t('common.updateSuccess'))
     }
     dialogVisible.value = false

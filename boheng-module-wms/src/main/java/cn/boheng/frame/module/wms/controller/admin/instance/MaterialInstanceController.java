@@ -5,6 +5,12 @@ import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceBatchPutInReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeByContainerReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReleaseRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePutInReqVO;
@@ -171,17 +177,39 @@ public class MaterialInstanceController {
 
     // ==================== 消耗（供其他模块调用） ====================
 
+
+    @PostMapping("/check")
+    @Operation(summary = "物料可用性检查（不通过返回结果对象）")
+    @PreAuthorize("@ss.hasPermission('wms:material-instance:query')")
+    public CommonResult<MaterialInstanceCheckRespVO> check(@Valid @RequestBody MaterialInstanceCheckReqVO reqVO) {
+        return success(materialInstanceService.checkAvailability(reqVO));
+    }
+
+    @PostMapping("/use")
+    @Operation(summary = "最小使用（AVAILABLE/RESERVED → IN_USE）")
+    @PreAuthorize("@ss.hasPermission('wms:material-instance:consume')")
+    public CommonResult<MaterialInstanceUseReleaseRespVO> use(@Valid @RequestBody MaterialInstanceUseReqVO reqVO) {
+        return success(materialInstanceService.use(reqVO));
+    }
+
+    @PostMapping("/release")
+    @Operation(summary = "最小释放（IN_USE/RESERVED → AVAILABLE）")
+    @PreAuthorize("@ss.hasPermission('wms:material-instance:consume')")
+    public CommonResult<MaterialInstanceUseReleaseRespVO> release(@Valid @RequestBody MaterialInstanceReleaseReqVO reqVO) {
+        return success(materialInstanceService.release(reqVO));
+    }
+
     @PostMapping("/consume")
     @Operation(summary = "消耗：按实例精确消耗（支持离散数量与连续体积，可一次多个实例）")
     @PreAuthorize("@ss.hasPermission('wms:material-instance:consume')")
-    public CommonResult<List<Long>> consume(@Valid @RequestBody MaterialInstanceConsumeReqVO reqVO) {
+    public CommonResult<MaterialInstanceConsumeRespVO> consume(@Valid @RequestBody MaterialInstanceConsumeReqVO reqVO) {
         return success(materialInstanceService.consume(reqVO));
     }
 
     @PostMapping("/consume-by-container")
     @Operation(summary = "消耗：按容器领取 N 个子实例（调用方无需知道具体是哪几个）")
     @PreAuthorize("@ss.hasPermission('wms:material-instance:consume')")
-    public CommonResult<List<Long>> consumeByContainer(@Valid @RequestBody MaterialInstanceConsumeByContainerReqVO reqVO) {
+    public CommonResult<MaterialInstanceConsumeRespVO> consumeByContainer(@Valid @RequestBody MaterialInstanceConsumeByContainerReqVO reqVO) {
         return success(materialInstanceService.consumeByContainer(reqVO));
     }
 }

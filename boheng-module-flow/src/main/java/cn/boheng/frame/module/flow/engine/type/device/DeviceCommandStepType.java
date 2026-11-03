@@ -5,6 +5,7 @@ import cn.boheng.frame.module.device.api.dto.DeviceCommandResultDTO;
 import cn.boheng.frame.module.device.api.dto.DeviceCommandSendReqDTO;
 import cn.boheng.frame.module.flow.enums.CompletionMode;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
+import cn.boheng.frame.module.flow.enums.FlowTraceKeys;
 import cn.boheng.frame.module.flow.enums.StepRole;
 import cn.boheng.frame.module.flow.engine.type.StepExecutionContext;
 import cn.boheng.frame.module.flow.engine.type.StepExecutor;
@@ -87,7 +88,8 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
         req.setParamsJson(ctx.getParams().isEmpty() ? null : JSONUtil.toJsonStr(ctx.getParams()));
         req.setTimeoutMs(ctx.getTimeoutMs());
         req.setSourceType(FlowConstants.SOURCE_TYPE_FLOW);
-        req.setSourceRef("flow:" + ctx.getExecutionId() + ":" + ctx.getNodeId() + ":" + ctx.getAttempt());
+        req.setSourceRef(FlowTraceKeys.sourceRef(ctx.getExecutionId(), ctx.getNodeId(),
+                ctx.getIterationNo(), ctx.getAttempt()));
         req.setAttempt(ctx.getAttempt());
         DeviceCommandResultDTO result = deviceCommandApi.send(req);
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
