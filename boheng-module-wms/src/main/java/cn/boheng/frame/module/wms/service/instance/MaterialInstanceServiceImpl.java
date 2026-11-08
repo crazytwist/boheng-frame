@@ -14,6 +14,13 @@ import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceC
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReserveReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReserveRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReservationReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseByExecutionReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseByExecutionRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceInstantiateReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceInstantiateRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReleaseRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
@@ -26,6 +33,7 @@ import cn.boheng.frame.module.wms.dal.dataobject.container.ContainerTypeDO;
 import cn.boheng.frame.module.wms.dal.dataobject.content.ContentDefDO;
 import cn.boheng.frame.module.wms.dal.dataobject.instance.MaterialInstanceDO;
 import cn.boheng.frame.module.wms.dal.dataobject.movement.MaterialMovementDO;
+import cn.boheng.frame.module.wms.dal.dataobject.sample.SampleInfoDO;
 import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
 import cn.boheng.frame.module.wms.dal.mysql.container.ContainerTypeMapper;
 import cn.boheng.frame.module.wms.dal.mysql.content.ContentDefMapper;
@@ -147,6 +155,11 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
      * @param movementId  非空时表示本次创建由别处发起且已归属某条流水，不再单独记 CREATE
      */
     private Long doCreateMaterialInstance(MaterialInstanceSaveReqVO createReqVO, String operationId, Long movementId) {
+        return doCreateMaterialInstance(createReqVO, operationId, movementId, null, 0);
+    }
+
+    private Long doCreateMaterialInstance(MaterialInstanceSaveReqVO createReqVO, String operationId, Long movementId,
+                                          MovementTraceBaseReqVO createTrace, int createIndex) {
         // 校验实例编码的唯一性
         validateInstanceCodeUnique(createReqVO.getId(), createReqVO.getInstanceCode());
         // 样本类实例：校验关联样本存在
@@ -193,6 +206,9 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             MaterialMovementDO movement = buildMovement(MovementTypeEnum.CREATE.getType(), materialInstance, null, slot);
             movement.setOperationId(operationId);
             movement.setAfterStatus(materialInstance.getInstanceStatus());
+            if (createTrace != null) {
+                applyTrace(movement, createTrace, operationId, createIndex);
+            }
             materialMovementService.recordMovement(movement);
         }
 
@@ -733,12 +749,18 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         if (CollUtil.isEmpty(children)) {
             throw exception(INSTANCE_CONSUME_NO_CHILD, container.getInstanceCode());
         }
-        // 只挑可消耗状态的；默认不含 RESERVED（已被步骤预留，不能抢）
+        // 只挑可消耗状态的；默认不含 RESERVED。includeReserved 仅含无归属旧 RESERVED，绝不抢有归属预留。
         boolean includeReserved = Boolean.TRUE.equals(reqVO.getIncludeReserved());
         List<MaterialInstanceDO> candidates = children.stream()
-                .filter(c -> includeReserved
-                        ? InstanceStatusEnum.isConsumable(c.getInstanceStatus())
-                        : InstanceStatusEnum.AVAILABLE.name().equals(c.getInstanceStatus()))
+                .filter(c -> {
+                    if (StrUtil.isNotBlank(c.getReservationId())) {
+                        return false; // 有归属必须走 consumeReservation
+                    }
+                    if (InstanceStatusEnum.AVAILABLE.name().equals(c.getInstanceStatus())) {
+                        return true;
+                    }
+                    return includeReserved && InstanceStatusEnum.RESERVED.name().equals(c.getInstanceStatus());
+                })
                 .sorted(positionComparator(reqVO.getStrategy()))
                 .toList();
         if (candidates.size() < reqVO.getCount()) {
@@ -873,57 +895,57 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         return MaterialInstanceCheckRespVO.builder().ok(ok).items(results).build();
     }
 
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MaterialInstanceUseReleaseRespVO use(MaterialInstanceUseReqVO reqVO) {
-        MaterialInstanceUseReleaseRespVO replay = findUseReleaseReplay(reqVO.getIdempotentKey());
+        MaterialInstanceUseReleaseRespVO replay = findUseReleaseReplay(reqVO.getIdempotentKey(),
+                MovementTypeEnum.STATUS_CHANGE.getType());
         if (replay != null) {
             return replay;
         }
         try {
-            return doStatusTransition(reqVO.getInstanceId(), reqVO,
-                    Set.of(InstanceStatusEnum.AVAILABLE.name(), InstanceStatusEnum.RESERVED.name()),
-                    InstanceStatusEnum.IN_USE.name(),
-                    MovementTypeEnum.STATUS_CHANGE.getType(),
-                    INSTANCE_USE_STATUS_ILLEGAL);
+            return doUse(reqVO);
         } catch (ServiceException ex) {
-            return replayUseReleaseOrRethrow(reqVO.getIdempotentKey(), ex);
+            return replayUseReleaseOrRethrow(reqVO.getIdempotentKey(), MovementTypeEnum.STATUS_CHANGE.getType(), ex);
         }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MaterialInstanceUseReleaseRespVO release(MaterialInstanceReleaseReqVO reqVO) {
-        MaterialInstanceUseReleaseRespVO replay = findUseReleaseReplay(reqVO.getIdempotentKey());
+        MaterialInstanceUseReleaseRespVO replay = findUseReleaseReplay(reqVO.getIdempotentKey(),
+                MovementTypeEnum.RELEASE.getType());
         if (replay != null) {
             return replay;
         }
         try {
-            return doStatusTransition(reqVO.getInstanceId(), reqVO,
-                    Set.of(InstanceStatusEnum.IN_USE.name(), InstanceStatusEnum.RESERVED.name()),
-                    InstanceStatusEnum.AVAILABLE.name(),
-                    MovementTypeEnum.RELEASE.getType(),
-                    INSTANCE_RELEASE_STATUS_ILLEGAL);
+            return doRelease(reqVO);
         } catch (ServiceException ex) {
-            return replayUseReleaseOrRethrow(reqVO.getIdempotentKey(), ex);
+            return replayUseReleaseOrRethrow(reqVO.getIdempotentKey(), MovementTypeEnum.RELEASE.getType(), ex);
         }
     }
 
-    /**
-     * 最小状态闭环：校验允许的前态 → CAS 改状态 → 记流水。
-     */
-    private MaterialInstanceUseReleaseRespVO doStatusTransition(Long instanceId, MovementTraceBaseReqVO trace,
-                                                                Set<String> allowedFrom, String toStatus,
-                                                                String movementType,
-                                                                cn.boheng.frame.framework.common.exception.ErrorCode illegalStatusCode) {
-        MaterialInstanceDO instance = validateMaterialInstanceExists(instanceId);
+    private MaterialInstanceUseReleaseRespVO doUse(MaterialInstanceUseReqVO reqVO) {
+        MaterialInstanceDO instance = validateMaterialInstanceExists(reqVO.getInstanceId());
         String beforeStatus = instance.getInstanceStatus();
-        if (!allowedFrom.contains(beforeStatus)) {
-            throw exception(illegalStatusCode, instance.getInstanceCode(), beforeStatus);
+        boolean owned = StrUtil.isNotBlank(instance.getReservationId());
+        if (owned) {
+            assertOwnership(instance, reqVO.getReservationId(), reqVO.getExecutionId());
+            assertReservationNotExpired(instance);
+            if (!InstanceStatusEnum.RESERVED.name().equals(beforeStatus)) {
+                throw exception(INSTANCE_USE_STATUS_ILLEGAL, instance.getInstanceCode(), beforeStatus);
+            }
+        } else {
+            if (!InstanceStatusEnum.AVAILABLE.name().equals(beforeStatus)
+                    && !InstanceStatusEnum.RESERVED.name().equals(beforeStatus)) {
+                throw exception(INSTANCE_USE_STATUS_ILLEGAL, instance.getInstanceCode(), beforeStatus);
+            }
         }
-        String operationId = StrUtil.blankToDefault(trace.getOperationId(), IdUtil.fastSimpleUUID());
-        MaterialMovementDO movement = buildMovement(movementType, instance, null, null);
-        applyTrace(movement, trace, operationId, 0);
+        String toStatus = InstanceStatusEnum.IN_USE.name();
+        String operationId = StrUtil.blankToDefault(reqVO.getOperationId(), IdUtil.fastSimpleUUID());
+        MaterialMovementDO movement = buildMovement(MovementTypeEnum.STATUS_CHANGE.getType(), instance, null, null);
+        applyTrace(movement, reqVO, operationId, 0);
         movement.setBeforeStatus(beforeStatus);
         movement.setAfterStatus(toStatus);
 
@@ -931,6 +953,11 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
                 .eq(MaterialInstanceDO::getId, instance.getId())
                 .eq(MaterialInstanceDO::getInstanceStatus, beforeStatus)
                 .set(MaterialInstanceDO::getInstanceStatus, toStatus);
+        if (!owned && InstanceStatusEnum.RESERVED.name().equals(beforeStatus)) {
+            update.set(MaterialInstanceDO::getReservationId, null)
+                    .set(MaterialInstanceDO::getReservedByExecutionId, null)
+                    .set(MaterialInstanceDO::getReservedUntil, null);
+        }
         if (materialInstanceMapper.update(null, update) != 1) {
             throw exception(INSTANCE_CONSUME_CONFLICT, instance.getInstanceCode());
         }
@@ -945,11 +972,60 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
                 .build();
     }
 
-    private MaterialInstanceUseReleaseRespVO replayUseReleaseOrRethrow(String businessIdempotentKey, ServiceException ex) {
+    private MaterialInstanceUseReleaseRespVO doRelease(MaterialInstanceReleaseReqVO reqVO) {
+        MaterialInstanceDO instance = validateMaterialInstanceExists(reqVO.getInstanceId());
+        String beforeStatus = instance.getInstanceStatus();
+        boolean owned = StrUtil.isNotBlank(instance.getReservationId());
+        if (owned) {
+            assertOwnership(instance, reqVO.getReservationId(), reqVO.getExecutionId());
+            if (!InstanceStatusEnum.RESERVED.name().equals(beforeStatus)) {
+                throw exception(INSTANCE_RELEASE_STATUS_ILLEGAL, instance.getInstanceCode(), beforeStatus);
+            }
+        } else {
+            if (!InstanceStatusEnum.IN_USE.name().equals(beforeStatus)
+                    && !InstanceStatusEnum.RESERVED.name().equals(beforeStatus)) {
+                throw exception(INSTANCE_RELEASE_STATUS_ILLEGAL, instance.getInstanceCode(), beforeStatus);
+            }
+        }
+        String toStatus = InstanceStatusEnum.AVAILABLE.name();
+        String operationId = StrUtil.blankToDefault(reqVO.getOperationId(), IdUtil.fastSimpleUUID());
+        MaterialMovementDO movement = buildMovement(MovementTypeEnum.RELEASE.getType(), instance, null, null);
+        applyTrace(movement, reqVO, operationId, 0);
+        movement.setBeforeStatus(beforeStatus);
+        movement.setAfterStatus(toStatus);
+
+        LambdaUpdateWrapper<MaterialInstanceDO> update = new LambdaUpdateWrapper<MaterialInstanceDO>()
+                .eq(MaterialInstanceDO::getId, instance.getId())
+                .eq(MaterialInstanceDO::getInstanceStatus, beforeStatus)
+                .set(MaterialInstanceDO::getInstanceStatus, toStatus)
+                .set(MaterialInstanceDO::getReservationId, null)
+                .set(MaterialInstanceDO::getReservedByExecutionId, null)
+                .set(MaterialInstanceDO::getReservedUntil, null);
+        if (owned) {
+            update.eq(MaterialInstanceDO::getReservationId, instance.getReservationId())
+                    .eq(MaterialInstanceDO::getReservedByExecutionId, instance.getReservedByExecutionId());
+        }
+        if (materialInstanceMapper.update(null, update) != 1) {
+            throw exception(INSTANCE_CONSUME_CONFLICT, instance.getInstanceCode());
+        }
+        Long movementId = materialMovementService.recordMovement(movement);
+        return MaterialInstanceUseReleaseRespVO.builder()
+                .movementId(movementId)
+                .instanceId(instance.getId())
+                .beforeStatus(beforeStatus)
+                .afterStatus(toStatus)
+                .operationId(operationId)
+                .idempotentReplay(Boolean.FALSE)
+                .build();
+    }
+
+    private MaterialInstanceUseReleaseRespVO replayUseReleaseOrRethrow(String businessIdempotentKey,
+                                                                       String expectedType,
+                                                                       ServiceException ex) {
         if (StrUtil.isBlank(businessIdempotentKey) || !isConsumeIdempotentReplayCandidate(ex)) {
             throw ex;
         }
-        MaterialInstanceUseReleaseRespVO replay = findUseReleaseReplay(businessIdempotentKey);
+        MaterialInstanceUseReleaseRespVO replay = findUseReleaseReplay(businessIdempotentKey, expectedType);
         if (replay == null) {
             throw ex;
         }
@@ -959,7 +1035,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         return replay;
     }
 
-    private MaterialInstanceUseReleaseRespVO findUseReleaseReplay(String businessIdempotentKey) {
+    private MaterialInstanceUseReleaseRespVO findUseReleaseReplay(String businessIdempotentKey, String expectedType) {
         if (StrUtil.isBlank(businessIdempotentKey)) {
             return null;
         }
@@ -969,6 +1045,9 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             return null;
         }
         MaterialMovementDO first = movements.get(0);
+        if (StrUtil.isNotBlank(expectedType) && !expectedType.equals(first.getMovementType())) {
+            throw exception(MOVEMENT_IDEMPOTENT_CONFLICT, businessIdempotentKey);
+        }
         return MaterialInstanceUseReleaseRespVO.builder()
                 .movementId(first.getId())
                 .instanceId(first.getInstanceId())
@@ -979,28 +1058,454 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
                 .build();
     }
 
+    // ==================== W-2.1 实物化 / W-2.2 预留释放 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public MaterialInstanceInstantiateRespVO instantiateSample(MaterialInstanceInstantiateReqVO reqVO) {
+        if (reqVO == null || StrUtil.isBlank(reqVO.getSampleId()) || StrUtil.isBlank(reqVO.getContainerTypeCode())
+                || reqVO.getQuantity() == null || reqVO.getQuantity() <= 0) {
+            throw exception(SAMPLE_INSTANTIATE_PARAM_INVALID, "sampleId/containerTypeCode/quantity 必填且 quantity>0");
+        }
+        if (reqVO.getQuantity() > MAX_BATCH_SIZE) {
+            throw exception(MATERIAL_INSTANCE_BATCH_SIZE_LIMIT, MAX_BATCH_SIZE);
+        }
+        if (StrUtil.isNotBlank(reqVO.getIdempotentKey())) {
+            MaterialInstanceInstantiateRespVO replay = findInstantiateReplay(reqVO.getIdempotentKey(), reqVO.getSampleId());
+            if (replay != null) {
+                return replay;
+            }
+        }
+        SampleInfoDO sample = sampleInfoMapper.selectBySampleId(reqVO.getSampleId());
+        if (sample == null) {
+            throw exception(SAMPLE_NOT_EXISTS);
+        }
+        ContainerTypeDO containerType = containerTypeMapper.selectByTypeCode(reqVO.getContainerTypeCode());
+        if (containerType == null) {
+            throw exception(CONTAINER_TYPE_NOT_EXISTS);
+        }
+        BigDecimal vol = reqVO.getInitialVolUl() != null ? reqVO.getInitialVolUl() : sample.getInitialVolUl();
+
+        String operationId = IdUtil.fastSimpleUUID();
+        List<Long> ids = new ArrayList<>(reqVO.getQuantity());
+        MovementTraceBaseReqVO trace = new MovementTraceBaseReqVO();
+        trace.setIdempotentKey(reqVO.getIdempotentKey());
+        trace.setBizSource("FLOW");
+        trace.setOperatorType("AUTO");
+        trace.setOperationId(operationId);
+        try {
+            for (int i = 0; i < reqVO.getQuantity(); i++) {
+                MaterialInstanceSaveReqVO save = new MaterialInstanceSaveReqVO();
+                save.setInstanceCode("SPINST-" + IdUtil.getSnowflakeNextIdStr());
+                save.setInstanceName(sample.getSampleName());
+                save.setContainerTypeId(containerType.getId());
+                save.setContainerTypeCode(containerType.getTypeCode());
+                save.setSampleId(reqVO.getSampleId());
+                save.setContentDefCode(sample.getContentDefCode());
+                save.setContentDefId(sample.getContentDefId());
+                save.setCurrentVolUl(vol);
+                save.setCurrentCount(1);
+                save.setInstanceStatus(InstanceStatusEnum.AVAILABLE.name());
+                ids.add(doCreateMaterialInstance(save, operationId, null, trace, i));
+            }
+        } catch (ServiceException ex) {
+            if (StrUtil.isNotBlank(reqVO.getIdempotentKey()) && isConsumeIdempotentReplayCandidate(ex)) {
+                MaterialInstanceInstantiateRespVO replay = findInstantiateReplay(reqVO.getIdempotentKey(), reqVO.getSampleId());
+                if (replay != null) {
+                    if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                        TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                    }
+                    return replay;
+                }
+            }
+            throw ex;
+        }
+        return MaterialInstanceInstantiateRespVO.builder()
+                .sampleId(reqVO.getSampleId())
+                .instanceIds(ids)
+                .operationId(operationId)
+                .idempotentReplay(Boolean.FALSE)
+                .build();
+    }
+
+    private MaterialInstanceInstantiateRespVO findInstantiateReplay(String businessIdempotentKey, String sampleId) {
+        List<MaterialMovementDO> movements = materialMovementService.listByBusinessIdempotentKey(businessIdempotentKey);
+        if (CollUtil.isEmpty(movements)) {
+            return null;
+        }
+        for (MaterialMovementDO m : movements) {
+            if (!MovementTypeEnum.CREATE.getType().equals(m.getMovementType())) {
+                throw exception(MOVEMENT_IDEMPOTENT_CONFLICT, businessIdempotentKey);
+            }
+        }
+        List<Long> ids = new ArrayList<>(movements.size());
+        for (MaterialMovementDO m : movements) {
+            ids.add(m.getInstanceId());
+        }
+        return MaterialInstanceInstantiateRespVO.builder()
+                .sampleId(sampleId)
+                .instanceIds(ids)
+                .operationId(movements.get(0).getOperationId())
+                .idempotentReplay(Boolean.TRUE)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public MaterialInstanceReserveRespVO reserve(MaterialInstanceReserveReqVO reqVO) {
+        if (reqVO == null || CollUtil.isEmpty(reqVO.getInstanceIds())) {
+            throw exception(INSTANCE_RESERVE_EMPTY);
+        }
+        if (StrUtil.isBlank(reqVO.getExecutionId())) {
+            throw exception(SAMPLE_INSTANTIATE_PARAM_INVALID, "executionId 不能为空");
+        }
+        if (reqVO.getReservedUntil() == null || !reqVO.getReservedUntil().isAfter(LocalDateTime.now())) {
+            throw exception(INSTANCE_RESERVE_UNTIL_INVALID);
+        }
+        List<Long> instanceIds = reqVO.getInstanceIds().stream().filter(Objects::nonNull).distinct().toList();
+        if (instanceIds.size() != reqVO.getInstanceIds().size()) {
+            throw exception(INSTANCE_RESERVE_DUPLICATE);
+        }
+        MaterialInstanceReserveRespVO replay = findReserveReplay(reqVO.getIdempotentKey());
+        if (replay != null) {
+            return replay;
+        }
+        try {
+            return doReserve(reqVO, instanceIds);
+        } catch (ServiceException ex) {
+            if (StrUtil.isBlank(reqVO.getIdempotentKey()) || !isConsumeIdempotentReplayCandidate(ex)) {
+                throw ex;
+            }
+            MaterialInstanceReserveRespVO r = findReserveReplay(reqVO.getIdempotentKey());
+            if (r == null) {
+                throw ex;
+            }
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            }
+            return r;
+        }
+    }
+
+    private MaterialInstanceReserveRespVO doReserve(MaterialInstanceReserveReqVO reqVO, List<Long> instanceIds) {
+        String reservationId = IdUtil.fastSimpleUUID();
+        String operationId = StrUtil.blankToDefault(reqVO.getOperationId(), IdUtil.fastSimpleUUID());
+        List<Long> movementIds = new ArrayList<>(instanceIds.size());
+        int index = 0;
+        for (Long instanceId : instanceIds) {
+            MaterialInstanceDO instance = validateMaterialInstanceExists(instanceId);
+            if (!InstanceStatusEnum.AVAILABLE.name().equals(instance.getInstanceStatus())) {
+                throw exception(INSTANCE_RESERVE_STATUS_ILLEGAL, instance.getInstanceCode(), instance.getInstanceStatus());
+            }
+            if (StrUtil.isNotBlank(instance.getReservationId())) {
+                throw exception(INSTANCE_ALREADY_RESERVED, instance.getInstanceCode(), instance.getReservationId());
+            }
+            MaterialMovementDO movement = buildMovement(MovementTypeEnum.RESERVE.getType(), instance, null, null);
+            applyTrace(movement, reqVO, operationId, index++);
+            movement.setBeforeStatus(InstanceStatusEnum.AVAILABLE.name());
+            movement.setAfterStatus(InstanceStatusEnum.RESERVED.name());
+            movement.setRefType(StrUtil.blankToDefault(reqVO.getRefType(), "EXECUTION"));
+            movement.setRefId(StrUtil.blankToDefault(reqVO.getRefId(), reqVO.getExecutionId()));
+
+            LambdaUpdateWrapper<MaterialInstanceDO> update = new LambdaUpdateWrapper<MaterialInstanceDO>()
+                    .eq(MaterialInstanceDO::getId, instance.getId())
+                    .eq(MaterialInstanceDO::getInstanceStatus, InstanceStatusEnum.AVAILABLE.name())
+                    .isNull(MaterialInstanceDO::getReservationId)
+                    .set(MaterialInstanceDO::getInstanceStatus, InstanceStatusEnum.RESERVED.name())
+                    .set(MaterialInstanceDO::getReservationId, reservationId)
+                    .set(MaterialInstanceDO::getReservedByExecutionId, reqVO.getExecutionId())
+                    .set(MaterialInstanceDO::getReservedUntil, reqVO.getReservedUntil());
+            if (materialInstanceMapper.update(null, update) != 1) {
+                throw exception(INSTANCE_CONSUME_CONFLICT, instance.getInstanceCode());
+            }
+            movementIds.add(materialMovementService.recordMovement(movement));
+        }
+        return MaterialInstanceReserveRespVO.builder()
+                .reservationId(reservationId)
+                .instanceIds(instanceIds)
+                .movementIds(movementIds)
+                .operationId(operationId)
+                .idempotentReplay(Boolean.FALSE)
+                .build();
+    }
+
+    private MaterialInstanceReserveRespVO findReserveReplay(String businessIdempotentKey) {
+        if (StrUtil.isBlank(businessIdempotentKey)) {
+            return null;
+        }
+        List<MaterialMovementDO> movements = materialMovementService.listByBusinessIdempotentKey(businessIdempotentKey);
+        if (CollUtil.isEmpty(movements)) {
+            return null;
+        }
+        for (MaterialMovementDO m : movements) {
+            if (!MovementTypeEnum.RESERVE.getType().equals(m.getMovementType())) {
+                throw exception(MOVEMENT_IDEMPOTENT_CONFLICT, businessIdempotentKey);
+            }
+        }
+        // 从实例读取同批 reservationId
+        MaterialInstanceDO firstInst = materialInstanceMapper.selectById(movements.get(0).getInstanceId());
+        String reservationId = firstInst == null ? null : firstInst.getReservationId();
+        List<Long> instanceIds = new ArrayList<>(movements.size());
+        List<Long> movementIds = new ArrayList<>(movements.size());
+        for (MaterialMovementDO m : movements) {
+            movementIds.add(m.getId());
+            instanceIds.add(m.getInstanceId());
+        }
+        return MaterialInstanceReserveRespVO.builder()
+                .reservationId(reservationId)
+                .instanceIds(instanceIds)
+                .movementIds(movementIds)
+                .operationId(movements.get(0).getOperationId())
+                .idempotentReplay(Boolean.TRUE)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public MaterialInstanceConsumeRespVO consumeReservation(MaterialInstanceConsumeReservationReqVO reqVO) {
+        MaterialInstanceConsumeRespVO replay = findConsumeReplay(reqVO.getIdempotentKey());
+        if (replay != null) {
+            assertReplayType(reqVO.getIdempotentKey(), MovementTypeEnum.CONSUME.getType());
+            return replay;
+        }
+        try {
+            return doConsumeReservation(reqVO);
+        } catch (ServiceException ex) {
+            return replayOrRethrow(reqVO.getIdempotentKey(), ex);
+        }
+    }
+
+    private MaterialInstanceConsumeRespVO doConsumeReservation(MaterialInstanceConsumeReservationReqVO reqVO) {
+        if (StrUtil.isBlank(reqVO.getReservationId()) || StrUtil.isBlank(reqVO.getExecutionId())
+                || CollUtil.isEmpty(reqVO.getItems())) {
+            throw exception(SAMPLE_INSTANTIATE_PARAM_INVALID, "reservationId/executionId/items 不能为空");
+        }
+        String operationId = StrUtil.blankToDefault(reqVO.getOperationId(), IdUtil.fastSimpleUUID());
+        List<Long> movementIds = new ArrayList<>(reqVO.getItems().size());
+        List<Long> consumedInstanceIds = new ArrayList<>(reqVO.getItems().size());
+        int index = 0;
+        for (MaterialInstanceConsumeReqVO.Item item : reqVO.getItems()) {
+            MaterialInstanceDO instance = validateMaterialInstanceExists(item.getInstanceId());
+            assertOwnership(instance, reqVO.getReservationId(), reqVO.getExecutionId());
+            if (InstanceStatusEnum.RESERVED.name().equals(instance.getInstanceStatus())) {
+                assertReservationNotExpired(instance);
+            } else if (!InstanceStatusEnum.IN_USE.name().equals(instance.getInstanceStatus())) {
+                throw exception(INSTANCE_CONSUME_STATUS_ILLEGAL, instance.getInstanceCode(), instance.getInstanceStatus());
+            }
+            Long movementId = doConsumeOwned(instance, item.getQty(), item.getVolUl(), item.getAfterStatus(),
+                    StrUtil.blankToDefault(item.getRemark(), reqVO.getRemark()), reqVO, operationId, index++, true);
+            movementIds.add(movementId);
+            consumedInstanceIds.add(instance.getId());
+        }
+        return MaterialInstanceConsumeRespVO.builder()
+                .movementIds(movementIds)
+                .consumedInstanceIds(consumedInstanceIds)
+                .operationId(operationId)
+                .idempotentReplay(Boolean.FALSE)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public MaterialInstanceReleaseByExecutionRespVO releaseByExecution(MaterialInstanceReleaseByExecutionReqVO reqVO) {
+        if (reqVO == null || StrUtil.isBlank(reqVO.getExecutionId())) {
+            throw exception(SAMPLE_INSTANTIATE_PARAM_INVALID, "executionId 不能为空");
+        }
+        MaterialInstanceReleaseByExecutionRespVO replay = findReleaseByExecutionReplay(reqVO.getIdempotentKey());
+        if (replay != null) {
+            return replay;
+        }
+        try {
+            return doReleaseByExecution(reqVO);
+        } catch (ServiceException ex) {
+            if (StrUtil.isBlank(reqVO.getIdempotentKey()) || !isConsumeIdempotentReplayCandidate(ex)) {
+                throw ex;
+            }
+            MaterialInstanceReleaseByExecutionRespVO r = findReleaseByExecutionReplay(reqVO.getIdempotentKey());
+            if (r == null) {
+                throw ex;
+            }
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            }
+            return r;
+        }
+    }
+
+    private MaterialInstanceReleaseByExecutionRespVO doReleaseByExecution(MaterialInstanceReleaseByExecutionReqVO reqVO) {
+        List<MaterialInstanceDO> owned = materialInstanceMapper.selectOwnedByExecutionId(reqVO.getExecutionId(), 500);
+        String operationId = StrUtil.blankToDefault(reqVO.getOperationId(), IdUtil.fastSimpleUUID());
+        List<Long> released = new ArrayList<>();
+        List<Long> movementIds = new ArrayList<>();
+        List<MaterialInstanceReleaseByExecutionRespVO.Pending> pending = new ArrayList<>();
+        int index = 0;
+        MovementTraceBaseReqVO trace = reqVO;
+        if (StrUtil.isNotBlank(reqVO.getReason())) {
+            reqVO.setRemark(reqVO.getReason());
+        }
+        for (MaterialInstanceDO instance : owned) {
+            if (InstanceStatusEnum.IN_USE.name().equals(instance.getInstanceStatus())) {
+                pending.add(MaterialInstanceReleaseByExecutionRespVO.Pending.builder()
+                        .instanceId(instance.getId())
+                        .instanceCode(instance.getInstanceCode())
+                        .instanceStatus(instance.getInstanceStatus())
+                        .reason("IN_USE 需人工处置，不自动释放")
+                        .build());
+                continue;
+            }
+            if (!InstanceStatusEnum.RESERVED.name().equals(instance.getInstanceStatus())) {
+                continue;
+            }
+            MaterialMovementDO movement = buildMovement(MovementTypeEnum.RELEASE.getType(), instance, null, null);
+            applyTrace(movement, trace, operationId, index++);
+            movement.setBeforeStatus(InstanceStatusEnum.RESERVED.name());
+            movement.setAfterStatus(InstanceStatusEnum.AVAILABLE.name());
+            LambdaUpdateWrapper<MaterialInstanceDO> update = new LambdaUpdateWrapper<MaterialInstanceDO>()
+                    .eq(MaterialInstanceDO::getId, instance.getId())
+                    .eq(MaterialInstanceDO::getInstanceStatus, InstanceStatusEnum.RESERVED.name())
+                    .eq(MaterialInstanceDO::getReservationId, instance.getReservationId())
+                    .eq(MaterialInstanceDO::getReservedByExecutionId, reqVO.getExecutionId())
+                    .set(MaterialInstanceDO::getInstanceStatus, InstanceStatusEnum.AVAILABLE.name())
+                    .set(MaterialInstanceDO::getReservationId, null)
+                    .set(MaterialInstanceDO::getReservedByExecutionId, null)
+                    .set(MaterialInstanceDO::getReservedUntil, null);
+            if (materialInstanceMapper.update(null, update) != 1) {
+                // 竞争失败：跳过该行，不中断整批
+                continue;
+            }
+            movementIds.add(materialMovementService.recordMovement(movement));
+            released.add(instance.getId());
+        }
+        return MaterialInstanceReleaseByExecutionRespVO.builder()
+                .releasedInstanceIds(released)
+                .movementIds(movementIds)
+                .pendingInUse(pending)
+                .operationId(operationId)
+                .idempotentReplay(Boolean.FALSE)
+                .build();
+    }
+
+    private MaterialInstanceReleaseByExecutionRespVO findReleaseByExecutionReplay(String businessIdempotentKey) {
+        if (StrUtil.isBlank(businessIdempotentKey)) {
+            return null;
+        }
+        List<MaterialMovementDO> movements = materialMovementService.listByBusinessIdempotentKey(businessIdempotentKey);
+        if (CollUtil.isEmpty(movements)) {
+            return null;
+        }
+        for (MaterialMovementDO m : movements) {
+            if (!MovementTypeEnum.RELEASE.getType().equals(m.getMovementType())) {
+                throw exception(MOVEMENT_IDEMPOTENT_CONFLICT, businessIdempotentKey);
+            }
+        }
+        List<Long> released = new ArrayList<>();
+        List<Long> movementIds = new ArrayList<>();
+        for (MaterialMovementDO m : movements) {
+            movementIds.add(m.getId());
+            released.add(m.getInstanceId());
+        }
+        return MaterialInstanceReleaseByExecutionRespVO.builder()
+                .releasedInstanceIds(released)
+                .movementIds(movementIds)
+                .pendingInUse(List.of())
+                .operationId(movements.get(0).getOperationId())
+                .idempotentReplay(Boolean.TRUE)
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int expireReservations(LocalDateTime now, int limit) {
+        LocalDateTime point = now == null ? LocalDateTime.now() : now;
+        List<MaterialInstanceDO> expired = materialInstanceMapper.selectExpiredReserved(point, limit);
+        int released = 0;
+        for (MaterialInstanceDO instance : expired) {
+            String businessKey = "expireRelease:" + instance.getReservationId() + ":" + instance.getId();
+            List<MaterialMovementDO> existing = materialMovementService.listByBusinessIdempotentKey(businessKey);
+            if (CollUtil.isNotEmpty(existing)) {
+                continue;
+            }
+            MovementTraceBaseReqVO trace = new MovementTraceBaseReqVO();
+            trace.setIdempotentKey(businessKey);
+            trace.setBizSource("AUTO");
+            trace.setOperatorType("AUTO");
+            trace.setRemark("预留过期自动释放");
+            String operationId = IdUtil.fastSimpleUUID();
+            MaterialMovementDO movement = buildMovement(MovementTypeEnum.RELEASE.getType(), instance, null, null);
+            applyTrace(movement, trace, operationId, 0);
+            movement.setBeforeStatus(InstanceStatusEnum.RESERVED.name());
+            movement.setAfterStatus(InstanceStatusEnum.AVAILABLE.name());
+            LambdaUpdateWrapper<MaterialInstanceDO> update = new LambdaUpdateWrapper<MaterialInstanceDO>()
+                    .eq(MaterialInstanceDO::getId, instance.getId())
+                    .eq(MaterialInstanceDO::getInstanceStatus, InstanceStatusEnum.RESERVED.name())
+                    .eq(MaterialInstanceDO::getReservationId, instance.getReservationId())
+                    .eq(MaterialInstanceDO::getReservedByExecutionId, instance.getReservedByExecutionId())
+                    .eq(MaterialInstanceDO::getReservedUntil, instance.getReservedUntil())
+                    .set(MaterialInstanceDO::getInstanceStatus, InstanceStatusEnum.AVAILABLE.name())
+                    .set(MaterialInstanceDO::getReservationId, null)
+                    .set(MaterialInstanceDO::getReservedByExecutionId, null)
+                    .set(MaterialInstanceDO::getReservedUntil, null);
+            if (materialInstanceMapper.update(null, update) != 1) {
+                continue;
+            }
+            try {
+                materialMovementService.recordMovement(movement);
+                released++;
+            } catch (ServiceException ex) {
+                if (Objects.equals(ex.getCode(), MOVEMENT_IDEMPOTENT_DUPLICATE.getCode())) {
+                    continue;
+                }
+                throw ex;
+            }
+        }
+        return released;
+    }
+
+    private void assertOwnership(MaterialInstanceDO instance, String reservationId, String executionId) {
+        if (StrUtil.isBlank(instance.getReservationId())) {
+            return;
+        }
+        if (StrUtil.isBlank(reservationId) || StrUtil.isBlank(executionId)
+                || !Objects.equals(instance.getReservationId(), reservationId)
+                || !Objects.equals(instance.getReservedByExecutionId(), executionId)) {
+            throw exception(INSTANCE_RESERVATION_OWNER_MISMATCH, instance.getInstanceCode(),
+                    reservationId, executionId);
+        }
+    }
+
+    private void assertReservationNotExpired(MaterialInstanceDO instance) {
+        if (instance.getReservedUntil() != null && !instance.getReservedUntil().isAfter(LocalDateTime.now())) {
+            throw exception(INSTANCE_RESERVATION_EXPIRED, instance.getInstanceCode(), instance.getReservedUntil());
+        }
+    }
+
+    private void assertReplayType(String businessIdempotentKey, String expectedType) {
+        if (StrUtil.isBlank(businessIdempotentKey)) {
+            return;
+        }
+        List<MaterialMovementDO> movements = materialMovementService.listByBusinessIdempotentKey(businessIdempotentKey);
+        if (CollUtil.isEmpty(movements)) {
+            return;
+        }
+        if (!expectedType.equals(movements.get(0).getMovementType())) {
+            throw exception(MOVEMENT_IDEMPOTENT_CONFLICT, businessIdempotentKey);
+        }
+    }
 
     /**
-     * 消耗单个实例的实际逻辑：写一条 CONSUME 流水 + 回写实例的数量 / 体积 / 状态
-     *
-     * @param qty         离散消耗数量（与 volUl 二选一，volUl 优先；**两者都不传表示整件消耗**）
-     * @param volUl       连续消耗体积
-     * @param afterStatus 消耗后状态（为空则按剩余量推导）
-     * @return 流水编号
+     * 消耗（可允许有归属实例）。ownedPath=true 时耗尽清三列，部分保持归属。
      */
-    private Long doConsume(MaterialInstanceDO instance, Integer qty, BigDecimal volUl, String afterStatus,
-                           String remark, MovementTraceBaseReqVO trace, String operationId, int index) {
+    private Long doConsumeOwned(MaterialInstanceDO instance, Integer qty, BigDecimal volUl, String afterStatus,
+                                String remark, MovementTraceBaseReqVO trace, String operationId, int index,
+                                boolean ownedPath) {
+        if (!ownedPath && StrUtil.isNotBlank(instance.getReservationId())) {
+            throw exception(INSTANCE_RESERVATION_OWNER_MISMATCH, instance.getInstanceCode(), null, null);
+        }
         // 1. 状态校验
         if (!InstanceStatusEnum.isConsumable(instance.getInstanceStatus())) {
             throw exception(INSTANCE_CONSUME_STATUS_ILLEGAL, instance.getInstanceCode(), instance.getInstanceStatus());
         }
         boolean byVolume = volUl != null && volUl.compareTo(BigDecimal.ZERO) > 0;
-
-        // 2. 算变更前后。规则：
-        //    - 传了 volUl       → 按体积扣减
-        //    - 传了 qty         → 按数量扣减
-        //    - 两者都不传       → 整件消耗（把该实例一次用完，after 归零）
-        //    current_count 为空时视为单件实物（一期约定 1 个实例 = 1 件）
         Integer beforeQty = null;
         Integer afterQty = null;
         BigDecimal beforeVol = instance.getCurrentVolUl();
@@ -1019,12 +1524,8 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             }
             afterQty = beforeQty - consumeQty;
         }
-
-        // 3. 状态推导：剩余量归零 → USED；仍有剩余 → IN_USE（调用方可显式覆盖）
         String beforeStatus = instance.getInstanceStatus();
         String finalStatus = StrUtil.blankToDefault(afterStatus, deriveStatusAfterConsume(byVolume, afterQty, afterVol));
-
-        // 组装流水，但要等库存条件更新成功后再落库（幂等键按明细序号派生）
         MaterialMovementDO movement = buildMovement(MovementTypeEnum.CONSUME.getType(), instance, null, null);
         applyTrace(movement, trace, operationId, index);
         movement.setRemark(remark);
@@ -1039,7 +1540,6 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             movement.setChangeQty(afterQty - beforeQty);
             movement.setAfterQty(afterQty);
         }
-        // 4. 先改库存。条件里带上读到的数量 / 体积 / 状态，抢不到就整笔回滚，不能先写流水
         LambdaUpdateWrapper<MaterialInstanceDO> update = new LambdaUpdateWrapper<MaterialInstanceDO>()
                 .eq(MaterialInstanceDO::getId, instance.getId())
                 .eq(MaterialInstanceDO::getInstanceStatus, beforeStatus)
@@ -1058,20 +1558,36 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             update.eq(MaterialInstanceDO::getCurrentCount, beforeQty);
             update.set(MaterialInstanceDO::getCurrentCount, afterQty);
         }
+        // 耗尽或 USED：清归属；部分消耗保持归属三列
+        if (InstanceStatusEnum.USED.name().equals(finalStatus)
+                || InstanceStatusEnum.EXPIRED.name().equals(finalStatus)
+                || InstanceStatusEnum.DISCARDED.name().equals(finalStatus)) {
+            update.set(MaterialInstanceDO::getReservationId, null)
+                    .set(MaterialInstanceDO::getReservedByExecutionId, null)
+                    .set(MaterialInstanceDO::getReservedUntil, null);
+        }
         if (materialInstanceMapper.update(null, update) != 1) {
             throw exception(INSTANCE_CONSUME_CONFLICT, instance.getInstanceCode());
         }
-
-        // 5. 库存已经改成功，再记流水。流水失败会把上面的更新一起回滚
         return materialMovementService.recordMovement(movement);
+    }
+
+
+
+    /**
+     * 普通消耗入口：拒绝有归属实例。
+     */
+    private Long doConsume(MaterialInstanceDO instance, Integer qty, java.math.BigDecimal volUl, String afterStatus,
+                           String remark, MovementTraceBaseReqVO trace, String operationId, int index) {
+        return doConsumeOwned(instance, qty, volUl, afterStatus, remark, trace, operationId, index, false);
     }
 
     /**
      * 消耗后的状态推导：剩余量归零 → USED，仍有剩余 → IN_USE
      */
-    private String deriveStatusAfterConsume(boolean byVolume, Integer afterQty, BigDecimal afterVol) {
+    private String deriveStatusAfterConsume(boolean byVolume, Integer afterQty, java.math.BigDecimal afterVol) {
         if (byVolume) {
-            return afterVol == null || afterVol.compareTo(BigDecimal.ZERO) <= 0
+            return afterVol == null || afterVol.compareTo(java.math.BigDecimal.ZERO) <= 0
                     ? InstanceStatusEnum.USED.name() : InstanceStatusEnum.IN_USE.name();
         }
         return afterQty == null || afterQty <= 0
@@ -1123,12 +1639,8 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         return Integer.compare(a.length(), b.length());
     }
 
-
     // ==================== 流水装配 ====================
 
-    /**
-     * 装配流水的主体与位置字段
-     */
     private MaterialMovementDO buildMovement(String type, MaterialInstanceDO instance, SlotDO fromSlot, SlotDO toSlot) {
         MaterialMovementDO movement = MaterialMovementDO.builder()
                 .movementType(type)
@@ -1152,10 +1664,6 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
         return movement;
     }
 
-    /**
-     * 装配流水的追溯字段（操作人 / 来源 / 单据 / 幂等键等）。
-     * operator、operateTime、bizSource、operatorType 允许为空，由 Service 兜底填充。
-     */
     private void applyTrace(MaterialMovementDO movement, MovementTraceBaseReqVO trace,
                             String operationId, int index) {
         if (trace == null) {
@@ -1171,7 +1679,6 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
             movement.setRemark(trace.getRemark());
         }
         movement.setOperationId(StrUtil.blankToDefault(operationId, trace.getOperationId()));
-        // 幂等键按明细序号派生：一次请求多条流水各有唯一键，同时整批保持可重放语义
         if (StrUtil.isNotBlank(trace.getIdempotentKey())) {
             movement.setIdempotentKey(trace.getIdempotentKey() + "#" + index);
         }

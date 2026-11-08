@@ -8,6 +8,13 @@ import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceC
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceUseReleaseRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReserveReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReserveRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceConsumeReservationReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseByExecutionReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceReleaseByExecutionRespVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceInstantiateReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceInstantiateRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckRespVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceCheckReqVO;
 import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstancePageReqVO;
@@ -200,8 +207,34 @@ public interface MaterialInstanceService {
     MaterialInstanceUseReleaseRespVO use(@Valid MaterialInstanceUseReqVO reqVO);
 
     /**
-     * 最小 release：IN_USE/RESERVED → AVAILABLE（D2-a）。
+     * 最小 release：IN_USE/RESERVED → AVAILABLE（D2-a）；有归属须校验所有者。
      */
     MaterialInstanceUseReleaseRespVO release(@Valid MaterialInstanceReleaseReqVO reqVO);
+
+    /**
+     * 样本实物化：创建 quantity 个挂 sample_id 的顶层实例（可幂等回放）。
+     */
+    MaterialInstanceInstantiateRespVO instantiateSample(@Valid MaterialInstanceInstantiateReqVO reqVO);
+
+    /**
+     * 按执行预留一批 AVAILABLE 实例（同批共用 reservationId）。
+     */
+    MaterialInstanceReserveRespVO reserve(@Valid MaterialInstanceReserveReqVO reqVO);
+
+    /**
+     * 有所有权校验的消耗。
+     */
+    MaterialInstanceConsumeRespVO consumeReservation(@Valid MaterialInstanceConsumeReservationReqVO reqVO);
+
+    /**
+     * 按执行号释放仍处于 RESERVED 的实例；IN_USE 返回待处置。
+     */
+    MaterialInstanceReleaseByExecutionRespVO releaseByExecution(
+            @Valid MaterialInstanceReleaseByExecutionReqVO reqVO);
+
+    /**
+     * 过期预留自动释放（扫描器调用）。返回实际释放条数。
+     */
+    int expireReservations(java.time.LocalDateTime now, int limit);
 
 }

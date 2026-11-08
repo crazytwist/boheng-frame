@@ -48,6 +48,22 @@ public interface SlotMapper extends BaseMapperX<SlotDO> {
         return selectOne(SlotDO::getSlotCode, slotCode);
     }
 
+    /**
+     * Flow 槽位只读查询（有界）。
+     */
+    default List<SlotDO> selectListForMaterialQuery(String zoneCode, String deviceCode, String slotType,
+                                                    String slotStatus, Integer status, int limit) {
+        int size = Math.max(1, Math.min(limit, 200));
+        return selectList(new LambdaQueryWrapperX<SlotDO>()
+                .eqIfPresent(SlotDO::getZoneCode, zoneCode)
+                .eqIfPresent(SlotDO::getDeviceCode, deviceCode)
+                .eqIfPresent(SlotDO::getSlotType, slotType)
+                .eqIfPresent(SlotDO::getSlotStatus, slotStatus)
+                .eqIfPresent(SlotDO::getStatus, status)
+                .orderByAsc(SlotDO::getId)
+                .last("LIMIT " + size));
+    }
+
     default List<SlotDO> selectListByZoneCode(String zoneCode) {
         return selectList(new LambdaQueryWrapperX<SlotDO>()
                 .eqIfPresent(SlotDO::getZoneCode, zoneCode)

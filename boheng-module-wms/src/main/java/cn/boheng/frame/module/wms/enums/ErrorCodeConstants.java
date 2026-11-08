@@ -61,6 +61,16 @@ public interface ErrorCodeConstants {
     ErrorCode BATCH_PUT_IN_CONTAINER_REQUIRED = new ErrorCode(1_003_005_012, "铺货试剂类物料必须指定容器类型");
     ErrorCode INSTANCE_USE_STATUS_ILLEGAL = new ErrorCode(1_003_005_013, "实例【{}】当前状态为【{}】，不允许标记为使用中");
     ErrorCode INSTANCE_RELEASE_STATUS_ILLEGAL = new ErrorCode(1_003_005_014, "实例【{}】当前状态为【{}】，不允许释放");
+    ErrorCode INSTANCE_ALREADY_RESERVED = new ErrorCode(1_003_005_015, "实例【{}】已被预留（reservationId={}）");
+    ErrorCode INSTANCE_RESERVATION_OWNER_MISMATCH = new ErrorCode(1_003_005_016,
+            "实例【{}】预留归属不符：期望 reservationId={}, executionId={}");
+    ErrorCode INSTANCE_RESERVATION_EXPIRED = new ErrorCode(1_003_005_017, "实例【{}】预留已过期（reservedUntil={}）");
+    ErrorCode MOVEMENT_IDEMPOTENT_CONFLICT = new ErrorCode(1_003_005_018,
+            "幂等键【{}】已用于其他操作/参数，拒绝回放不相干结果");
+    ErrorCode INSTANCE_RESERVE_STATUS_ILLEGAL = new ErrorCode(1_003_005_019, "实例【{}】当前状态为【{}】，不允许预留");
+    ErrorCode INSTANCE_RESERVE_UNTIL_INVALID = new ErrorCode(1_003_005_020, "预留到期时间必须晚于当前时间");
+    ErrorCode INSTANCE_RESERVE_EMPTY = new ErrorCode(1_003_005_021, "预留实例列表不能为空");
+    ErrorCode INSTANCE_RESERVE_DUPLICATE = new ErrorCode(1_003_005_022, "预留实例列表存在重复编号");
 
     // ========== 样本 1-003-006-000 ==========
     ErrorCode SAMPLE_NOT_EXISTS = new ErrorCode(1_003_006_000, "样本不存在");
@@ -69,5 +79,7 @@ public interface ErrorCodeConstants {
     ErrorCode SAMPLE_HAS_INSTANCES = new ErrorCode(1_003_006_002, "样本【{}】已生成 {} 个实例，不允许删除");
     ErrorCode SAMPLE_DERIVE_TYPE_INVALID = new ErrorCode(1_003_006_003, "衍生样本必须指定衍生类型（SPLIT/ALIQUOT/MERGE/ADD_REAGENT）");
     ErrorCode SAMPLE_STATUS_TRANSITION_INVALID = new ErrorCode(1_003_006_004, "样本【{}】不能从【{}】流转到【{}】");
+    ErrorCode SAMPLE_INSTANTIATE_PARAM_INVALID = new ErrorCode(1_003_006_006, "样本实物化参数不合法：{}");
+    ErrorCode SAMPLE_DERIVE_PARENT_REQUIRED = new ErrorCode(1_003_006_007, "衍生样本必须指定父样本编号");
 
 }

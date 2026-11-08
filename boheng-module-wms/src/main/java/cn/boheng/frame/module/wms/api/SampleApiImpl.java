@@ -1,11 +1,17 @@
 package cn.boheng.frame.module.wms.api;
 
+import cn.boheng.frame.module.wms.api.dto.SampleDeriveRegisterReqDTO;
+import cn.boheng.frame.module.wms.api.dto.SampleInstantiateReqDTO;
+import cn.boheng.frame.module.wms.api.dto.SampleInstantiateRespDTO;
 import cn.boheng.frame.module.wms.api.dto.SampleRegisterReqDTO;
 import cn.boheng.frame.module.wms.api.dto.SampleSummaryDTO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceInstantiateReqVO;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceInstantiateRespVO;
 import cn.boheng.frame.module.wms.controller.admin.sample.vo.SampleInfoSaveReqVO;
 import cn.boheng.frame.module.wms.dal.dataobject.sample.SampleInfoDO;
-import cn.boheng.frame.module.wms.service.sample.SampleInfoService;
 import cn.boheng.frame.module.wms.enums.SampleSourceEnum;
+import cn.boheng.frame.module.wms.service.instance.MaterialInstanceService;
+import cn.boheng.frame.module.wms.service.sample.SampleInfoService;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
@@ -15,16 +21,12 @@ import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
 
+import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_DERIVE_PARENT_REQUIRED;
+import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.SAMPLE_DERIVE_TYPE_INVALID;
+
 /**
  * 样本域契约层实现（SampleApi）
- *
- * <p>职责：把「跨模块契约」（SampleApi + DTO）翻译成 wms 内部 Service 调用，
- * 屏蔽 DO/VO 等实现细节。流程（flow）只依赖 {@link SampleApi}，本类由 Spring
- * 注入，对消费方透明。</p>
- *
- * <p>DTO ↔ VO ↔ DO 映射全部集中在本类，不暴露给外部模块。</p>
- *
- * @author yinan
  */
 @Service
 public class SampleApiImpl implements SampleApi {
@@ -32,9 +34,11 @@ public class SampleApiImpl implements SampleApi {
     @Resource
     private SampleInfoService sampleInfoService;
 
+    @Resource
+    private MaterialInstanceService materialInstanceService;
+
     @Override
     public String registerSample(SampleRegisterReqDTO reqDTO) {
-        // 与批量共用 registerOne → createSample 同态幂等语义（避免同类自调用绕过事务代理）
         return registerOne(reqDTO);
     }
 
@@ -51,12 +55,50 @@ public class SampleApiImpl implements SampleApi {
         return sampleIds;
     }
 
-    /**
-     * 单条登记：委托 createSample（含同态幂等 / CONFLICT），返回业务编号。
-     */
+    @Override
+    public String registerDeriveSample(SampleDeriveRegisterReqDTO reqDTO) {
+        if (reqDTO == null || StrUtil.isBlank(reqDTO.getParentSampleId())) {
+            throw exception(SAMPLE_DERIVE_PARENT_REQUIRED);
+        }
+        if (StrUtil.isBlank(reqDTO.getDeriveType()) || "ORIGINAL".equals(reqDTO.getDeriveType())) {
+            throw exception(SAMPLE_DERIVE_TYPE_INVALID);
+        }
+        SampleRegisterReqDTO register = new SampleRegisterReqDTO();
+        register.setSampleId(reqDTO.getSampleId());
+        register.setParentSampleId(reqDTO.getParentSampleId());
+        register.setDeriveType(reqDTO.getDeriveType());
+        register.setSampleName(reqDTO.getSampleName());
+        register.setSampleType(reqDTO.getSampleType());
+        register.setContentDefCode(reqDTO.getContentDefCode());
+        register.setContainerTypeCode(reqDTO.getContainerTypeCode());
+        register.setInitialVolUl(reqDTO.getInitialVolUl());
+        register.setExperimentParams(reqDTO.getExperimentParams());
+        register.setBatchNo(reqDTO.getBatchNo());
+        register.setOrderNo(reqDTO.getOrderNo());
+        register.setPriority(reqDTO.getPriority());
+        register.setSource(reqDTO.getSource());
+        return registerOne(register);
+    }
+
+    @Override
+    public SampleInstantiateRespDTO instantiateSample(SampleInstantiateReqDTO reqDTO) {
+        MaterialInstanceInstantiateReqVO reqVO = new MaterialInstanceInstantiateReqVO();
+        reqVO.setSampleId(reqDTO.getSampleId());
+        reqVO.setContainerTypeCode(reqDTO.getContainerTypeCode());
+        reqVO.setQuantity(reqDTO.getQuantity());
+        reqVO.setInitialVolUl(reqDTO.getInitialVolUl());
+        reqVO.setIdempotentKey(reqDTO.getIdempotentKey());
+        MaterialInstanceInstantiateRespVO vo = materialInstanceService.instantiateSample(reqVO);
+        SampleInstantiateRespDTO dto = new SampleInstantiateRespDTO();
+        dto.setSampleId(vo.getSampleId());
+        dto.setInstanceIds(vo.getInstanceIds());
+        dto.setOperationId(vo.getOperationId());
+        dto.setIdempotentReplay(vo.getIdempotentReplay());
+        return dto;
+    }
+
     private String registerOne(SampleRegisterReqDTO reqDTO) {
         SampleInfoSaveReqVO saveReqVO = new SampleInfoSaveReqVO();
-        // 样本编号：调用方不传由 wms 生成（雪花，保证租户内唯一）
         saveReqVO.setSampleId(StrUtil.isBlank(reqDTO.getSampleId())
                 ? "SP-" + IdUtil.getSnowflakeNextIdStr() : reqDTO.getSampleId());
         saveReqVO.setParentSampleId(reqDTO.getParentSampleId());
@@ -71,7 +113,6 @@ public class SampleApiImpl implements SampleApi {
         saveReqVO.setOrderNo(reqDTO.getOrderNo());
         saveReqVO.setPriority(reqDTO.getPriority());
         saveReqVO.setSource(StrUtil.blankToDefault(reqDTO.getSource(), SampleSourceEnum.MANUAL.name()));
-        // 登记即「已登记」态；后续经 updateStatus 流转
         saveReqVO.setStatus(SampleStatus.REGISTERED);
         sampleInfoService.createSample(saveReqVO);
         return saveReqVO.getSampleId();
@@ -101,8 +142,6 @@ public class SampleApiImpl implements SampleApi {
         }
         return result;
     }
-
-    // ==================== DO → DTO ====================
 
     private SampleSummaryDTO toSummary(SampleInfoDO sample) {
         if (sample == null) {

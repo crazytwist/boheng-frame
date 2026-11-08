@@ -125,6 +125,21 @@ public class MaterialInstanceDO extends TenantBaseDO {
     private String instanceStatus;
 
     /**
+     * 预留号（同批多实例共用；非预留为 NULL）
+     */
+    private String reservationId;
+
+    /**
+     * 预留所有者（Flow 执行编号）
+     */
+    private String reservedByExecutionId;
+
+    /**
+     * 预留到期时间
+     */
+    private java.time.LocalDateTime reservedUntil;
+
+    /**
      * 备注
      */
     private String description;

@@ -84,7 +84,31 @@ public class MaterialMovementServiceImpl implements MaterialMovementService {
 
     @Override
     public List<MaterialMovementDO> listByBusinessIdempotentKey(String businessIdempotentKey) {
-        return materialMovementMapper.selectListByBusinessIdempotentKey(businessIdempotentKey);
+        List<MaterialMovementDO> list = materialMovementMapper.selectListByBusinessIdempotentKey(businessIdempotentKey);
+        if (list == null || list.size() <= 1) {
+            return list == null ? java.util.List.of() : list;
+        }
+        // 按 #index 数值序，避免 #10 排在 #2 前
+        list.sort(java.util.Comparator
+                .comparingInt(MaterialMovementServiceImpl::parseIdempotentIndex)
+                .thenComparing(MaterialMovementDO::getId, java.util.Comparator.nullsLast(Long::compareTo)));
+        return list;
+    }
+
+    static int parseIdempotentIndex(MaterialMovementDO movement) {
+        if (movement == null || movement.getIdempotentKey() == null) {
+            return Integer.MAX_VALUE;
+        }
+        String key = movement.getIdempotentKey();
+        int idx = key.lastIndexOf('#');
+        if (idx < 0 || idx + 1 >= key.length()) {
+            return Integer.MAX_VALUE;
+        }
+        try {
+            return Integer.parseInt(key.substring(idx + 1));
+        } catch (NumberFormatException ex) {
+            return Integer.MAX_VALUE;
+        }
     }
 
     @Override

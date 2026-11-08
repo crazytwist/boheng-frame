@@ -1,5 +1,8 @@
 package cn.boheng.frame.module.wms.api;
 
+import cn.boheng.frame.module.wms.api.dto.SampleDeriveRegisterReqDTO;
+import cn.boheng.frame.module.wms.api.dto.SampleInstantiateReqDTO;
+import cn.boheng.frame.module.wms.api.dto.SampleInstantiateRespDTO;
 import cn.boheng.frame.module.wms.api.dto.SampleRegisterReqDTO;
 import cn.boheng.frame.module.wms.api.dto.SampleSummaryDTO;
 
@@ -9,7 +12,7 @@ import java.util.List;
  * 样本域对外 API（契约层，提供给其它模块调用）
  *
  * <p>样本是「业务对象」，与实物（material_instance）分离。流程（flow）通过本契约
- * 完成「登记样本 → 读取实验参数 → 驱动状态流转」，不直接碰 wms 实现。</p>
+ * 完成「登记样本 → 实物化 → 读取实验参数 → 驱动状态流转」，不直接碰 wms 实现。</p>
  *
  * <p>实现位于 boheng-module-wms 的 {@code SampleApiImpl}，由 Spring 注入；
  * 消费方（flow 等）只依赖本接口 + DTO，绝不依赖实现模块。</p>
@@ -39,6 +42,22 @@ public interface SampleApi {
      * @return 样本业务编号列表（顺序与入参一致）
      */
     List<String> registerSamples(List<SampleRegisterReqDTO> reqDTOs);
+
+    /**
+     * 衍生样本登记（单父谱系）。幂等语义与 {@link #registerSample} 相同。
+     *
+     * @param reqDTO 衍生登记信息（parentSampleId/deriveType 必填）
+     * @return 子样本业务编号
+     */
+    String registerDeriveSample(SampleDeriveRegisterReqDTO reqDTO);
+
+    /**
+     * 样本实物化：创建 quantity 个挂 sample_id 的物料实例。
+     *
+     * @param reqDTO 实物化请求
+     * @return 实例编号列表（可幂等回放）
+     */
+    SampleInstantiateRespDTO instantiateSample(SampleInstantiateReqDTO reqDTO);
 
     /**
      * 更新样本状态（节点驱动流转；可顺带登记当前所在流程/节点）

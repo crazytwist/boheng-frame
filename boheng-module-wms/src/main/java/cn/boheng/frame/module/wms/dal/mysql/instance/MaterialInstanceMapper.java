@@ -42,10 +42,67 @@ public interface MaterialInstanceMapper extends BaseMapperX<MaterialInstanceDO> 
         return selectOne(MaterialInstanceDO::getInstanceCode, instanceCode);
     }
 
+
     default List<MaterialInstanceDO> selectListBySampleId(String sampleId) {
         return selectList(new LambdaQueryWrapperX<MaterialInstanceDO>()
                 .eq(MaterialInstanceDO::getSampleId, sampleId)
                 .orderByDesc(MaterialInstanceDO::getId));
+    }
+
+    /**
+     * 按执行号查仍处于 RESERVED 或同属该执行的 IN_USE（有界，按 id 升序）。
+     */
+    default List<MaterialInstanceDO> selectOwnedByExecutionId(String executionId, int limit) {
+        int size = Math.max(1, Math.min(limit, 500));
+        return selectList(new LambdaQueryWrapperX<MaterialInstanceDO>()
+                .eq(MaterialInstanceDO::getReservedByExecutionId, executionId)
+                .in(MaterialInstanceDO::getInstanceStatus,
+                        java.util.List.of("RESERVED", "IN_USE"))
+                .orderByAsc(MaterialInstanceDO::getId)
+                .last("LIMIT " + size));
+    }
+
+    /**
+     * 过期预留扫描候选：RESERVED 且 reserved_until <= now（有界）。
+     */
+    default List<MaterialInstanceDO> selectExpiredReserved(java.time.LocalDateTime now, int limit) {
+        int size = Math.max(1, Math.min(limit, 200));
+        return selectList(new LambdaQueryWrapperX<MaterialInstanceDO>()
+                .eq(MaterialInstanceDO::getInstanceStatus, "RESERVED")
+                .le(MaterialInstanceDO::getReservedUntil, now)
+                .orderByAsc(MaterialInstanceDO::getReservedUntil)
+                .orderByAsc(MaterialInstanceDO::getId)
+                .last("LIMIT " + size));
+    }
+
+    /**
+     * 统计某样本下可用（AVAILABLE）且无归属的实例数量。
+     */
+    default long countAvailableBySampleId(String sampleId) {
+        return selectCount(new LambdaQueryWrapperX<MaterialInstanceDO>()
+                .eq(MaterialInstanceDO::getSampleId, sampleId)
+                .eq(MaterialInstanceDO::getInstanceStatus, "AVAILABLE")
+                .isNull(MaterialInstanceDO::getReservationId));
+    }
+
+    /**
+     * 统计内容物可用实例数。
+     */
+    default long countAvailableByContentDefCode(String contentDefCode) {
+        return selectCount(new LambdaQueryWrapperX<MaterialInstanceDO>()
+                .eq(MaterialInstanceDO::getContentDefCode, contentDefCode)
+                .eq(MaterialInstanceDO::getInstanceStatus, "AVAILABLE")
+                .isNull(MaterialInstanceDO::getReservationId));
+    }
+
+    /**
+     * 统计容器类型可用实例数（空容器或任意该类型 AVAILABLE）。
+     */
+    default long countAvailableByContainerTypeCode(String containerTypeCode) {
+        return selectCount(new LambdaQueryWrapperX<MaterialInstanceDO>()
+                .eq(MaterialInstanceDO::getContainerTypeCode, containerTypeCode)
+                .eq(MaterialInstanceDO::getInstanceStatus, "AVAILABLE")
+                .isNull(MaterialInstanceDO::getReservationId));
     }
 
     /**
