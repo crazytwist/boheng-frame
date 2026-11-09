@@ -66,15 +66,15 @@
 
 | # | 项 | 状态 |
 |---|---|---|
-| C1 | `RESERVE` / `RELEASE` 事件已定义但无写入方 | 🟢 |
+| C1 | `RESERVE` / `RELEASE` 事件已定义但无写入方 | ✅ W-2.2 已落地 |
 | C2 | `STATUS_CHANGE` 无独立写入路径 | 🟢 |
 | C3 | `ADJUST` 冲正无专用接口 | 🟢 |
 | C4 | 槽位 `capacity` 是死字段 | 🟢 |
 
-- **C1**：预留/释放归**调度域**。等调度模块设计预留机制时，
-  在 `MaterialInstanceServiceImpl` 加 `reserve()` / `releaseReserve()`，
-  写 `RESERVE` / `RELEASE` 流水（填 `before/after_status` + `ref_type=TASK`）。
-  `consume-by-container` 的 `includeReserved` 参数就是为它预留的（默认 `false`，不抢预留件）。
+- **C1**：✅ **已由 W-2.2 落地**（不再等调度域）。`MaterialApi.reserve / consumeReservation / releaseByExecution`，
+  Service 写 `RESERVE`/`RELEASE` 流水；`MaterialReservationSweeper` 跨租户过期释放；
+  `includeReserved` 默认 `false`，有归属必须走 `consumeReservation`。W04/W05 本轮已补竞争与跨租户测。
+  后置项（板型/槽位 W-2.5、全生命周期 W-2.3/2.4）不在此关闭。
 - **C2**：当前只有 `CONSUME` 会顺带带状态变化；**手工**通过 `update` 改 `instanceStatus`
   目前**不走流水**。若审计要求「状态变更全留痕」，需要在 `updateMaterialInstance` 里
   比对 `instanceStatus`，变了就补一条 `STATUS_CHANGE`。

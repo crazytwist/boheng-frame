@@ -210,6 +210,90 @@ class MaterialInstanceReservationTest {
         assertEquals(0, again);
     }
 
+
+    @Test
+    void consumeWinsThenExpireIsNoOp() {
+        MaterialInstanceDO inst = putAvailable(9L, "R-9");
+        inst.setInstanceStatus(InstanceStatusEnum.RESERVED.name());
+        inst.setReservationId("RSV-9");
+        inst.setReservedByExecutionId("EXE-9");
+        inst.setReservedUntil(LocalDateTime.now().plusHours(1));
+        inst.setCurrentCount(1);
+
+        MaterialInstanceConsumeReservationReqVO req = new MaterialInstanceConsumeReservationReqVO();
+        req.setReservationId("RSV-9");
+        req.setExecutionId("EXE-9");
+        req.setIdempotentKey("consume-vs-expire-9");
+        MaterialInstanceConsumeReqVO.Item item = new MaterialInstanceConsumeReqVO.Item();
+        item.setInstanceId(9L);
+        req.setItems(List.of(item));
+
+        MaterialInstanceConsumeRespVO consume = service.consumeReservation(req);
+        assertFalse(consume.getIdempotentReplay());
+        assertEquals(InstanceStatusEnum.USED.name(), instances.get(9L).getInstanceStatus());
+        assertNull(instances.get(9L).getReservationId());
+
+        // 消耗已胜出：过期扫描不应再释放、不应再写 RELEASE
+        int n = service.expireReservations(LocalDateTime.now().plusHours(2), 10);
+        assertEquals(0, n);
+        assertEquals(InstanceStatusEnum.USED.name(), instances.get(9L).getInstanceStatus());
+        assertTrue(store.stream().noneMatch(m -> MovementTypeEnum.RELEASE.getType().equals(m.getMovementType())));
+    }
+
+    @Test
+    void expireWinsThenConsumeRejected() {
+        MaterialInstanceDO inst = putAvailable(10L, "R-10");
+        inst.setInstanceStatus(InstanceStatusEnum.RESERVED.name());
+        inst.setReservationId("RSV-10");
+        inst.setReservedByExecutionId("EXE-10");
+        inst.setReservedUntil(LocalDateTime.now().minusMinutes(1));
+        inst.setCurrentCount(1);
+
+        int n = service.expireReservations(LocalDateTime.now(), 10);
+        assertEquals(1, n);
+        assertEquals(InstanceStatusEnum.AVAILABLE.name(), instances.get(10L).getInstanceStatus());
+        assertNull(instances.get(10L).getReservationId());
+        assertEquals(MovementTypeEnum.RELEASE.getType(), store.get(0).getMovementType());
+
+        MaterialInstanceConsumeReservationReqVO req = new MaterialInstanceConsumeReservationReqVO();
+        req.setReservationId("RSV-10");
+        req.setExecutionId("EXE-10");
+        req.setIdempotentKey("consume-after-expire-10");
+        MaterialInstanceConsumeReqVO.Item item = new MaterialInstanceConsumeReqVO.Item();
+        item.setInstanceId(10L);
+        req.setItems(List.of(item));
+
+        // 过期已清归属：assertOwnership 对无归属实例直接放行，随后因 AVAILABLE 非可消耗态拒绝
+        ServiceException ex = assertThrows(ServiceException.class, () -> service.consumeReservation(req));
+        assertEquals(ErrorCodeConstants.INSTANCE_CONSUME_STATUS_ILLEGAL.getCode(), ex.getCode());
+        assertEquals(InstanceStatusEnum.AVAILABLE.name(), instances.get(10L).getInstanceStatus());
+        assertEquals(1, store.stream().filter(m -> MovementTypeEnum.RELEASE.getType().equals(m.getMovementType())).count());
+        assertTrue(store.stream().noneMatch(m -> MovementTypeEnum.CONSUME.getType().equals(m.getMovementType())));
+    }
+
+    @Test
+    void expireCasSkipsWhenStatusAlreadyChanged() {
+        // 模拟：扫描拿到过期候选后、CAS 前已被他方消耗（状态不再 RESERVED）
+        MaterialInstanceDO staleView = putAvailable(11L, "R-11");
+        staleView.setInstanceStatus(InstanceStatusEnum.RESERVED.name());
+        staleView.setReservationId("RSV-11");
+        staleView.setReservedByExecutionId("EXE-11");
+        staleView.setReservedUntil(LocalDateTime.now().minusMinutes(2));
+        staleView.setCurrentCount(1);
+
+        // 先改成 USED，清归属 —— 像 consume 已胜出
+        staleView.setInstanceStatus(InstanceStatusEnum.USED.name());
+        staleView.setReservationId(null);
+        staleView.setReservedByExecutionId(null);
+        staleView.setReservedUntil(null);
+
+        // 直接调用 expire：select 按当前态过滤，已 USED 不会入选 → 0
+        int n = service.expireReservations(LocalDateTime.now(), 10);
+        assertEquals(0, n);
+        assertEquals(0, store.size());
+        assertEquals(InstanceStatusEnum.USED.name(), instances.get(11L).getInstanceStatus());
+    }
+
     private MaterialInstanceDO putAvailable(long id, String code) {
         MaterialInstanceDO inst = new MaterialInstanceDO();
         inst.setId(id);
@@ -319,6 +403,18 @@ class MaterialInstanceReservationTest {
             return 0;
         }
         MaterialInstanceDO inst = instances.get(targetId);
+        // CAS：WHERE 中的 instance_status 必须与当前一致，否则竞争失败
+        java.util.regex.Matcher statusMatcher = java.util.regex.Pattern
+                .compile("instance_status\\s*=\\s*#\\{ew\\.paramNameValuePairs\\.(MPGENVAL\\d+)\\}",
+                        java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(segment);
+        if (statusMatcher.find()) {
+            Object expectedStatus = pairs.get(statusMatcher.group(1));
+            if (expectedStatus != null
+                    && !String.valueOf(expectedStatus).equals(inst.getInstanceStatus())) {
+                return 0;
+            }
+        }
         if (sets.containsKey("instance_status")) {
             inst.setInstanceStatus(String.valueOf(sets.get("instance_status")));
         }
