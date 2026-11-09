@@ -1759,7 +1759,7 @@ public class MaterialInstanceServiceImpl implements MaterialInstanceService {
      * @param excludeInstanceId 排除的实例编号（改自己时不算冲突）
      */
     private SlotDO validateSlotForPlacement(Long slotId, Long excludeInstanceId) {
-        SlotDO slot = slotMapper.selectById(slotId);
+        SlotDO slot = slotMapper.selectByIdForUpdate(slotId);
         if (slot == null) {
             throw exception(SLOT_NOT_EXISTS);
         }

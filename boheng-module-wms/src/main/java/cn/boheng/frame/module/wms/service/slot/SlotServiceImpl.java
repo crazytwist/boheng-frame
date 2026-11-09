@@ -4,9 +4,14 @@ import cn.hutool.core.util.StrUtil;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.json.JsonUtils;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
+import cn.boheng.frame.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotPageReqVO;
 import cn.boheng.frame.module.wms.controller.admin.slot.vo.SlotSaveReqVO;
 import cn.boheng.frame.module.wms.dal.dataobject.slot.SlotDO;
+import cn.boheng.frame.module.wms.dal.dataobject.instance.MaterialInstanceDO;
+import cn.boheng.frame.module.wms.dal.mysql.instance.MaterialInstanceMapper;
+import cn.boheng.frame.module.wms.controller.admin.instance.vo.MaterialInstanceTakeOutReqVO;
+import cn.boheng.frame.module.wms.service.instance.MaterialInstanceService;
 import cn.boheng.frame.module.wms.dal.dataobject.zone.ZoneDO;
 import cn.boheng.frame.module.wms.dal.mysql.slot.SlotMapper;
 import cn.boheng.frame.module.wms.dal.mysql.zone.ZoneMapper;
@@ -15,11 +20,13 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.wms.enums.ErrorCodeConstants.*;
@@ -38,6 +45,12 @@ public class SlotServiceImpl implements SlotService {
 
     @Resource
     private ZoneMapper zoneMapper;
+
+    @Resource
+    private MaterialInstanceMapper materialInstanceMapper;
+
+    @Resource
+    private MaterialInstanceService materialInstanceService;
 
 
     @Override
@@ -65,16 +78,37 @@ public class SlotServiceImpl implements SlotService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteSlot(Long id) {
-        // 校验存在
-        validateSlotExists(id);
-        // 删除
-        slotMapper.deleteById(id);
+        clearAndDeleteSlot(id);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteSlotList(List<Long> ids) {
-        slotMapper.deleteBatch(SlotDO::getId, ids);
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        ids.stream().filter(Objects::nonNull).distinct().sorted().forEach(this::clearAndDeleteSlot);
+    }
+
+    /** 删除槽位前下架其中的顶层实例；实例和下架流水保留。 */
+    private void clearAndDeleteSlot(Long id) {
+        SlotDO slot = slotMapper.selectByIdForUpdate(id);
+        if (slot == null) {
+            throw exception(SLOT_NOT_EXISTS);
+        }
+        List<MaterialInstanceDO> placed = materialInstanceMapper.selectList(
+                new LambdaQueryWrapperX<MaterialInstanceDO>()
+                        .eq(MaterialInstanceDO::getRootSlotId, id)
+                        .orderByAsc(MaterialInstanceDO::getId));
+        for (MaterialInstanceDO instance : placed) {
+            MaterialInstanceTakeOutReqVO req = new MaterialInstanceTakeOutReqVO();
+            req.setInstanceId(instance.getId());
+            req.setRemark("删除槽位前自动下架：" + slot.getSlotCode());
+            materialInstanceService.takeOut(req);
+        }
+        slotMapper.deleteById(id);
     }
 
 

@@ -18,6 +18,12 @@ import java.util.List;
 @Mapper
 public interface SlotMapper extends BaseMapperX<SlotDO> {
 
+    /** 锁定槽位，避免删除清空期间又有物料上架。须在事务中调用。 */
+    default SlotDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapperX<SlotDO>()
+                .eq(SlotDO::getId, id).last("FOR UPDATE"));
+    }
+
     /** 查询区域内可作为运输中转位的空闲槽位。 */
     default List<SlotDO> selectAvailableTransferSlots(String zoneCode, String slotType, Integer limit) {
         int size = (limit == null || limit <= 0) ? 1 : Math.min(limit, 200);
