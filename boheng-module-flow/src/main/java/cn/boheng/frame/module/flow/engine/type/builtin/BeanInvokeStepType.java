@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -91,8 +92,9 @@ public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
     }
 
     /**
-     * 执行：调白名单 Bean。第一个参数是完整执行上下文（input / sys / node 三层命名空间，
-     * 外加 params = 本节点参数映射的解析结果），第二个参数是节点配置的固定参数。
+     * 执行：调白名单 Bean。第一个参数包含持久化的 input / sys / node，
+     * 以及本次调用的 params / step。step 只来自当前节点执行行，不写回执行级 sys。
+     * 第二个参数是节点配置的固定参数。
      * Bean 抛异常按节点失败处理
      */
     @Override
@@ -104,8 +106,13 @@ public class BeanInvokeStepType implements StepTypeDescriptor, StepExecutor {
         }
         Map<String, Object> args = StrUtil.isBlank(config.getArgsJson())
                 ? Map.of() : JSONUtil.parseObj(config.getArgsJson());
-        Map<String, Object> env = contextHolder.loadEnv(ctx.getExecutionId());
+        Map<String, Object> env = new LinkedHashMap<>(contextHolder.loadEnv(ctx.getExecutionId()));
         env.put("params", ctx.getParams());
+        env.put("step", Map.of(
+                "executionId", ctx.getExecutionId(),
+                "nodeId", ctx.getNodeId(),
+                "iterationNo", ctx.getIterationNo(),
+                "attempt", ctx.getAttempt()));
         try {
             String output = action.execute(env, args);
             return StepOutcome.success(output);

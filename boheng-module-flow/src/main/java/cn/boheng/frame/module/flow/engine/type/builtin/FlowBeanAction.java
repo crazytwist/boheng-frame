@@ -11,7 +11,8 @@ public interface FlowBeanAction {
 
     /**
      * 命名空间说明：env 里有 input.xxx / node.{nodeId}.{key} / sys.xxx 三层上下文，
-     * 另有 params.{param}（本节点参数映射的解析结果）；args 是节点配置的固定参数
+     * 另有 params.{param}（本节点参数映射的解析结果），以及仅本次调用有效的
+     * step.executionId / step.nodeId / step.iterationNo / step.attempt；args 是节点配置的固定参数
      *
      * @return 产出 JSON，写进上下文的 NODE 命名空间。无产出返回 null
      */

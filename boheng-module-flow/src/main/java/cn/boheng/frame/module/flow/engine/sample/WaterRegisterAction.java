@@ -52,9 +52,7 @@ public class WaterRegisterAction implements FlowBeanAction {
         String containerTypeCode = str(input.get("containerTypeCode"));
         String batchNo = str(input.get("batchNo"));
 
-        Map<String, Object> sys = map(env.get("sys"));
-        Map<String, Object> safeArgs = args == null ? Map.of() : args;
-        String idempotentKey = buildRegisterIdempotentKey(sys, safeArgs);
+        String idempotentKey = buildRegisterIdempotentKey(map(env.get("step")));
 
         List<SampleRegisterReqDTO> reqs = new ArrayList<>(sampleCount);
         for (int i = 1; i <= sampleCount; i++) {
@@ -77,25 +75,38 @@ public class WaterRegisterAction implements FlowBeanAction {
         output.put("sampleCount", sampleCount);
         output.put("sampleType", sampleType);
         output.put("samples", samples);
-        if (StrUtil.isNotBlank(idempotentKey)) {
-            output.put("idempotentKey", idempotentKey);
-        }
+        output.put("idempotentKey", idempotentKey);
         return JSONUtil.toJsonStr(output);
     }
 
     /**
-     * 按 Phase A 约定生成本节点登记操作的幂等键；缺执行上下文时返回 null（样本侧仍靠 sampleId 同态幂等）。
+     * 按当前节点记录生成追踪键；缺少步骤上下文时明确失败，避免标错轮次和来源。
      */
-    private String buildRegisterIdempotentKey(Map<String, Object> sys, Map<String, Object> args) {
-        Long executionId = toLong(sys.get("executionId"));
-        if (executionId == null) {
-            return null;
+    private String buildRegisterIdempotentKey(Map<String, Object> step) {
+        Long executionId = toLong(step.get("executionId"));
+        String nodeId = str(step.get("nodeId"));
+        Integer iterationNo = toInt(step.get("iterationNo"));
+        Integer attempt = toInt(step.get("attempt"));
+        if (executionId == null || StrUtil.isBlank(nodeId) || iterationNo == null || iterationNo < 0
+                || attempt == null || attempt < 1) {
+            throw new IllegalStateException("样本登记缺少有效的当前节点执行上下文");
         }
-        String nodeId = StrUtil.blankToDefault(str(args.get("nodeId")), beanName());
-        int iterationNo = intOf(sys.get("iterationNo"), 0);
-        int attempt = intOf(sys.get("attempt"), 1);
         return FlowTraceKeys.idempotentKey(executionId, nodeId, iterationNo, attempt,
                 FlowTraceKeys.OP_REGISTER_SAMPLE);
+    }
+
+    private static Integer toInt(Object value) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        if (value instanceof String s && StrUtil.isNotBlank(s)) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static Long toLong(Object value) {
