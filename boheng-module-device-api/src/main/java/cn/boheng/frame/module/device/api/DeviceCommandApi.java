@@ -27,4 +27,14 @@ public interface DeviceCommandApi {
      */
     DeviceCommandResultDTO getResult(Long commandId);
 
+    /**
+     * 按租户内的调用来源查找原命令，供故障恢复和重复提交回放。
+     * 空白 sourceType 按 MANUAL 查询，与落库规则一致；sourceRef 为空时返回 null。
+     *
+     * @param sourceType 来源类型
+     * @param sourceRef 来源业务键
+     * @return 原命令的当前结果；查无时返回 null
+     */
+    DeviceCommandResultDTO getResultBySource(String sourceType, String sourceRef);
+
 }

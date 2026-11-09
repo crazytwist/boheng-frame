@@ -34,6 +34,15 @@ public interface DeviceCommandMapper extends BaseMapperX<DeviceCommandDO> {
         return selectOne(DeviceCommandDO::getCommandNo, commandNo);
     }
 
+    /**
+     * 在当前租户内按来源业务键读取原命令。租户隔离由 MyBatis 租户插件附加。
+     */
+    default DeviceCommandDO selectBySource(String sourceType, String sourceRef) {
+        return selectOne(new LambdaQueryWrapperX<DeviceCommandDO>()
+                .eq(DeviceCommandDO::getSourceType, sourceType)
+                .eq(DeviceCommandDO::getSourceRef, sourceRef));
+    }
+
     /** 这台设备上还没结束的命令数 */
     default long countRunning(Long deviceId) {
         return selectCount(new LambdaQueryWrapperX<DeviceCommandDO>()

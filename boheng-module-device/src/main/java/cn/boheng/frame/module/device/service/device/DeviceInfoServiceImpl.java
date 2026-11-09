@@ -28,12 +28,10 @@ import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
-import static cn.boheng.frame.module.device.enums.DeviceEnums.ConcurrencyPolicyEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.ConnectionTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.TaskModeEnum;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
@@ -47,8 +45,6 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 @Validated
 public class DeviceInfoServiceImpl implements DeviceInfoService {
 
-    /** 占用锁时间在画像里的展示格式 */
-    private static final DateTimeFormatter LOCK_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm");
     /**
      * 设备台账表
      */
@@ -244,59 +240,14 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
         return mode + body + result;
     }
 
-    /**
-     * 画像里的下发策略说明
-     */
+    /** 设备域仅执行命令；容量与占用策略留给资源域。 */
     private String buildDispatchSummary(DeviceInfoDO device) {
-        String concurrency = device.getConcurrencyPolicy() == null
-                ? ConcurrencyPolicyEnum.EXCLUSIVE.getPolicy()
-                : device.getConcurrencyPolicy();
-        String busy = device.getBusyCheckPolicy() == null ? "AUTO" : device.getBusyCheckPolicy();
-        int inflight = device.getMaxInflight() == null ? 1 : device.getMaxInflight();
-        if (ConcurrencyPolicyEnum.DEVICE_QUEUED.getPolicy().equals(concurrency)) {
-            return "仪器自己带队列，平台可以连续下发，同时在途不超过 " + inflight + " 条。"
-                    + busyClause(busy);
-        }
-        if (ConcurrencyPolicyEnum.PLATFORM_QUEUED.getPolicy().equals(concurrency)) {
-            return "仪器不接受并发，由平台排队，一次只发出一条。" + busyClause(busy);
-        }
-        return "同一时间只占用这一台设备。" + busyClause(busy);
+        return "设备域直接下发命令；并发容量与占用策略待资源域实现。";
     }
 
-    /**
-     * 忙闲校验开关对应的说明
-     */
-    private String busyClause(String busy) {
-        return switch (busy) {
-            case "ALWAYS" -> "下发前一律先问仪器是否空闲。";
-            case "NEVER" -> "不向仪器询问是否空闲，避免不报状态的设备永远下不了命令。";
-            default -> "下发前查不查空闲，看每个动作自己的设置。";
-        };
-    }
-
-    /**
-     * 画像里的占用锁说明。队列型设备的当前在途数实时数命令表（不落台账快照，避免计数漂移）
-     */
+    /** 画像不再将历史占用字段解释为当前可用性。 */
     private String buildOccupancySummary(DeviceInfoDO device) {
-        String concurrency = device.getConcurrencyPolicy() == null
-                ? ConcurrencyPolicyEnum.EXCLUSIVE.getPolicy()
-                : device.getConcurrencyPolicy();
-        if (!ConcurrencyPolicyEnum.EXCLUSIVE.getPolicy().equals(concurrency)) {
-            int current = (int) deviceCommandMapper.countRunning(device.getId());
-            int max = device.getMaxInflight() == null ? 1 : device.getMaxInflight();
-            return "当前在途 " + current + " 条，上限 " + max + " 条。";
-        }
-        boolean held = StrUtil.isNotBlank(device.getLockHolder()) || device.getCurrentCommandId() != null;
-        if (!held) {
-            return "现在没有人占用。";
-        }
-        LocalDateTime expire = device.getLockExpireTime();
-        if (expire != null && expire.isBefore(LocalDateTime.now())) {
-            return "锁已经在 " + expire.format(LOCK_TIME) + " 过期，可以重新占用。";
-        }
-        String holder = blank(device.getLockHolder(), "未记录持有方");
-        String until = expire == null ? "没有填写过期时间" : "到 " + expire.format(LOCK_TIME);
-        return holder + " 占用中，" + until + "。";
+        return "设备域不判断占用状态；资源域接入前不提供占用可用性。";
     }
 
     /**

@@ -41,7 +41,7 @@ public class DeviceSummaryDTO implements Serializable {
     private String status;
 
     /**
-     * 是否空闲（无占用锁 / 无进行中命令）
+     * 历史兼容字段；设备域不再计算占用状态，返回时为空。
      */
     private Boolean idle;
 

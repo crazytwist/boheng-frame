@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,22 +48,18 @@ public class DeviceApiImpl implements DeviceApi {
     @Resource
     private DeviceParamSetMapper deviceParamSetMapper;
     /**
-     * 按设备类型挑选在线且空闲的设备
+     * 按设备类型和在线状态筛选设备；占用情况由资源域判断
      */
 
     @Override
     public List<DeviceSummaryDTO> selectDevices(DeviceSelectReqDTO reqVO) {
-        // 一期按设备类型查询，再做「在线 + 空闲」过滤与排序
+        // 设备域只按台账条件筛选；历史 requireIdle 入参不再用于拦截。
         List<DeviceInfoDO> devices = deviceInfoMapper.selectListByTypeCode(reqVO.getDeviceTypeCode());
         List<DeviceSummaryDTO> result = new ArrayList<>();
         for (DeviceInfoDO device : devices) {
             // 在线过滤
-            if (Boolean.TRUE.equals(reqVO.getRequireOnline()) && !DeviceStatusEnum.ONLINE.getStatus().equals(device.getStatus())) {
-                continue;
-            }
-            // 空闲过滤：无占用锁 且 锁未过期
-            boolean idle = isIdle(device);
-            if (Boolean.TRUE.equals(reqVO.getRequireIdle()) && !idle) {
+            if (Boolean.TRUE.equals(reqVO.getRequireOnline())
+                    && !DeviceStatusEnum.ONLINE.getStatus().equals(device.getStatus())) {
                 continue;
             }
             DeviceSummaryDTO summary = new DeviceSummaryDTO();
@@ -73,7 +68,6 @@ public class DeviceApiImpl implements DeviceApi {
             summary.setDeviceName(device.getDeviceName());
             summary.setDeviceTypeCode(device.getDeviceTypeCode());
             summary.setStatus(device.getStatus());
-            summary.setIdle(idle);
             result.add(summary);
         }
         // 截取数量上限（默认 1）
@@ -94,7 +88,6 @@ public class DeviceApiImpl implements DeviceApi {
             return null;
         }
         DeviceSummaryDTO summary = toSummary(device);
-        summary.setIdle(isIdle(device));
         return summary;
     }
 
@@ -174,17 +167,6 @@ public class DeviceApiImpl implements DeviceApi {
         summary.setDeviceTypeCode(device.getDeviceTypeCode());
         summary.setStatus(device.getStatus());
         return summary;
-    }
-
-    /**
-     * 判断设备是否空闲：无持有方 或 锁已过期（锁必须能过期，否则设备永久锁死）。
-     */
-    private boolean isIdle(DeviceInfoDO device) {
-        if (device.getLockHolder() == null && device.getLockType() == null) {
-            return true;
-        }
-        LocalDateTime expireTime = device.getLockExpireTime();
-        return expireTime != null && expireTime.isBefore(LocalDateTime.now());
     }
 
 }

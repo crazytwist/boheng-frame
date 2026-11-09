@@ -18,10 +18,12 @@
 --   4. ★ status 与 waiting_for 正交：status 只表达「走到哪一步」（设备侧事实），
 --      waiting_for 表达「在等什么」（当前写入 DEVICE_CALLBACK/POLL_TICK；SLOT_AVAILABLE/MANUAL_APPROVE/EXTERNAL_EVENT 预留）。
 --      严禁把「等审批」「等定时」混进 status。
---   5. 幂等：当前唯一键只有 uk_command_no（对外凭据）。
---      传输重投拦截(uk_idempotent)与业务幂等(uk_business)为 future extension：
---      实现时须保证「同一业务节点的重试是新记录」，否则调度域看不到第 2 次执行。
---      溯源字段 source_type/source_ref/attempt 已随每次调用落库（idx_source）。
+--   5. 幂等：对外凭据仍是 uk_command_no；同一租户的业务来源键由 uk_source
+--      (tenant_id, source_type, source_ref) 保证唯一。重复提交回放原命令，不新插入。
+--      同一业务节点的再次尝试须使用不同 source_ref（通常含 attempt），才能落下一条新命令。
+--      传输重投拦截(uk_idempotent)仍为 future extension。
+--      溯源字段 source_type/source_ref/attempt 已随每次调用落库。
+--      已有库需执行 device-command-source-unique.sql 才会加上 uk_source。
 --   6. ★★ 忙闲校验与并发策略**必须有开关**：不是所有仪器都返回空闲状态，部分仪器自带本地队列。
 --      device_info.busy_check_policy（AUTO/ALWAYS/NEVER）× device_action.need_busy_check
 --      × device_info.concurrency_policy（EXCLUSIVE/DEVICE_QUEUED/PLATFORM_QUEUED）—— 三处都不得写死。
@@ -302,7 +304,7 @@ CREATE TABLE `device_command` (
     UNIQUE KEY `uk_command_no` (`command_no`),
     KEY `idx_device` (`device_id`, `create_time`),
     KEY `idx_status` (`status`, `timeout_at`),
-    KEY `idx_source` (`source_type`, `source_ref`),
+    UNIQUE KEY `uk_source` (`tenant_id`, `source_type`, `source_ref`),
     KEY `idx_create_time` (`create_time`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '设备命令(只增不改；三态调用统一落点；状态机+等待原因；溯源 source_type/source_ref/attempt)';
 

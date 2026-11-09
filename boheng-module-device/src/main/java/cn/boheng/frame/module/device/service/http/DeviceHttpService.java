@@ -6,8 +6,6 @@ import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
 import cn.boheng.frame.module.device.dal.dataobject.command.DeviceCommandDO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
 import cn.boheng.frame.module.device.dal.mysql.action.DeviceActionMapper;
-import cn.boheng.frame.module.device.dal.mysql.command.DeviceCommandMapper;
-import cn.boheng.frame.module.device.dal.mysql.device.DeviceInfoMapper;
 import cn.boheng.frame.module.device.service.callback.DeviceCallbackService;
 import cn.boheng.frame.module.device.service.callback.DeviceCallbackTicket;
 import cn.boheng.frame.module.device.service.action.DeviceParamResolver;
@@ -20,22 +18,16 @@ import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
 
-import java.time.LocalDateTime;
-
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
-import static cn.boheng.frame.module.device.enums.DeviceEnums.ConcurrencyPolicyEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.ConnectionTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.DeviceStatusEnum;
-import static cn.boheng.frame.module.device.enums.DeviceEnums.LockTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.ResultModeEnum;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_DISABLED;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_NOT_EXISTS;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_PATH_MISSING;
-import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_BUSY;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_CALLBACK_DISABLED;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_HTTP_FAILED;
-import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_LOCKED;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_NOT_EXISTS;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_UNAVAILABLE;
 
@@ -77,25 +69,10 @@ public class DeviceHttpService {
     @Resource
     private DeviceCallbackService deviceCallbackService;
     /**
-     * 设备台账表，用来抢占和释放设备
-     */
-    @Resource
-    private DeviceInfoMapper deviceInfoMapper;
-    /**
-     * 命令表，用来数设备上的在途命令
-     */
-    @Resource
-    private DeviceCommandMapper deviceCommandMapper;
-    /**
      * 设备动作输入契约解析器，统一展开默认值并校验最终参数
      */
     @Resource
     private DeviceParamResolver deviceParamResolver;
-
-    /**
-     * 不等回调的调用占用设备多久。同步最长 20 秒、轮询最长 10 分钟，再留些余量
-     */
-    private static final long OCCUPY_SEC = 15 * 60;
 
     /**
      * 校验设备和动作后发起调用，并记下命令。来源按人工测试记录
@@ -130,7 +107,6 @@ public class DeviceHttpService {
                             ? DeviceStatusEnum.MAINTENANCE.getName()
                             : DeviceStatusEnum.FAULT.getName());
         }
-        ensureNotLocked(device);
         if (!simulate) {
             String connection = device.getConnectionType();
             if (!ConnectionTypeEnum.HTTP.getType().equals(connection)
@@ -150,8 +126,6 @@ public class DeviceHttpService {
         String resolvedParamsJson = deviceParamResolver.resolve(action.getParamSchema(), reqVO.getParamsJson());
         String codecCode = StrUtil.blankToDefault(reqVO.getCodecCode(), action.getCodecCode());
         DeviceCommandDO command = deviceCommandService.open(device, action, resolvedParamsJson, codecCode, source);
-        boolean occupied = occupy(device, action, command, callback);
-        boolean keepOccupied = false;
         DeviceCallbackTicket ticket = null;
         try {
             if (callback) {
@@ -164,7 +138,6 @@ public class DeviceHttpService {
                     : deviceHttpGateway.invoke(device, action, resolvedParamsJson, command.getCommandNo(), ticket);
             if (callback) {
                 acceptCallback(device, command, resp);
-                keepOccupied = occupied;
                 resp.setStatus(202);
                 resp.setCommandStatus(CommandStatusEnum.WAITING.getStatus());
             } else {
@@ -178,57 +151,7 @@ public class DeviceHttpService {
         } catch (RuntimeException ex) {
             deviceCommandService.fail(command.getId(), ex.getMessage());
             throw ex;
-        } finally {
-            if (occupied && !keepOccupied) {
-                deviceInfoMapper.releaseOccupy(device.getId(), command.getId());
-            }
         }
-    }
-
-    /**
-     * 人工锁或维护锁还没过期时拒绝调用。命令占用另由抢占处理。
-     */
-    private void ensureNotLocked(DeviceInfoDO device) {
-        String lockType = device.getLockType();
-        if (StrUtil.isBlank(lockType) || LockTypeEnum.COMMAND.getType().equals(lockType)) {
-            return;
-        }
-        LocalDateTime expire = device.getLockExpireTime();
-        if (expire != null && expire.isBefore(LocalDateTime.now())) {
-            return;
-        }
-        throw exception(DEVICE_LOCKED, device.getDeviceCode(), lockType, StrUtil.blankToDefault(device.getLockReason(), "未填写"));
-    }
-
-    /**
-     * 按并发策略占用设备。独占和平台排队一次只放一条；仪器自带队列的按在途上限放行。
-     * 抢不到时命令记为失败并提示设备忙。
-     *
-     * @return 是否加了占用锁，结束时要释放
-     */
-    private boolean occupy(DeviceInfoDO device, DeviceActionDO action, DeviceCommandDO command, boolean callback) {
-        if (ConcurrencyPolicyEnum.DEVICE_QUEUED.getPolicy().equals(device.getConcurrencyPolicy())) {
-            int limit = device.getMaxInflight() == null || device.getMaxInflight() < 1 ? 1 : device.getMaxInflight();
-            // 在途数已达上限就拒绝：count == limit 时容量已满，不能放行第 limit+1 条
-            if (deviceCommandMapper.countRunning(device.getId()) >= limit) {
-                busy(device, command);
-            }
-            return false;
-        }
-        long holdSec = callback ? deviceCallbackService.timeoutSec(device, action) + 60L : OCCUPY_SEC;
-        LocalDateTime expireAt = LocalDateTime.now().plusSeconds(holdSec);
-        if (!deviceInfoMapper.tryOccupy(device.getId(), command.getId(), command.getCommandNo(), expireAt)) {
-            busy(device, command);
-        }
-        return true;
-    }
-
-    /**
-     * 设备正忙：命令留痕为失败，再抛出
-     */
-    private void busy(DeviceInfoDO device, DeviceCommandDO command) {
-        deviceCommandService.fail(command.getId(), "设备正忙，未下发");
-        throw exception(DEVICE_BUSY, device.getDeviceCode());
     }
 
     /**

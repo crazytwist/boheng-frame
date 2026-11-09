@@ -9,7 +9,7 @@ import java.util.List;
  * 设备选择条件 DTO（契约层）
  *
  * 调度域「选设备」时只给条件，不硬编 device_code（设备域职责，见架构文档 §二）。
- * 设备域按条件返回满足「类型 + 能力 + 在线 + 空闲」的设备。
+ * 设备域按类型和在线状态筛选；占用状态由资源域负责。
  *
  * @author yinan
  */
@@ -27,7 +27,7 @@ public class DeviceSelectReqDTO implements Serializable {
     private List<String> actionCodes;
 
     /**
-     * 是否要求空闲（true=只返回无占用锁的设备；默认 true）
+     * 历史兼容字段；设备域不再按占用状态筛选，传入值不会改变结果。
      */
     private Boolean requireIdle;
 
