@@ -13,23 +13,23 @@ import lombok.Getter;
 public class DeviceEnums {
 
     /**
-     * 设备在线状态
+     * 设备在线状态。编码与库字段 status 的字符串一致。
      */
     @Getter
     @AllArgsConstructor
     public enum DeviceStatusEnum {
 
         /** 在线。 */
-        ONLINE(0, "在线"),
+        ONLINE("ONLINE", "在线"),
         /** 离线。 */
-        OFFLINE(1, "离线"),
+        OFFLINE("OFFLINE", "离线"),
         /** 维护中。 */
-        MAINTENANCE(2, "维护中"),
+        MAINTENANCE("MAINTENANCE", "维护中"),
         /** 故障。 */
-        FAULT(3, "故障");
+        FAULT("FAULT", "故障");
 
-        /** 状态编码。 */
-        private final Integer status;
+        /** 状态编码，与库中 status 字符串一致。 */
+        private final String status;
         /** 状态名称。 */
         private final String name;
 
@@ -55,6 +55,24 @@ public class DeviceEnums {
         private final String type;
         /** 接入类型名称。 */
         private final String name;
+
+        /**
+         * 按库中的接入方式编码解析；空白或无法识别时返回 null。
+         *
+         * @param type 接入方式编码
+         * @return 对应枚举；无法识别时为 null
+         */
+        public static ConnectionTypeEnum fromType(String type) {
+            if (type == null || type.isBlank()) {
+                return null;
+            }
+            for (ConnectionTypeEnum item : values()) {
+                if (item.type.equals(type)) {
+                    return item;
+                }
+            }
+            return null;
+        }
 
     }
 
@@ -113,6 +131,25 @@ public class DeviceEnums {
         /** 来源编码。 */
         private final String source;
         /** 来源名称。 */
+        private final String name;
+
+    }
+
+    /**
+     * 命令来源类型。与能力来源、占用锁中的 MANUAL 相互独立，不可混用。
+     */
+    @Getter
+    @AllArgsConstructor
+    public enum CommandSourceTypeEnum {
+
+        /** 人工或控制台发起。 */
+        MANUAL("MANUAL", "人工发起"),
+        /** 流程引擎发起。 */
+        FLOW("FLOW", "流程发起");
+
+        /** 来源类型编码，写入命令 source_type。 */
+        private final String type;
+        /** 来源类型名称。 */
         private final String name;
 
     }
@@ -223,6 +260,24 @@ public class DeviceEnums {
         private final String policy;
         /** 并发策略名称。 */
         private final String name;
+
+        /**
+         * 按库中的并发策略编码解析；空白或无法识别时返回 null。
+         *
+         * @param policy 并发策略编码
+         * @return 对应枚举；无法识别时为 null
+         */
+        public static ConcurrencyPolicyEnum fromPolicy(String policy) {
+            if (policy == null || policy.isBlank()) {
+                return null;
+            }
+            for (ConcurrencyPolicyEnum item : values()) {
+                if (item.policy.equals(policy)) {
+                    return item;
+                }
+            }
+            return null;
+        }
 
     }
 

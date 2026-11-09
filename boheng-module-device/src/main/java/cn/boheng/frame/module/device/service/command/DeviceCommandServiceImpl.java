@@ -37,6 +37,7 @@ import java.time.LocalDateTime;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_COMMAND_NOT_EXISTS;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandSourceTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandWaitingReasonEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.DispatchModeEnum;
@@ -105,7 +106,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         CommandSource src = source == null ? CommandSource.manual() : source;
         DeviceCommandDO row = new DeviceCommandDO();
         row.setCommandNo("C" + IdUtil.getSnowflakeNextIdStr());
-        row.setSourceType(StrUtil.blankToDefault(src.sourceType(), "MANUAL"));
+        row.setSourceType(StrUtil.blankToDefault(src.sourceType(), CommandSourceTypeEnum.MANUAL.getType()));
         // 数据库部署中 source_ref 为必填；人工调试没有业务单号时，用命令号生成可追溯的来源引用。
         row.setSourceRef(StrUtil.blankToDefault(StrUtil.trimToNull(src.sourceRef()),
                 "manual:" + row.getCommandNo()));
@@ -321,7 +322,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         JSONObject object = JSONUtil.parseObj(body);
         String status = object.getStr("status");
-        boolean failed = "FAILED".equalsIgnoreCase(status) || "ERROR".equalsIgnoreCase(status) || "FAIL".equalsIgnoreCase(status)
+        boolean failed = CommandStatusEnum.FAILED.getStatus().equalsIgnoreCase(status)
+                || "ERROR".equalsIgnoreCase(status) || "FAIL".equalsIgnoreCase(status)
                 || Boolean.FALSE.equals(object.getBool("success"));
         if (!failed) {
             return null;

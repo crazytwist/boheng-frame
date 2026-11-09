@@ -33,6 +33,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ConcurrencyPolicyEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ConnectionTypeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.TaskModeEnum;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 
 /**
@@ -127,9 +130,9 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
     /** 兼容旧设备：未填写模式时按 PUSH 处理。 */
     private void normalizeTaskMode(DeviceSaveReqVO reqVO) {
         if (StrUtil.isBlank(reqVO.getTaskMode())) {
-            reqVO.setTaskMode("PUSH");
+            reqVO.setTaskMode(TaskModeEnum.PUSH.getMode());
         }
-        if ("PULL".equals(reqVO.getTaskMode())) {
+        if (TaskModeEnum.PULL.getMode().equals(reqVO.getTaskMode())) {
             // PULL 是设备主动领取任务，不支持平台侧仿真设备配置。
             reqVO.setSimulationMode(false);
         }
@@ -220,18 +223,22 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      */
     private String buildConnectionSummary(DeviceInfoDO device) {
         String mode = Boolean.TRUE.equals(device.getSimulationMode()) ? "当前走仿真，不连接真机。" : "";
-        String type = device.getConnectionType() == null ? "" : device.getConnectionType();
-        String body = switch (type) {
-            case "HTTP" -> "平台通过 HTTP 直接访问" + blank(device.getEndpointUrl(), "尚未填写的地址") + "。";
-            case "MQTT" -> "设备主动连到 MQTT，主题前缀是 " + blank(device.getMqttTopicPrefix(), "尚未填写") + "。";
-            case "NODE_RED" -> "私有协议先由 Node-RED 翻译，平台只接收翻译后的 HTTP。";
-            case "SIMULATED" -> "接入方式本身就是仿真。";
-            default -> "还没有选定接入方式。";
-        };
+        ConnectionTypeEnum connectionType = ConnectionTypeEnum.fromType(device.getConnectionType());
+        String body;
+        if (connectionType == null) {
+            body = "还没有选定接入方式。";
+        } else {
+            body = switch (connectionType) {
+                case HTTP -> "平台通过 HTTP 直接访问" + blank(device.getEndpointUrl(), "尚未填写的地址") + "。";
+                case MQTT -> "设备主动连到 MQTT，主题前缀是 " + blank(device.getMqttTopicPrefix(), "尚未填写") + "。";
+                case NODE_RED -> "私有协议先由 Node-RED 翻译，平台只接收翻译后的 HTTP。";
+                case SIMULATED -> "接入方式本身就是仿真。";
+            };
+        }
         String result = Boolean.TRUE.equals(device.getCallbackEnabled())
                 ? "仪器可以主动把结果推回来。"
                 : "仪器不主动推结果，平台按 " + (device.getPollIntervalSec() == null ? "默认间隔" : device.getPollIntervalSec() + " 秒") + "轮询。";
-        if ("SIMULATED".equals(type)) {
+        if (connectionType == ConnectionTypeEnum.SIMULATED) {
             return mode + body;
         }
         return mode + body + result;
@@ -241,15 +248,19 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      * 画像里的下发策略说明
      */
     private String buildDispatchSummary(DeviceInfoDO device) {
-        String concurrency = device.getConcurrencyPolicy() == null ? "EXCLUSIVE" : device.getConcurrencyPolicy();
+        String concurrency = device.getConcurrencyPolicy() == null
+                ? ConcurrencyPolicyEnum.EXCLUSIVE.getPolicy()
+                : device.getConcurrencyPolicy();
         String busy = device.getBusyCheckPolicy() == null ? "AUTO" : device.getBusyCheckPolicy();
         int inflight = device.getMaxInflight() == null ? 1 : device.getMaxInflight();
-        return switch (concurrency) {
-            case "DEVICE_QUEUED" -> "仪器自己带队列，平台可以连续下发，同时在途不超过 " + inflight + " 条。"
+        if (ConcurrencyPolicyEnum.DEVICE_QUEUED.getPolicy().equals(concurrency)) {
+            return "仪器自己带队列，平台可以连续下发，同时在途不超过 " + inflight + " 条。"
                     + busyClause(busy);
-            case "PLATFORM_QUEUED" -> "仪器不接受并发，由平台排队，一次只发出一条。" + busyClause(busy);
-            default -> "同一时间只占用这一台设备。" + busyClause(busy);
-        };
+        }
+        if (ConcurrencyPolicyEnum.PLATFORM_QUEUED.getPolicy().equals(concurrency)) {
+            return "仪器不接受并发，由平台排队，一次只发出一条。" + busyClause(busy);
+        }
+        return "同一时间只占用这一台设备。" + busyClause(busy);
     }
 
     /**
@@ -267,8 +278,10 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      * 画像里的占用锁说明。队列型设备的当前在途数实时数命令表（不落台账快照，避免计数漂移）
      */
     private String buildOccupancySummary(DeviceInfoDO device) {
-        String concurrency = device.getConcurrencyPolicy() == null ? "EXCLUSIVE" : device.getConcurrencyPolicy();
-        if (!"EXCLUSIVE".equals(concurrency)) {
+        String concurrency = device.getConcurrencyPolicy() == null
+                ? ConcurrencyPolicyEnum.EXCLUSIVE.getPolicy()
+                : device.getConcurrencyPolicy();
+        if (!ConcurrencyPolicyEnum.EXCLUSIVE.getPolicy().equals(concurrency)) {
             int current = (int) deviceCommandMapper.countRunning(device.getId());
             int max = device.getMaxInflight() == null ? 1 : device.getMaxInflight();
             return "当前在途 " + current + " 条，上限 " + max + " 条。";
@@ -372,7 +385,7 @@ public class DeviceInfoServiceImpl implements DeviceInfoService {
      */
     private DeviceRespVO toResp(DeviceInfoDO device) {
         DeviceRespVO resp = BeanUtils.toBean(device, DeviceRespVO.class);
-        if ("PULL".equals(device.getTaskMode())) {
+        if (TaskModeEnum.PULL.getMode().equals(device.getTaskMode())) {
             resp.setSimulationMode(false);
         }
         resp.setLoginConfigured(StrUtil.isNotBlank(device.getLoginPassword()));

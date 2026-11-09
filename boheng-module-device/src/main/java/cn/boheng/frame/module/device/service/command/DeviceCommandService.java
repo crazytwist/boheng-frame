@@ -10,6 +10,8 @@ import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
 
 import java.time.LocalDateTime;
 
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandSourceTypeEnum;
+
 /**
  * 命令记录服务。测试调用从这里落库
  */
@@ -36,7 +38,7 @@ public interface DeviceCommandService {
          * 人工测试的缺省来源
          */
         public static CommandSource manual() {
-            return new CommandSource("MANUAL", null, 1, null);
+            return new CommandSource(CommandSourceTypeEnum.MANUAL.getType(), null, 1, null);
         }
 
     }

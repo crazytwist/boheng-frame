@@ -23,6 +23,12 @@ import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ConcurrencyPolicyEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ConnectionTypeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.DeviceStatusEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.LockTypeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ResultModeEnum;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_DISABLED;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_NOT_EXISTS;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTION_PATH_MISSING;
@@ -117,14 +123,18 @@ public class DeviceHttpService {
             throw exception(DEVICE_ACTION_DISABLED, action.getActionCode());
         }
         boolean simulate = simulateHttpService.supports(device, action.getActionCode());
-        if (!simulate && ("MAINTENANCE".equals(device.getStatus()) || "FAULT".equals(device.getStatus()))) {
+        if (!simulate && (DeviceStatusEnum.MAINTENANCE.getStatus().equals(device.getStatus())
+                || DeviceStatusEnum.FAULT.getStatus().equals(device.getStatus()))) {
             throw exception(DEVICE_UNAVAILABLE, device.getDeviceCode(),
-                    "MAINTENANCE".equals(device.getStatus()) ? "维护中" : "故障");
+                    DeviceStatusEnum.MAINTENANCE.getStatus().equals(device.getStatus())
+                            ? DeviceStatusEnum.MAINTENANCE.getName()
+                            : DeviceStatusEnum.FAULT.getName());
         }
         ensureNotLocked(device);
         if (!simulate) {
             String connection = device.getConnectionType();
-            if (!"HTTP".equals(connection) && !"NODE_RED".equals(connection)) {
+            if (!ConnectionTypeEnum.HTTP.getType().equals(connection)
+                    && !ConnectionTypeEnum.NODE_RED.getType().equals(connection)) {
                 throw exception(DEVICE_HTTP_FAILED, device.getDeviceCode(), "接入方式不是 HTTP");
             }
             if (StrUtil.isBlank(action.getRequestPath())) {
@@ -133,7 +143,7 @@ public class DeviceHttpService {
         }
         boolean callback = simulate
                 ? simulateHttpService.expectsCallback(device, action.getActionCode())
-                : "CALLBACK".equals(action.getResultMode());
+                : ResultModeEnum.CALLBACK.getMode().equals(action.getResultMode());
         if (callback && !simulate && !Boolean.TRUE.equals(device.getCallbackEnabled())) {
             throw exception(DEVICE_CALLBACK_DISABLED, device.getDeviceCode());
         }
@@ -156,11 +166,11 @@ public class DeviceHttpService {
                 acceptCallback(device, command, resp);
                 keepOccupied = occupied;
                 resp.setStatus(202);
-                resp.setCommandStatus("WAITING");
+                resp.setCommandStatus(CommandStatusEnum.WAITING.getStatus());
             } else {
                 deviceCommandService.complete(command.getId(), resp, codecCode);
                 resp.setCommandStatus(resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300
-                        ? "SUCCEEDED" : "FAILED");
+                        ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
             }
             resp.setCommandId(command.getId());
             resp.setCommandNo(command.getCommandNo());
@@ -180,7 +190,7 @@ public class DeviceHttpService {
      */
     private void ensureNotLocked(DeviceInfoDO device) {
         String lockType = device.getLockType();
-        if (StrUtil.isBlank(lockType) || "COMMAND".equals(lockType)) {
+        if (StrUtil.isBlank(lockType) || LockTypeEnum.COMMAND.getType().equals(lockType)) {
             return;
         }
         LocalDateTime expire = device.getLockExpireTime();
@@ -197,7 +207,7 @@ public class DeviceHttpService {
      * @return 是否加了占用锁，结束时要释放
      */
     private boolean occupy(DeviceInfoDO device, DeviceActionDO action, DeviceCommandDO command, boolean callback) {
-        if ("DEVICE_QUEUED".equals(device.getConcurrencyPolicy())) {
+        if (ConcurrencyPolicyEnum.DEVICE_QUEUED.getPolicy().equals(device.getConcurrencyPolicy())) {
             int limit = device.getMaxInflight() == null || device.getMaxInflight() < 1 ? 1 : device.getMaxInflight();
             // 在途数已达上限就拒绝：count == limit 时容量已满，不能放行第 limit+1 条
             if (deviceCommandMapper.countRunning(device.getId()) >= limit) {

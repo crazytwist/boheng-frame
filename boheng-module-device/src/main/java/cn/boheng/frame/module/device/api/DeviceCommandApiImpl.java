@@ -14,6 +14,9 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandSourceTypeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
+
 /**
  * 设备命令契约实现。给流程引擎用的下发入口：
  * 复用 {@link DeviceHttpService} 的「校验 → 占用 → 落命令 → 下发」流程，
@@ -63,7 +66,7 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
         invokeReq.setParamsJson(req.getParamsJson());
         // 溯源来源透传：FLOW 场景 sourceRef 形如 flow:{executionId}:{nodeId}:{attempt}
         DeviceCommandService.CommandSource source = new DeviceCommandService.CommandSource(
-                StrUtil.blankToDefault(req.getSourceType(), "MANUAL"),
+                StrUtil.blankToDefault(req.getSourceType(), CommandSourceTypeEnum.MANUAL.getType()),
                 req.getSourceRef(), req.getAttempt(), null);
         try {
             DeviceInvokeRespVO resp = deviceHttpService.invoke(invokeReq, source);
@@ -71,7 +74,7 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
             result.setCommandId(resp.getCommandId());
             result.setCommandNo(resp.getCommandNo());
             result.setSuccess(ok);
-            result.setStatus(StrUtil.blankToDefault(resp.getCommandStatus(), ok ? "SUCCEEDED" : "FAILED"));
+            result.setStatus(StrUtil.blankToDefault(resp.getCommandStatus(), ok ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus()));
             result.setOutputJson(resp.getBody());
             if (!ok) {
                 result.setErrorMessage("设备返回 HTTP " + resp.getStatus());
@@ -80,7 +83,7 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
         } catch (RuntimeException ex) {
             // 设备域的业务异常（忙/停用/超时等）在这里收口，Flow 只看结果
             result.setSuccess(false);
-            result.setStatus("FAILED");
+            result.setStatus(CommandStatusEnum.FAILED.getStatus());
             result.setErrorMessage(StrUtil.maxLength(StrUtil.nullToEmpty(ex.getMessage()), 512));
             return result;
         }
@@ -97,12 +100,12 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
             DeviceCommandRespVO command = deviceCommandService.getCommand(commandId);
             result.setCommandNo(command.getCommandNo());
             result.setStatus(command.getStatus());
-            result.setSuccess("SUCCEEDED".equals(command.getStatus()));
+            result.setSuccess(CommandStatusEnum.SUCCEEDED.getStatus().equals(command.getStatus()));
             result.setOutputJson(command.getRawBody());
             result.setParsedOutputJson(deviceCommandService.getParsedOutput(commandId));
             result.setErrorMessage(command.getErrorMsg());
         } catch (RuntimeException ex) {
-            result.setStatus("FAILED");
+            result.setStatus(CommandStatusEnum.FAILED.getStatus());
             result.setSuccess(false);
             result.setErrorMessage(StrUtil.maxLength(StrUtil.nullToEmpty(ex.getMessage()), 512));
         }

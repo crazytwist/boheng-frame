@@ -18,6 +18,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import static cn.boheng.frame.module.device.enums.DeviceEnums.DeviceStatusEnum;
+
 /**
  * 设备域对外 API 实现
  *
@@ -57,7 +59,7 @@ public class DeviceApiImpl implements DeviceApi {
         List<DeviceSummaryDTO> result = new ArrayList<>();
         for (DeviceInfoDO device : devices) {
             // 在线过滤
-            if (Boolean.TRUE.equals(reqVO.getRequireOnline()) && !"ONLINE".equals(device.getStatus())) {
+            if (Boolean.TRUE.equals(reqVO.getRequireOnline()) && !DeviceStatusEnum.ONLINE.getStatus().equals(device.getStatus())) {
                 continue;
             }
             // 空闲过滤：无占用锁 且 锁未过期

@@ -16,6 +16,7 @@ import jakarta.annotation.Resource;
 import java.util.List;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ResultModeEnum;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.*;
 
 /**
@@ -162,7 +163,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
             reqVO.setBodyFormat(reqVO.getBodyFormat().trim().toUpperCase());
         }
         reqVO.setCodecCode(StrUtil.trimToNull(reqVO.getCodecCode()));
-        reqVO.setResultMode(StrUtil.blankToDefault(reqVO.getResultMode(), "SYNC_RETURN"));
+        reqVO.setResultMode(StrUtil.blankToDefault(reqVO.getResultMode(), ResultModeEnum.SYNC_RETURN.getMode()));
         if (StrUtil.isBlank(reqVO.getRequestPath())) {
             reqVO.setRequestPath(null);
             return;

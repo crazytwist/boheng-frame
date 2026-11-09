@@ -20,6 +20,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ConnectionTypeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.DispatchModeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ResultModeEnum;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_HTTP_FAILED;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_SIMULATE_POLL_TIMEOUT;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_SIMULATE_PROFILE_NOT_EXISTS;
@@ -102,8 +105,11 @@ public class SimulateHttpService {
             throw exception(DEVICE_HTTP_FAILED, device.getDeviceCode(), "回调方式缺少回调地址");
         }
         if (mode != SimulateReturnModeEnum.CALLBACK) {
-            deviceCommandService.bindMode(commandId, mode == SimulateReturnModeEnum.SYNC ? "SYNC" : "ASYNC",
-                    mode == SimulateReturnModeEnum.POLL ? "POLL" : "SYNC_RETURN");
+            deviceCommandService.bindMode(commandId,
+                    mode == SimulateReturnModeEnum.SYNC
+                            ? DispatchModeEnum.SYNC.getMode() : DispatchModeEnum.ASYNC.getMode(),
+                    mode == SimulateReturnModeEnum.POLL
+                            ? ResultModeEnum.POLL.getMode() : ResultModeEnum.SYNC_RETURN.getMode());
         }
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put(DeviceCallbackService.COMMAND_HEADER, commandNo);
@@ -155,8 +161,9 @@ public class SimulateHttpService {
      * 台账把这台设备标成仿真
      */
     private boolean marked(DeviceInfoDO device) {
-        return "SIMULATED".equalsIgnoreCase(StrUtil.blankToDefault(device.getDriverType(), ""))
-                || "SIMULATED".equalsIgnoreCase(StrUtil.blankToDefault(device.getConnectionType(), ""))
+        String simulated = ConnectionTypeEnum.SIMULATED.getType();
+        return simulated.equalsIgnoreCase(StrUtil.blankToDefault(device.getDriverType(), ""))
+                || simulated.equalsIgnoreCase(StrUtil.blankToDefault(device.getConnectionType(), ""))
                 || Boolean.TRUE.equals(device.getSimulationMode());
     }
 

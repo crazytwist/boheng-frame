@@ -11,6 +11,8 @@ import org.apache.ibatis.annotations.Mapper;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static cn.boheng.frame.module.device.enums.DeviceEnums.LockTypeEnum;
+
 /**
  * 设备台账 Mapper
  *
@@ -56,7 +58,7 @@ public interface DeviceInfoMapper extends BaseMapperX<DeviceInfoDO> {
         return update(null, new LambdaUpdateWrapper<DeviceInfoDO>()
                 .set(DeviceInfoDO::getCurrentCommandId, commandId)
                 .set(DeviceInfoDO::getLockHolder, holder)
-                .set(DeviceInfoDO::getLockType, "COMMAND")
+                .set(DeviceInfoDO::getLockType, LockTypeEnum.COMMAND.getType())
                 .set(DeviceInfoDO::getLockAcquiredTime, now)
                 .set(DeviceInfoDO::getLockExpireTime, expireAt)
                 .set(DeviceInfoDO::getLockReason, null)
