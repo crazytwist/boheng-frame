@@ -32,9 +32,19 @@
                   {{ selectedDevice.deviceCode }} · {{ selectedDevice.taskMode === 'PULL' ? '设备拉取任务' : '平台接收任务' }}
                 </div>
               </div>
-              <el-tag v-if="selectedDevice" :type="selectedDevice.taskMode === 'PULL' ? 'warning' : 'success'">
-                {{ selectedDevice.taskMode === 'PULL' ? 'PULL' : 'PUSH' }}
-              </el-tag>
+              <div class="action-panel-actions">
+                <el-tag v-if="selectedDevice" :type="selectedDevice.taskMode === 'PULL' ? 'warning' : 'success'">
+                  {{ selectedDevice.taskMode === 'PULL' ? 'PULL' : 'PUSH' }}
+                </el-tag>
+                <el-button
+                  v-if="selectedDevice"
+                  type="primary"
+                  v-hasPermi="['device:action:create']"
+                  @click="openForm('create')"
+                >
+                  <Icon icon="ep:plus" class="mr-5px" /> 新增动作
+                </el-button>
+              </div>
             </div>
           </template>
           <el-form v-if="selectedDevice" class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
@@ -296,5 +306,11 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.action-panel-actions {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: center;
 }
 </style>
