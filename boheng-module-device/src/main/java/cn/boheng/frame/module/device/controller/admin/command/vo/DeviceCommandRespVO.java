@@ -64,6 +64,10 @@ public class DeviceCommandRespVO {
      */
     private String paramsJson;
     /**
+     * 参数取值来源
+     */
+    private String paramsSource;
+    /**
      * 实际发出的报文
      */
     private String payloadJson;
@@ -80,6 +84,14 @@ public class DeviceCommandRespVO {
      */
     private String errorMsg;
     /**
+     * 失败分类
+     */
+    private String errorType;
+    /**
+     * 设备声明的可重试性
+     */
+    private Boolean retryable;
+    /**
      * 解析规则编码
      */
     private String codecCode;
@@ -91,6 +103,10 @@ public class DeviceCommandRespVO {
      * 操作人
      */
     private String operator;
+    /**
+     * 备注。人工结束命令时记下是谁、因为什么结的
+     */
+    private String remark;
     /**
      * 占用设备的时间
      */

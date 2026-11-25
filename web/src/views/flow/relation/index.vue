@@ -318,6 +318,26 @@
           <el-button link type="primary" @click="editForm.branches.push({ key: '', targets: [] })">加出口</el-button>
         </div>
       </el-form-item>
+      <!-- 运行配置：超时 / 重试 / 失败策略 / 完成断言。默认收起，需要偏离步骤表时才展开 -->
+      <el-collapse v-model="runConfigOpen" class="run-config-collapse">
+        <el-collapse-item name="run">
+          <template #title>
+            <span class="rc-title">运行配置</span>
+            <el-tag v-if="hasRunOverride" size="small" type="warning" class="rc-badge !mr-0"
+              >已覆盖</el-tag
+            >
+            <span class="rc-sub">超时 · 重试 · 失败策略 · 完成断言</span>
+          </template>
+          <NodeRunConfigForm
+            v-model:timeout-sec="editForm.overrideTimeoutSec"
+            v-model:max-attempts="editForm.overrideMaxAttempts"
+            v-model:failure-strategy="editForm.failureStrategy"
+            v-model:complete-when="editForm.completeWhen"
+            :effective-timeout-sec="editForm.effectiveTimeoutSec"
+            :effective-max-attempts="editForm.effectiveMaxAttempts"
+          />
+        </el-collapse-item>
+      </el-collapse>
       <!-- 步骤声明的参数：表单直改（生成固定值覆盖，标橙）或 JSON 预览 -->
       <el-form-item v-if="declaredParams.length" label="步骤入参">
         <div class="w-1/1 declared-params">
@@ -449,6 +469,7 @@ import { FlowRelationApi, FlowRelationVO } from '@/api/flow/relation'
 import { FlowStepApi, FlowStepVO, STEP_TYPES } from '@/api/flow/step'
 import { STEP_TYPE_FIELDS } from '@/api/flow/stepSchema'
 import SchemaForm from '@/components/flow/SchemaForm.vue'
+import NodeRunConfigForm from '@/components/flow/NodeRunConfigForm.vue'
 import FlowIssuePanel from '@/components/flow/FlowIssuePanel.vue'
 
 defineOptions({ name: 'FlowRelation' })
@@ -802,6 +823,8 @@ const editVisible = ref(false)
 const editing = ref(false)
 const editLoading = ref(false)
 const editId = ref(0)
+/** 运行配置折叠面板的展开项。已有覆盖时自动展开 */
+const runConfigOpen = ref<string[]>([])
 const editDefinitionId = ref<number>()
 const editForm = reactive({
   nodeId: '',
@@ -817,7 +840,14 @@ const editForm = reactive({
   mappings: [] as MappingRow[],
   outputMapping: [] as OutputRow[],
   routeCases: [] as RouteCaseRow[],
-  defaultBranch: 'default'
+  defaultBranch: 'default',
+  // 运行配置覆盖值（null = 继承步骤表）+ 生效值（做继承提示用）
+  overrideTimeoutSec: null as number | null,
+  overrideMaxAttempts: null as number | null,
+  failureStrategy: null as string | null,
+  completeWhen: null as string | null,
+  effectiveTimeoutSec: null as number | null,
+  effectiveMaxAttempts: null as number | null
 })
 const editNodeOptions = computed(() => nodeOptions(editDefinitionId.value))
 
@@ -999,11 +1029,40 @@ const openEdit = async (row: FlowRelationVO) => {
     }))
     editForm.mappings = (detail.mappings ?? []).map((item) => ({ ...item }))
     editForm.outputMapping = parseOutputMapping(detail.outputMapping)
+    // 运行配置：覆盖值来自 runConfig 原串 / 后端覆盖字段，生效值来自装配结果（含步骤表回落）
+    const run = parseRunConfig(detail.runConfig)
+    editForm.overrideTimeoutSec = detail.overrideTimeoutSec ?? null
+    editForm.overrideMaxAttempts = detail.overrideMaxAttempts ?? null
+    editForm.completeWhen = run.completeWhen ?? null
+    editForm.failureStrategy = run.failureStrategy ?? null
+    editForm.effectiveTimeoutSec = detail.timeoutSec ?? null
+    editForm.effectiveMaxAttempts = detail.maxAttempts ?? null
+    runConfigOpen.value = hasRunOverride.value ? ['run'] : []
     await loadStepDetail(detail.stepId)
   } finally {
     editLoading.value = false
   }
 }
+
+/** run_config 原串 → 对象。坏数据当空对象，别让对话框打不开 */
+function parseRunConfig(raw?: string): Record<string, any> {
+  if (!raw?.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+/** 任一运行配置项存在覆盖值时，收起的面板上打「已覆盖」角标 */
+const hasRunOverride = computed(
+  () =>
+    editForm.overrideTimeoutSec != null ||
+    editForm.overrideMaxAttempts != null ||
+    !!editForm.failureStrategy ||
+    !!editForm.completeWhen
+)
 
 const submitEdit = async () => {
   if (editForm.isControl && !editForm.typeConfig?.trim()) {
@@ -1046,7 +1105,12 @@ const submitEdit = async () => {
       joinFailurePolicy: editForm.joinFailurePolicy || '',
       branches,
       outputMapping,
-      mappings: editForm.mappings.filter((item) => item.param?.trim())
+      mappings: editForm.mappings.filter((item) => item.param?.trim()),
+      // 运行配置：留空送 0 / 空串（= 清除覆盖、回落步骤表），有值送原值
+      timeoutSec: editForm.overrideTimeoutSec ?? 0,
+      maxAttempts: editForm.overrideMaxAttempts ?? 0,
+      failureStrategy: editForm.failureStrategy ?? '',
+      completeWhen: editForm.completeWhen ?? ''
     })
     message.success('已保存')
     editVisible.value = false
@@ -1144,6 +1208,37 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+/* 运行配置折叠面板：默认收起，避免日常编排被参数淹没 */
+.run-config-collapse {
+  margin: 0 0 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  border-bottom: none;
+
+  :deep(.el-collapse-item__header) {
+    height: 40px;
+    line-height: 40px;
+    border-bottom: none;
+  }
+
+  :deep(.el-collapse-item__wrap) {
+    border-bottom: none;
+  }
+}
+
+.rc-title {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.rc-badge {
+  margin-left: 8px;
+}
+
+.rc-sub {
+  margin-left: 8px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
 .declared-params {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;

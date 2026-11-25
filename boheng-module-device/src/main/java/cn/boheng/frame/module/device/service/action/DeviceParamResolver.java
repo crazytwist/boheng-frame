@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -23,6 +25,12 @@ import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_ACTI
  */
 @Component
 public class DeviceParamResolver {
+
+    /** 参数由调用方传入（流程映射、参数集或人工输入）。 */
+    public static final String SOURCE_INPUT = "INPUT";
+
+    /** 参数由动作契约的默认值补全。 */
+    public static final String SOURCE_SCHEMA_DEFAULT = "SCHEMA_DEFAULT";
 
     /** 输入契约允许声明的参数类型。 */
     private static final Set<String> SUPPORTED_TYPES = Set.of(
@@ -45,10 +53,27 @@ public class DeviceParamResolver {
      * @return 可直接落命令快照和下发的完整参数 JSON；没有参数时返回 null
      */
     public String resolve(String paramSchema, String paramsJson) {
+        return resolveWithSource(paramSchema, paramsJson).paramsJson();
+    }
+
+    /**
+     * 同上，并记录每个参数的取值来源。
+     *
+     * <p>默认值规则：流程域传了值就用传进来的，没传才由设备域的契约默认兜底。
+     * 这里只区分「传进来的」和「设备域补的」——参数究竟是参数集、节点默认参数还是映射给的，
+     * 属于流程域的知识，设备域不猜。</p>
+     *
+     * @param paramSchema 参数定义 JSON
+     * @param paramsJson 本次输入参数 JSON
+     * @return 参数 JSON 与来源字典
+     */
+    public ResolvedParams resolveWithSource(String paramSchema, String paramsJson) {
         JSONObject schema = schemaOf(paramSchema);
         JSONObject params = paramsOf(paramsJson);
+        Map<String, String> sources = new LinkedHashMap<>();
         if (schema.isEmpty()) {
-            return params.isEmpty() ? null : params.toString();
+            params.keySet().forEach(key -> sources.put(key, SOURCE_INPUT));
+            return new ResolvedParams(params.isEmpty() ? null : params.toString(), sources);
         }
         rejectUnknownParams(schema, params);
         for (String path : schema.keySet()) {
@@ -57,6 +82,9 @@ public class DeviceParamResolver {
             if (value == null && definition.containsKey("default")) {
                 value = definition.get("default");
                 putAt(params, path, value);
+                sources.put(path, SOURCE_SCHEMA_DEFAULT);
+            } else if (value != null) {
+                sources.put(path, SOURCE_INPUT);
             }
             if (value == null) {
                 if (definition.getBool("required", false)) {
@@ -68,7 +96,16 @@ public class DeviceParamResolver {
             validateValue(path, value, type);
             validateConstraints(path, value, definition.get("constraints"));
         }
-        return params.isEmpty() ? null : params.toString();
+        return new ResolvedParams(params.isEmpty() ? null : params.toString(), sources);
+    }
+
+    /**
+     * 解析结果：可直接下发的参数 JSON，以及每个参数的取值来源。
+     *
+     * @param paramsJson 参数 JSON
+     * @param sources 参数来源，取值见 SOURCE_INPUT / SOURCE_SCHEMA_DEFAULT
+     */
+    public record ResolvedParams(String paramsJson, Map<String, String> sources) {
     }
 
     /**
@@ -94,8 +131,25 @@ public class DeviceParamResolver {
             }
             schema.set(path, definition);
             typeOf(definition);
+            validateConstraintsDefinition(path, definition.get("constraints"));
         }
         return schema;
+    }
+
+    /**
+     * 约束只能是枚举数组或 {min,max} 对象。
+     *
+     * <p>写成字符串（前端早期把范围约束按逗号切分就会这样）会被运行期静默忽略，
+     * 表现为「约束配了但不生效」，所以在这里直接拒掉。</p>
+     */
+    private void validateConstraintsDefinition(String path, Object constraints) {
+        if (constraints == null) {
+            return;
+        }
+        if (constraints instanceof JSONArray || constraints instanceof JSONObject) {
+            return;
+        }
+        throw schemaInvalid("参数 " + path + " 的 constraints 必须是数组（枚举）或对象（min/max）");
     }
 
     /**
@@ -159,9 +213,9 @@ public class DeviceParamResolver {
     }
 
     /**
-     * 取得点路径的顶层字段名。
+     * 取得点路径的顶层字段名。报文映射校验复用同一套路径口径。
      */
-    private String rootOf(String path) {
+    static String rootOf(String path) {
         int dot = path.indexOf('.');
         int bracket = path.indexOf('[');
         int end = dot < 0 ? path.length() : dot;

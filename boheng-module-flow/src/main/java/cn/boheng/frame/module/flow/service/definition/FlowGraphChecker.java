@@ -1,6 +1,7 @@
 package cn.boheng.frame.module.flow.service.definition;
 
 import cn.boheng.frame.module.device.api.dto.DeviceSummaryDTO;
+import cn.boheng.frame.module.flow.engine.expression.ExpressionEvaluator;
 import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.engine.type.config.DeviceCommandConfig;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
@@ -86,6 +87,14 @@ public final class FlowGraphChecker {
                 issues.add(new FlowIssue(node.getNodeId(),
                         "节点【" + label + "】的步骤类型【" + StrUtil.nullToEmpty(node.getStepType()) + "】未注册"));
                 continue;
+            }
+            // 完成断言：写错在发布期就拒绝，不等运行期才把每次执行判成失败
+            if (StrUtil.isNotBlank(node.getCompleteWhen())) {
+                String exprError = ExpressionEvaluator.checkSyntaxStatic(node.getCompleteWhen());
+                if (exprError != null) {
+                    issues.add(new FlowIssue(node.getNodeId(),
+                            "节点【" + label + "】的完成断言不合法：" + exprError));
+                }
             }
             // 控制类节点不允许挂能力目录
             if (StepTypeRegistry.isControlType(node.getStepType()) && node.getStepId() != null) {

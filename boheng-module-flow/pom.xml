@@ -69,6 +69,14 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- starter-test 在 dependencyManagement 里排除了 mockito-core，
+             这里补 mockito-inline，否则使用 Mockito 的测试类编译不过 -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

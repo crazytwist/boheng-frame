@@ -22,6 +22,8 @@ export interface DeviceActionVO {
   pollDoneExpr?: string
   pollTimeoutSec?: number
   pollMaxTimes?: number
+  /** 响应判定规则：成功判定字段与取值、失败说明字段、可重试性字段 */
+  resultRule?: string
   resultMode?: 'SYNC_RETURN' | 'CALLBACK' | 'POLL'
   callbackTimeoutSec?: number
   status?: number

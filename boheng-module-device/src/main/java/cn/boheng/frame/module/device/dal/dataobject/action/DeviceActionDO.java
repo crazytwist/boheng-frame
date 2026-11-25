@@ -120,6 +120,29 @@ public class DeviceActionDO extends TenantBaseDO {
      */
     private String pollDoneExpr;
 
+    /**
+     * 响应判定规则 JSON：成功判定字段路径与取值、失败说明字段、可重试性字段。
+     *
+     * <p>{successStatusPath, successStatusValues, successCodePath, successCodeValues,
+     * messagePath, retryHintsPath}；为空时按 status/success/ExecuteStatus 兼容判定。</p>
+     */
+    private String resultRule;
+
+    /**
+     * 固定地址回调时的关联键路径，例如 {@code $.reqCode}。
+     *
+     * <p>有些设备（如海康 RCS）的回调地址是厂商侧写死的，报文里既不给我们命令号，
+     * 也没法把带令牌的回调地址传过去。这种设备只能靠「我们发给它、它原样带回来」的
+     * 某个业务字段认命令。这里配的就是从请求报文里取哪个字段当关联键，
+     * 渲染后写进 device_command.correlate_value，回调时用它反查命令。</p>
+     *
+     * <p>可以写多个、逗号分隔，按顺序取第一个有值的（如 {@code $.EventId,$.RequestId}
+     * —— 关联键列只存得下一个，另一个靠回调时的报文兜底匹配认）。</p>
+     *
+     * <p>为空表示该动作只支持带命令号的回调地址（{@code /api/callback/{commandNo}}）。</p>
+     */
+    private String correlatePath;
+
     /** 平台轮询的最大等待时间（秒），系统按设备轮询间隔换算查询次数。 */
     private Integer pollTimeoutSec;
 
@@ -134,7 +157,10 @@ public class DeviceActionDO extends TenantBaseDO {
     private String resultMode;
 
     /**
-     * 等回调的秒数。为空时用设备台账上的默认值，清空也要写回库
+     * 等回调的秒数。为空时用设备台账上的默认值，清空也要写回库。
+     *
+     * <p>0 表示不超时：{@code device_command.timeout_at} 留空，超时扫描器不会收口，
+     * 由上层流程节点的 {@code timeout_ms} 决定等多久。</p>
      */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Integer callbackTimeoutSec;

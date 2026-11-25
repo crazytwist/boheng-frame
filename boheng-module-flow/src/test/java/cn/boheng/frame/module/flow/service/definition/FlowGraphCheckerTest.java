@@ -230,6 +230,32 @@ class FlowGraphCheckerTest {
     }
 
     /**
+     * 完成断言写错在发布期就被拒，不等运行期把每次执行判成失败
+     */
+    @Test
+    void publishRejectsBrokenCompleteWhen() {
+        FlowNodeDraft spin = deviceStep("spin", "离心", "DEV-1", "SPIN");
+        spin.setCompleteWhen("output.rpm >= ");
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(
+                List.of(spin), lookup, registry(), subflowRef);
+        assertTrue(issues.stream().anyMatch(issue -> issue.getMessage().contains("完成断言不合法")),
+                () -> "实际 issues: " + issues);
+    }
+
+    /**
+     * 合法断言不产生 issue：发布期只管语法，达不达标是运行期的事
+     */
+    @Test
+    void publishAcceptsValidCompleteWhen() {
+        FlowNodeDraft spin = deviceStep("spin", "离心", "DEV-1", "SPIN");
+        spin.setCompleteWhen("output.rpm >= params.targetRpm");
+        List<FlowIssue> issues = FlowGraphChecker.checkPublish(
+                List.of(spin), lookup, registry(), subflowRef);
+        assertFalse(issues.stream().anyMatch(issue -> issue.getMessage().contains("完成断言")),
+                () -> "实际 issues: " + issues);
+    }
+
+    /**
      * 两个源字段归一化到同一个上下文键 → 后者覆盖前者，必须拦下
      */
     @Test

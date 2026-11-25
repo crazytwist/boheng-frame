@@ -28,6 +28,16 @@ public class DeviceInvokeRespVO {
     @Schema(description = "命令状态：WAITING / SUCCEEDED / FAILED", example = "WAITING")
     private String commandStatus;
 
+    /**
+     * 失败分类，见 DeviceEnums.ErrorTypeEnum
+     */
+    private String errorType;
+
+    /**
+     * 设备声明的可重试性，空表示未声明
+     */
+    private Boolean retryable;
+
     @Schema(description = "实际请求方法")
     private String httpMethod;
 

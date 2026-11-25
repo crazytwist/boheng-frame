@@ -130,6 +130,8 @@ public class FlowExecutionSweeper {
                     signalDispatcher.timerSignal(execution.getId(), row.getNodeId(), row.getAttempt());
                 } else if (WaitingReason.DEVICE_CALLBACK.name().equals(row.getWaitingFor())) {
                     signalDispatcher.deviceTaskTimeout(execution.getId(), row.getNodeId(), row.getAttempt());
+                } else if (WaitingReason.EXTERNAL_CONFIRMATION.name().equals(row.getWaitingFor())) {
+                    signalDispatcher.externalCallbackTimeout(execution.getId(), row.getNodeId(), row.getAttempt());
                 }
             }
         }

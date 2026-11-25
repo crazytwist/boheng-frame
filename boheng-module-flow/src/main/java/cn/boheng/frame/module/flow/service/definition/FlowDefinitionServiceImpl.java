@@ -372,6 +372,7 @@ public class FlowDefinitionServiceImpl implements FlowDefinitionService {
         resp.setTimeoutSec(FlowConstants.toTimeoutSec(draft.getTimeoutMs()));
         resp.setMaxAttempts(draft.getMaxAttempts());
         resp.setFailStrategy(draft.getFailStrategy());
+        resp.setCompleteWhen(draft.getCompleteWhen());
         resp.setMappings(draft.getMappings().stream().map(mapping -> {
             FlowMappingReqVO req = new FlowMappingReqVO();
             req.setParam(mapping.getParam());

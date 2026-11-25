@@ -17,6 +17,8 @@
 - Mapper 继承 BaseMapperX + LambdaQueryWrapperX；VO 用 SaveReqVO/PageReqVO(extends PageParam)/RespVO
 - 错误码段：infra 1-001 / system 1-002 / wms 1-003
 - Controller：`/admin-api` 前缀框架加；app 侧类名加 **App 前缀**（避免同名 bean 撞车），admin 侧不变
+- ★ 前缀按**包名**匹配：`**.controller.admin.**`→`/admin-api`、`**.controller.app.**`→`/app-api`，两者之外的包路径**原样保留**
+  → 设备/厂商回调一律放 `device/controller/open`，路径是 `/api/callback/{commandNo}`（带令牌）、`/api/OnResponse`（厂商写死）
 - 模块装配：根 pom `<modules>` + boheng-server/pom.xml 依赖；扫描覆盖 `cn.boheng.frame.module`
 
 ## ★ 菜单 ID 段（写菜单 SQL 前必查 MAX(id)）
@@ -74,3 +76,13 @@
 - ★ 部署坑：`docker compose up -d` 在 image 没变时不重建容器，**端口变更不会刷新** → 改 yml 的 ports 后必须 `--force-recreate web`（症状：`docker compose config` 是 28081，但容器仍跑在老端口 48080）
 - 验证：admin/admin123 登录（userId=1 超管）→ wms sample 3/container-type 2/material-instance 53；device/info 11/action 13/device-task 10；flow/definition 4，全部 code:0
 - banner「[WMS - 已禁用]」是芋道基座 BannerApplicationRunner 对原版 cn.iocoder.yudao 包类存在性检查的**误报**（我们的 WMS 在 cn.boheng.frame.module.wms 包，类名对不上），实际路由全注册
+
+## 现场内网机（110.110.2.248，2026-11 起）
+- hostname=mega，Ubuntu 22.04 / x86_64 / 8 核，root / Mega@12#$，部署目录 `/opt/boheng`
+- 端口：**web 80 → 容器 80**、**server 48080 → 容器 48088（对外直连）**、mysql 3306、redis 不暴露；MYSQL_ROOT_PASSWORD=boheng@2026
+- ★ server 容器内**实际监听 48088**（profile=local → application-local.yaml），Dockerfile 的 EXPOSE 48080 只是声明，
+  `docker ps` 里的 "48080/tcp" 不代表监听；映射必须写 `48080:48088`，写 48080:48080 会连到空端口
+- app 访问 `http://110.110.2.248/`，后端经 Nginx 反代 `/admin-api` `/app-api` `/api`
+- **Docker Hub 不可达**，但已缓存 eclipse-temurin:17-jre / nginx:1.27-alpine → 发布用 `./deploy.sh --remote-build`
+- deploy.sh 端口坑已修：远端必须 `set -a; . ./.env` 后 up，不能再传 `PORT_*` 默认值（会把 80 变 28081）
+- 重建 mysql 后必须 `docker restart boheng.server`（连接池失效 → 登录 500），已写进脚本

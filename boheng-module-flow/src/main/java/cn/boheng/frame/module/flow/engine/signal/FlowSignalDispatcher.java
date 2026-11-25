@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.flow.engine.signal;
 
+import cn.boheng.frame.framework.tenant.core.util.TenantUtils;
 import cn.boheng.frame.module.device.api.DeviceCommandApi;
 import cn.boheng.frame.module.device.api.dto.DeviceCommandResultDTO;
 import cn.boheng.frame.module.flow.dal.dataobject.execution.FlowExecutionDO;
@@ -14,6 +15,7 @@ import cn.boheng.frame.module.flow.service.task.FlowDeviceTaskService;
 import cn.boheng.frame.module.flow.engine.type.StepOutcome;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -79,6 +81,12 @@ public class FlowSignalDispatcher {
     private DeviceCommandApi deviceCommandApi;
 
     /**
+     * 节点级外部回调的令牌派生与校验
+     */
+    @Resource
+    private FlowCallbackToken callbackToken;
+
+    /**
      * 人工确认信号。页面上确认 / 拒绝都走这里
      *
      * @param success true 确认放行，false 拒绝（节点按失败结算）
@@ -107,10 +115,100 @@ public class FlowSignalDispatcher {
     }
 
     /**
+     * 外部业务系统回报入口。
+     *
+     * <p>回调方不带租户头，先忽略租户定位运行拿到 tenantId，再在租户上下文里结算；
+     * 否则租户拦截器会给后续查询全部加上 tenant_id 条件而查不到行。</p>
+     *
+     * @return 信号是否被接受（运行不存在、令牌不对、节点已不在等待时拒绝）
+     */
+    public boolean externalCallback(Long executionId, String nodeId, Integer attempt, String token,
+                                    boolean success, String resultJson, String errorMessage) {
+        if (executionId == null || StrUtil.isBlank(nodeId)) {
+            return false;
+        }
+        FlowExecutionDO execution = TenantUtils.executeIgnore(() -> executionMapper.selectById(executionId));
+        if (execution == null || execution.getTenantId() == null) {
+            return false;
+        }
+        return TenantUtils.execute(execution.getTenantId(),
+                () -> externalCallbackSignal(executionId, nodeId, attempt, token, success, resultJson, errorMessage));
+    }
+
+    /**
+     * 结算等待外部回调的节点。令牌绑定「执行 + 节点 + 尝试次数」，
+     * 所以旧尝试的迟到回调会被挡下，不会误结算新一轮。
+     */
+    private boolean externalCallbackSignal(Long executionId, String nodeId, Integer attempt, String token,
+                                           boolean success, String resultJson, String errorMessage) {
+        FlowStepExecutionDO row = stepExecutionMapper.selectWaitingByNode(executionId, nodeId);
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.EXTERNAL_CONFIRMATION.name().equals(row.getWaitingFor())) {
+            return false;
+        }
+        // attempt 显式给了就必须对上；不给也得用行上的值校验令牌
+        if (attempt != null && !attempt.equals(row.getAttempt())) {
+            log.warn("[flow][signal] 外部回调尝试次数不匹配: exe={} node={} expect={} got={}",
+                    executionId, nodeId, row.getAttempt(), attempt);
+            return false;
+        }
+        if (!callbackToken.matches(executionId, nodeId, row.getAttempt(), token)) {
+            log.warn("[flow][signal] 外部回调令牌不匹配: exe={} node={}", executionId, nodeId);
+            return false;
+        }
+        String signalId = "external_" + executionId + "_" + nodeId + "_" + row.getAttempt();
+        if (signalMapper.selectBySignalId(signalId) != null) {
+            return false; // 重复回调
+        }
+        FlowExecutionDO execution = executionMapper.selectById(executionId);
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
+            return false;
+        }
+        log.info("[flow] 信号结算 type=EXTERNAL node={} success={}", nodeId, success);
+        boolean settled = engine.settle(row, success
+                ? StepOutcome.success(StrUtil.blankToDefault(resultJson, "{\"confirmed\":true}"))
+                : StepOutcome.failed(StrUtil.blankToDefault(errorMessage, "外部系统回报失败")));
+        if (!settled) {
+            return false;
+        }
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(),
+                SignalType.EXTERNAL.name(), resultJson, success);
+        return true;
+    }
+
+    /**
+     * 外部回调超时。扫描器发现 EXTERNAL_CONFIRMATION 过期时调用，按失败结算。
+     * 外部系统不回报就是没有结果，不能一直挂住整条流程。
+     */
+    public void externalCallbackTimeout(Long executionId, String nodeId, Integer attempt) {
+        FlowStepExecutionDO row = stepExecutionMapper.selectWaitingByNode(executionId, nodeId);
+        if (row == null || !StepStatus.WAITING.name().equals(row.getStatus())
+                || !WaitingReason.EXTERNAL_CONFIRMATION.name().equals(row.getWaitingFor())) {
+            return;
+        }
+        if (attempt != null && !attempt.equals(row.getAttempt())) {
+            return;
+        }
+        String signalId = "external_timeout_" + executionId + "_" + nodeId + "_" + row.getAttempt();
+        if (signalMapper.selectBySignalId(signalId) != null) {
+            return;
+        }
+        FlowExecutionDO execution = executionMapper.selectById(executionId);
+        if (execution == null || !ExecutionStatus.RUNNING.name().equals(execution.getStatus())) {
+            return;
+        }
+        log.info("[flow] 信号结算 type=EXTERNAL_TIMEOUT node={}", nodeId);
+        if (!engine.settle(row, StepOutcome.failed("等待外部系统回调超时"))) {
+            return;
+        }
+        save(signalId, executionId, nodeId, row.getAttempt(), row.getIterationNo(),
+                SignalType.EXTERNAL.name(), null, false);
+    }
+
+    /**
      * 子执行终态信号。直接回调引擎的汇合判定
      */
-    public void dispatchChildSignal(FlowExecutionDO child, boolean success) {
-        String signalId = "child_" + child.getId();
+    public void dispatchChildSignal(FlowExecutionDO child, boolean success) {        String signalId = "child_" + child.getId();
         if (signalMapper.selectBySignalId(signalId) != null) {
             return;
         }
@@ -258,21 +356,29 @@ public class FlowSignalDispatcher {
         }
         boolean success = CommandStatusEnum.SUCCEEDED.getStatus().equals(result.getStatus());
         Map<String, Object> output = new LinkedHashMap<>();
+        // 解析结果先平铺，保持既有流程的字段引用不失效
+        String resultJson = StrUtil.blankToDefault(result.getParsedOutputJson(), result.getOutputJson());
+        if (StrUtil.isNotBlank(resultJson) && JSONUtil.isTypeJSONObject(resultJson)) {
+            JSONObject parsed = JSONUtil.parseObj(resultJson);
+            output.putAll(parsed);
+            output.put("data", parsed);
+        } else {
+            output.put("body", resultJson);
+            output.put("data", null);
+        }
+        // 规范字段最后写：流程只看这几个，不需要知道厂商的 ExecuteStatus / ResultCode
+        output.put("success", success);
+        output.put("errorType", result.getErrorType());
+        output.put("retryable", result.getRetryable());
+        output.put("raw", result.getOutputJson());
         output.put("commandId", result.getCommandId());
         output.put("commandNo", result.getCommandNo());
         output.put("status", result.getStatus());
-        // 设备域已按动作绑定的解析规则产出结构化结果；流程节点直接映射 sampleCount 等字段。
-        String resultJson = StrUtil.blankToDefault(result.getParsedOutputJson(), result.getOutputJson());
-        if (StrUtil.isNotBlank(resultJson) && JSONUtil.isTypeJSONObject(resultJson)) {
-            output.putAll(JSONUtil.parseObj(resultJson));
-        } else {
-            output.put("body", resultJson);
-        }
         String payload = JSONUtil.toJsonStr(output);
         boolean settled = engine.settle(row, success
                 ? StepOutcome.success(payload)
                 : StepOutcome.failed(StrUtil.blankToDefault(result.getErrorMessage(),
-                        "设备命令结束：" + result.getStatus())));
+                        "设备命令结束：" + result.getStatus()), result.getRetryable()));
         if (!settled) {
             return;
         }

@@ -25,6 +25,8 @@ public interface ErrorCodeConstants {
     ErrorCode DEVICE_UNAVAILABLE = new ErrorCode(1_004_000_008, "设备【{}】当前处于{}状态，无法执行该操作");
     /** 设备还有未结束的命令，不能删除 */
     ErrorCode DEVICE_DELETE_RUNNING = new ErrorCode(1_004_000_009, "设备【{}】存在执行中的命令，请等待命令结束后再删除");
+    /** 受理应答里设备按厂商协议明确拒了（HTTP 可能是 200，业务码不是成功值） */
+    ErrorCode DEVICE_ACCEPT_REJECTED = new ErrorCode(1_004_000_010, "设备【{}】拒绝受理：{}");
 
     // ========== 设备动作（配置）1-004-002-000 ==========
     ErrorCode DEVICE_ACTION_NOT_EXISTS = new ErrorCode(1_004_002_000, "设备动作不存在");
@@ -51,6 +53,9 @@ public interface ErrorCodeConstants {
 
     // ========== 设备命令 1-004-001-000 ==========
     ErrorCode DEVICE_COMMAND_NOT_EXISTS = new ErrorCode(1_004_001_000, "设备命令不存在");
+    ErrorCode DEVICE_COMMAND_NOT_CLOSABLE = new ErrorCode(1_004_001_001, "设备命令当前状态({})不可人工结束");
+    ErrorCode DEVICE_COMMAND_CLOSE_STATUS_INVALID =
+            new ErrorCode(1_004_001_002, "人工结束只接受 SUCCEEDED / FAILED，收到 {}");
 
     // ========== 解析规则 1-004-005-000 ==========
     ErrorCode DEVICE_CODEC_NOT_EXISTS = new ErrorCode(1_004_005_000, "解析规则不存在");

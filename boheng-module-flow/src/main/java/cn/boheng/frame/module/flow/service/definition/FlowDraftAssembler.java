@@ -89,6 +89,8 @@ public class FlowDraftAssembler {
         draft.setMaxAttempts(maxAttempts != null ? maxAttempts
                 : step == null ? null : step.getMaxAttempts());
         draft.setFailStrategy(StrUtil.isNotBlank(failStrategy) ? failStrategy : FlowConstants.FAIL_FAST);
+        // 完成断言：判定在流程侧，发布期要能校验语法
+        draft.setCompleteWhen(run == null ? null : StrUtil.trimToNull(run.getStr("completeWhen")));
         // 控制类型的图校验辅助字段
         fillControlFields(draft);
         return draft;

@@ -14,6 +14,7 @@ import cn.boheng.frame.module.flow.engine.type.StepTypeDescriptor;
 import cn.boheng.frame.module.flow.engine.type.config.DeviceCommandConfig;
 import cn.boheng.frame.module.flow.service.definition.model.FlowIssue;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import org.springframework.stereotype.Component;
 
@@ -94,16 +95,33 @@ public class DeviceCommandStepType implements StepTypeDescriptor, StepExecutor {
         DeviceCommandResultDTO result = deviceCommandApi.send(req);
         if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
             String error = result == null ? "设备无响应" : result.getErrorMessage();
-            return StepOutcome.failed(StrUtil.blankToDefault(error, "设备命令失败"));
+            // 设备域已按协议判定这次失败值不值得重试；没有结论时交给流程按默认处理
+            return StepOutcome.failed(StrUtil.blankToDefault(error, "设备命令失败"),
+                    result == null ? null : result.getRetryable());
         }
         if (CommandStatusEnum.WAITING.getStatus().equals(result.getStatus())) {
             return StepOutcome.waiting(WaitingReason.DEVICE_COMMAND_CALLBACK.name(), String.valueOf(result.getCommandId()),
                     result.getCommandId(), result.getCommandNo());
         }
         Map<String, Object> output = new java.util.LinkedHashMap<>();
+        // 解析结果先平铺，保持既有流程的字段引用不失效；同时挂在 data 上供新流程取
+        String resultJson = StrUtil.blankToDefault(result.getParsedOutputJson(), result.getOutputJson());
+        if (StrUtil.isNotBlank(resultJson) && JSONUtil.isTypeJSONObject(resultJson)) {
+            JSONObject parsed = JSONUtil.parseObj(resultJson);
+            output.putAll(parsed);
+            output.put("data", parsed);
+        } else {
+            output.put("body", resultJson);
+            output.put("data", null);
+        }
+        // 规范字段最后写：流程只看这几个，不必解释厂商的 ExecuteStatus / ResultCode
+        output.put("success", true);
+        output.put("errorType", result.getErrorType());
+        output.put("retryable", result.getRetryable());
+        output.put("raw", result.getOutputJson());
         output.put("commandId", result.getCommandId());
         output.put("commandNo", result.getCommandNo());
-        output.put("body", result.getOutputJson());
+        output.put("status", result.getStatus());
         return StepOutcome.success(JSONUtil.toJsonStr(output));
     }
 

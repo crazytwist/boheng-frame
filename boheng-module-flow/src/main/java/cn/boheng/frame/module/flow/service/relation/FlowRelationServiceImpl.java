@@ -12,6 +12,7 @@ import cn.boheng.frame.module.flow.dal.dataobject.step.FlowStepDO;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowDefinitionMapper;
 import cn.boheng.frame.module.flow.dal.mysql.definition.FlowNodeMapper;
 import cn.boheng.frame.module.flow.dal.mysql.step.FlowStepMapper;
+import cn.boheng.frame.module.flow.engine.expression.ExpressionEvaluator;
 import cn.boheng.frame.module.flow.engine.type.StepTypeRegistry;
 import cn.boheng.frame.module.flow.enums.FlowConstants;
 import cn.boheng.frame.module.flow.service.definition.FlowDraftAssembler;
@@ -217,6 +218,8 @@ public class FlowRelationServiceImpl implements FlowRelationService {
             row.setOutputMapping(reqVO.getOutputMapping().isEmpty() ? null
                     : JSONUtil.toJsonStr(reqVO.getOutputMapping()));
         }
+        // 节点级运行配置：只改请求里显式给到的键，没给的不动
+        mergeRunConfig(row, reqVO);
         // 画布坐标
         if (reqVO.getX() != null) {
             row.setX(reqVO.getX());
@@ -226,6 +229,88 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         }
         flowNodeMapper.updateById(row);
         assertStructure(row.getDefinitionId());
+    }
+
+    /**
+     * 合并节点级运行配置到 run_config JSON。
+     * <p>约定：请求字段为 null 表示「这次不动这个键」，0 / 空串表示「清掉这个键、回落步骤表」。
+     * 合并而不是整串覆盖，是为了让改坐标、改编排形态这类请求不会顺手抹掉已有的超时与断言。
+     * <p>完成断言在这里就校验语法：等到发布才报错的话，用户已经离开这个节点了。
+     */
+    private void mergeRunConfig(FlowNodeDO row, FlowRelationUpdateReqVO reqVO) {
+        boolean touching = reqVO.getTimeoutSec() != null || reqVO.getMaxAttempts() != null
+                || reqVO.getFailureStrategy() != null || reqVO.getCompleteWhen() != null;
+        if (!touching) {
+            return;
+        }
+        JSONObject run = StrUtil.isBlank(row.getRunConfig()) ? new JSONObject() : parseRunConfig(row.getRunConfig());
+        if (reqVO.getTimeoutSec() != null) {
+            // 列里存毫秒（与 flow_step.timeout_ms 同单位），对外暴露秒
+            if (reqVO.getTimeoutSec() <= 0) {
+                run.remove("timeoutMs");
+            } else {
+                run.set("timeoutMs", reqVO.getTimeoutSec() * 1000L);
+            }
+        }
+        if (reqVO.getMaxAttempts() != null) {
+            if (reqVO.getMaxAttempts() <= 0) {
+                run.remove("maxAttempts");
+            } else {
+                run.set("maxAttempts", reqVO.getMaxAttempts());
+            }
+        }
+        if (reqVO.getFailureStrategy() != null) {
+            String strategy = StrUtil.trimToNull(reqVO.getFailureStrategy());
+            if (strategy == null) {
+                run.remove("failureStrategy");
+            } else {
+                run.set("failureStrategy", strategy);
+            }
+        }
+        if (reqVO.getCompleteWhen() != null) {
+            String assertion = StrUtil.trimToNull(reqVO.getCompleteWhen());
+            if (assertion == null) {
+                run.remove("completeWhen");
+            } else {
+                String syntaxError = ExpressionEvaluator.checkSyntaxStatic(assertion);
+                if (syntaxError != null) {
+                    throw exception(FLOW_DEFINITION_INVALID,
+                            "节点【" + row.getNodeId() + "】的完成断言不合法：" + syntaxError);
+                }
+                run.set("completeWhen", assertion);
+            }
+        }
+        row.setRunConfig(run.isEmpty() ? null : JSONUtil.toJsonStr(run));
+    }
+
+    /**
+     * 读 run_config。坏数据当成空对象，让后续合并从零开始，别把整次保存堵死
+     */
+    private JSONObject parseRunConfig(String json) {
+        try {
+            return JSONUtil.parseObj(json);
+        } catch (RuntimeException ex) {
+            return new JSONObject();
+        }
+    }
+
+    /**
+     * 宽容取数：历史数据里可能存了非数字，取不出来就当没配，不要让详情页打不开
+     */
+    private Long longOf(JSONObject json, String key) {
+        try {
+            return json.getLong(key);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private Integer intOf(JSONObject json, String key) {
+        try {
+            return json.getInt(key);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     /**
@@ -469,6 +554,13 @@ public class FlowRelationServiceImpl implements FlowRelationService {
         }).toList());
         resp.setTimeoutSec(FlowConstants.toTimeoutSec(draft.getTimeoutMs()));
         resp.setMaxAttempts(draft.getMaxAttempts());
+        // 运行配置：原始覆盖给前端判断「继承 / 已覆盖」，生效值给占位提示
+        JSONObject run = StrUtil.isBlank(row.getRunConfig()) ? null : parseRunConfig(row.getRunConfig());
+        resp.setRunConfig(row.getRunConfig());
+        resp.setOverrideTimeoutSec(run == null ? null : FlowConstants.toTimeoutSec(longOf(run, "timeoutMs")));
+        resp.setOverrideMaxAttempts(run == null ? null : intOf(run, "maxAttempts"));
+        resp.setFailureStrategy(draft.getFailStrategy());
+        resp.setCompleteWhen(draft.getCompleteWhen());
         resp.setX(row.getX());
         resp.setY(row.getY());
         if (step != null) {

@@ -77,4 +77,16 @@ public interface FlowStepExecutionMapper extends BaseMapperX<FlowStepExecutionDO
                 .last("LIMIT 1"));
     }
 
+    /**
+     * 按执行 + 节点找仍在等待的行。循环内节点的 iterationNo 不为 0，
+     * 所以外部回调不能复用「固定 iterationNo」的那条查询。
+     */
+    default FlowStepExecutionDO selectWaitingByNode(Long executionId, String nodeId) {
+        return selectOne(new LambdaQueryWrapperX<FlowStepExecutionDO>()
+                .eq(FlowStepExecutionDO::getExecutionId, executionId)
+                .eq(FlowStepExecutionDO::getNodeId, nodeId)
+                .eq(FlowStepExecutionDO::getStatus, StepStatus.WAITING.name())
+                .last("LIMIT 1"));
+    }
+
 }

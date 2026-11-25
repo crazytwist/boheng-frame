@@ -89,6 +89,12 @@ public class DeviceActionSaveReqVO {
     @Size(max = 255, message = "轮询完成判定表达式长度不能超过 255 个字符")
     private String pollDoneExpr;
 
+    @Schema(description = "响应判定规则 JSON：成功判定字段与取值、失败说明字段、可重试性字段",
+            example = "{\"successStatusPath\":\"$.ExecuteStatus\",\"successStatusValues\":[0],"
+                    + "\"successCodePath\":\"$.ResultCode\",\"successCodeValues\":[\"00000000\"],"
+                    + "\"messagePath\":\"$.Message\",\"retryHintsPath\":\"$.Parameters.HandleCommands\"}")
+    private String resultRule;
+
     @Schema(description = "平台轮询最大等待时间（秒）", example = "600")
     @Min(value = 1, message = "最大等待时间至少 1 秒")
     @Max(value = 86400, message = "最大等待时间不能超过 86400 秒")
@@ -101,8 +107,8 @@ public class DeviceActionSaveReqVO {
     @Pattern(regexp = "SYNC_RETURN|CALLBACK|POLL", message = "结果方式只能是同步返回、设备回调或平台轮询")
     private String resultMode;
 
-    @Schema(description = "等回调的秒数，空则用设备默认", example = "120")
-    @Min(value = 1, message = "等回调时间至少 1 秒")
+    @Schema(description = "等回调的秒数，空则用设备默认；0 表示不超时（由流程节点超时兜底）", example = "120")
+    @Min(value = 0, message = "等回调时间不能为负，0 表示不超时")
     @Max(value = 600, message = "等回调时间不能超过 600 秒")
     private Integer callbackTimeoutSec;
 

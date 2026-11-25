@@ -7,3 +7,6 @@ datasources:
     url: http://loki:3100
     isDefault: true
     editable: true
+    jsonData:
+      # Explore 默认只拉 1000 行，这里提到 10000（Loki max_entries_limit_per_query 同步）
+      maxLines: 10000

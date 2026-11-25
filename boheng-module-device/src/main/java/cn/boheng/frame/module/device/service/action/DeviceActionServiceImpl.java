@@ -39,6 +39,11 @@ public class DeviceActionServiceImpl implements DeviceActionService {
     @Resource
     private DeviceParamResolver deviceParamResolver;
     /**
+     * 报文映射与输入契约的一致性校验
+     */
+    @Resource
+    private DeviceTemplateChecker deviceTemplateChecker;
+    /**
      * 创建设备动作
      */
 
@@ -47,6 +52,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         // 校验「类型 + 动作」唯一性
         validateActionUnique(createReqVO.getId(), createReqVO.getDeviceTypeCode(), createReqVO.getActionCode());
         deviceParamResolver.validateSchema(createReqVO.getParamSchema());
+        deviceTemplateChecker.check(createReqVO.getParamSchema(), createReqVO.getRequestTemplate());
         normalizeRequest(createReqVO);
 
         // 插入
@@ -65,6 +71,7 @@ public class DeviceActionServiceImpl implements DeviceActionService {
         // 校验「类型 + 动作」唯一性
         validateActionUnique(updateReqVO.getId(), updateReqVO.getDeviceTypeCode(), updateReqVO.getActionCode());
         deviceParamResolver.validateSchema(updateReqVO.getParamSchema());
+        deviceTemplateChecker.check(updateReqVO.getParamSchema(), updateReqVO.getRequestTemplate());
         normalizeRequest(updateReqVO);
 
         // 更新

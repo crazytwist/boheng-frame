@@ -34,10 +34,14 @@ limits_config:
   # 保留 30 天，配合 compactor 生效
   retention_period: 720h
   allow_structured_metadata: true
+  # Grafana Explore 的行数上限受这个值卡住，默认 5000；查日志时放到 10000
+  max_entries_limit_per_query: 10000
 
 compactor:
   working_directory: /loki/compactor
   compaction_interval: 10m
   retention_enabled: true
+  # Loki 3.x 打开保留期后必须指定删除请求的存储，否则进程直接退出
+  delete_request_store: filesystem
   retention_delete_delay: 2h
   retention_delete_worker_count: 150

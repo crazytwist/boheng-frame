@@ -66,7 +66,7 @@
             <dt>回调地址</dt>
             <dd>{{ device.callbackUrl || '平台默认地址' }}</dd>
             <dt>回调超时</dt>
-            <dd>{{ device.callbackTimeoutSec ?? 300 }} 秒</dd>
+            <dd>{{ callbackTimeoutText(device.callbackTimeoutSec) }}</dd>
           </template>
           <dt>轮询间隔</dt>
           <dd>{{ device.pollIntervalSec ?? 5 }} 秒</dd>
@@ -149,7 +149,7 @@
 <script lang="ts" setup>
 import { DeviceInfoApi, DevicePortrait, DeviceVO } from '@/api/device'
 import CategoryDrawer from './components/CategoryDrawer.vue'
-import { connectionLabel, deviceTypeLabel, lockTypeLabel, parseParams, sourceLabel, statusLabel, statusTagType } from './labels'
+import { callbackTimeoutText, connectionLabel, deviceTypeLabel, lockTypeLabel, parseParams, sourceLabel, statusLabel, statusTagType } from './labels'
 
 const visible = ref(false)
 const loading = ref(false)

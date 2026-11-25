@@ -276,6 +276,17 @@ boheng:
   info:
     version: 1.0.0
     base-package: cn.boheng.frame
+  access-log:
+    # 控制台请求日志（每次请求打「开始请求 / Controller 方法路径 / 完成请求」三行）。
+    # 与落库的访问日志无关：那个由下面的 enable 控制，这里只管打印。
+    # 先整体关掉：这些行对开发帮助有限（真正要看的是业务日志），轮询接口还会刷屏。
+    # 需要时改成 true 即可恢复，skip-urls 里的轮询接口仍然不会打。
+    request-log:
+      enabled: false
+      # 支持 Ant 风格，例如 /admin-api/flow/execution/**；只影响控制台打印，不影响落库。
+      skip-urls:
+        - /admin-api/flow/execution/get
+        - /admin-api/system/notify-message/get-unread-count
   web:
     admin-ui:
       url: http://dashboard.boheng.iocoder.cn # Admin 管理后台 UI 的地址
@@ -287,6 +298,20 @@ boheng:
   security:
     permit-all_urls:
       - /admin-api/mp/open/** # 微信公众号开放平台，微信回调接口，不需要登录
+  device:
+    # 真设备回调平台用的根地址，只写 scheme://host[:port]，不要带 /admin-api（框架会自己加前缀）。
+    # 留空时退回 http://127.0.0.1:{port}/admin-api，只适合本机仿真设备联调：
+    # 真设备拿到 127.0.0.1 会把回调打到自己身上，表现为设备侧「已上报」而流程永远等不到结果。
+    # 生产/预发示例：http://123.59.127.6:28081（走 Nginx 反代 /admin-api → boheng.server）
+    callback-base-url: ${BOHENG_DEVICE_CALLBACK_BASE_URL:}
+  flow:
+    # 外部业务系统（LIMS / MES / 上游调度）回调节点用的根地址，只写 scheme://host[:port]，
+    # 框架会自己接 /app-api/flow/external-callback/... 与 token 参数。
+    # 留空退回 http://127.0.0.1:{port}，只适合本机联调：对方会把回调打到自己身上。
+    callback-base-url: ${BOHENG_FLOW_CALLBACK_BASE_URL:}
+    # 节点回调令牌的派生密钥。换密钥等于让在途等待的回调全部失效（宁可超时重来），
+    # 生产必须显式配置，且不能与其它密钥复用。
+    callback-secret: ${BOHENG_FLOW_CALLBACK_SECRET:boheng-flow-callback-secret}
   api-encrypt:
     enable: false # 是否开启 API 加密。默认关闭，避免低版本 JDK 8（8u120 以下）启动时 bcprov 的 JCE 认证报错
     algorithm: AES # 加密算法，支持 AES、RSA 等

@@ -65,6 +65,9 @@ public class FlowNodeRespVO {
     @Schema(description = "失败策略：FAIL_FAST / FAIL_SKIP")
     private String failStrategy;
 
+    @Schema(description = "完成断言（生效值）。执行器报成功后再过这道判断，不成立按失败结算。空 = 不校验")
+    private String completeWhen;
+
     @Schema(description = "参数映射")
     private List<FlowMappingReqVO> mappings;
 

@@ -83,6 +83,22 @@ public class FlowRelationRespVO {
     @Schema(description = "尝试次数（生效值）")
     private Integer maxAttempts;
 
+    @Schema(description = "节点级运行覆盖原始 JSON。为空 = 全部继承步骤表。前端据此区分「继承」与「已覆盖」",
+            example = "{\"timeoutMs\":300000,\"completeWhen\":\"output.weight >= 0.95\"}")
+    private String runConfig;
+
+    @Schema(description = "节点级超时秒数（仅覆盖值，null = 继承步骤表）")
+    private Integer overrideTimeoutSec;
+
+    @Schema(description = "节点级尝试次数（仅覆盖值，null = 继承步骤表）")
+    private Integer overrideMaxAttempts;
+
+    @Schema(description = "失败策略（生效值）：FAIL_FAST / FAIL_SKIP")
+    private String failureStrategy;
+
+    @Schema(description = "完成断言（生效值）。空 = 执行器报成功即成功")
+    private String completeWhen;
+
     @Schema(description = "画布横坐标（拖拽编排）")
     private Integer x;
 

@@ -24,6 +24,16 @@ export interface FlowRelationVO {
   outputSchema?: string
   timeoutSec?: number
   maxAttempts?: number
+  /** 节点级运行覆盖原始 JSON。为空 = 全部继承步骤表 */
+  runConfig?: string
+  /** 节点级超时覆盖值（秒）。null = 继承步骤表 */
+  overrideTimeoutSec?: number
+  /** 节点级尝试次数覆盖值。null = 继承步骤表 */
+  overrideMaxAttempts?: number
+  /** 失败策略生效值：FAIL_FAST / FAIL_SKIP */
+  failureStrategy?: string
+  /** 完成断言生效值。空 = 执行器报成功即成功 */
+  completeWhen?: string
   x?: number
   y?: number
 }
@@ -50,6 +60,11 @@ export interface FlowRelationUpdateVO {
   branches?: Record<string, string[]>
   mappings?: FlowMappingVO[]
   outputMapping?: Record<string, string>
+  // 运行配置：null = 不改这个键；0 / 空串 = 清掉这层覆盖、回落步骤表
+  timeoutSec?: number | null
+  maxAttempts?: number | null
+  failureStrategy?: string | null
+  completeWhen?: string | null
   x?: number
   y?: number
 }

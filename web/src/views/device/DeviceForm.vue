@@ -204,8 +204,8 @@
           </div>
         </el-form-item>
         <el-form-item label="回调超时(秒)" prop="callbackTimeoutSec">
-          <el-input-number v-model="formData.callbackTimeoutSec" :min="1" :max="600" controls-position="right" placeholder="300" />
-          <span class="form-tip">动作未单独配置时采用此值，超时未回调的命令记为“已超时”</span>
+          <el-input-number v-model="formData.callbackTimeoutSec" :min="0" :max="600" controls-position="right" placeholder="300" />
+          <span class="form-tip">动作未单独配置时采用此值；0 表示不超时，超时的判断交给流程节点</span>
         </el-form-item>
       </template>
       <el-form-item label="轮询间隔(秒)" prop="pollIntervalSec">

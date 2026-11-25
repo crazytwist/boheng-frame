@@ -18,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandSourceTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ErrorTypeEnum;
 
 /**
  * 设备命令契约实现。给流程引擎用的下发入口：
@@ -83,15 +84,21 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
                 normalizeSourceRef(req.getSourceRef()), req.getAttempt(), null);
         try {
             DeviceInvokeRespVO resp = deviceHttpService.invoke(invokeReq, source);
-            boolean ok = resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300;
+            boolean httpOk = resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300;
+            String commandStatus = StrUtil.blankToDefault(resp.getCommandStatus(),
+                    httpOk ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
             result.setCommandId(resp.getCommandId());
             result.setCommandNo(resp.getCommandNo());
-            result.setSuccess(ok);
-            result.setStatus(StrUtil.blankToDefault(resp.getCommandStatus(),
-                    ok ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus()));
+            result.setStatus(commandStatus);
+            // WAITING 表示已受理、结果未到，对流程来说算「下发成功」；终态才按成败判
+            result.setSuccess(!CommandStatusEnum.FAILED.getStatus().equals(commandStatus)
+                    && !CommandStatusEnum.TIMED_OUT.getStatus().equals(commandStatus)
+                    && !CommandStatusEnum.CANCELLED.getStatus().equals(commandStatus));
             result.setOutputJson(resp.getBody());
-            if (!ok) {
-                result.setErrorMessage("设备返回 HTTP " + resp.getStatus());
+            result.setErrorType(resp.getErrorType());
+            result.setRetryable(resp.getRetryable());
+            if (!Boolean.TRUE.equals(result.getSuccess())) {
+                result.setErrorMessage(StrUtil.blankToDefault(resp.getBody(), "设备返回 HTTP " + resp.getStatus()));
             }
             return result;
         } catch (RuntimeException ex) {
@@ -103,6 +110,7 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
             // 设备域的业务异常（忙/停用/超时等）在这里收口，Flow 只看结果
             result.setSuccess(false);
             result.setStatus(CommandStatusEnum.FAILED.getStatus());
+            result.setErrorType(ErrorTypeEnum.TRANSPORT.getType());
             result.setErrorMessage(StrUtil.maxLength(StrUtil.nullToEmpty(ex.getMessage()), 512));
             return result;
         }
@@ -123,6 +131,8 @@ public class DeviceCommandApiImpl implements DeviceCommandApi {
             result.setOutputJson(command.getRawBody());
             result.setParsedOutputJson(deviceCommandService.getParsedOutput(commandId));
             result.setErrorMessage(command.getErrorMsg());
+            result.setErrorType(command.getErrorType());
+            result.setRetryable(command.getRetryable());
         } catch (RuntimeException ex) {
             result.setStatus(CommandStatusEnum.FAILED.getStatus());
             result.setSuccess(false);

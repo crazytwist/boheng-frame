@@ -87,7 +87,7 @@ device_measurement (1) ──< device_analysis_result (N)   measurement_id
 
 ### 机制二：设备回调落库
 
-`POST /device/callback/{commandNo}`（`@PermitAll` + `@TenantIgnore`，设备不带租户）：
+`POST /api/callback/{commandNo}`（`@PermitAll` + `@TenantIgnore`，设备不带租户）：
 - 按 `commandNo` 跨租户查 → 令牌常量时间比较（`MessageDigest.isEqual`）→ `completeCallback`（CAS `WHERE status=WAITING` 抢状态）→ 唤醒等待线程
 - 返回：200 / 403（令牌错）/ 404 / 409（已结束）/ 413（超 1MB）
 

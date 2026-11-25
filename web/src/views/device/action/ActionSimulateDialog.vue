@@ -271,21 +271,29 @@ const pollSummary = computed(() => {
 const DEFAULT_CALLBACK_SEC = 300
 
 const callbackLimit = computed(() => {
-  if (action.value?.callbackTimeoutSec) {
+  // 0 是后端的「不超时」约定，不能当没配处理（否则会回落成 300 秒，提示就错了）
+  if (action.value?.callbackTimeoutSec !== undefined && action.value?.callbackTimeoutSec !== null) {
     return { sec: action.value.callbackTimeoutSec, from: '动作配置的' }
   }
   const device = allDevices.value.find((item) => item.id === deviceId.value)
-  if (device?.callbackTimeoutSec) {
+  if (device?.callbackTimeoutSec !== undefined && device?.callbackTimeoutSec !== null) {
     return { sec: device.callbackTimeoutSec, from: '设备台账配置的' }
   }
   return { sec: DEFAULT_CALLBACK_SEC, from: '默认' }
 })
 
-const callbackWarn = computed(() => (form.asyncWaitMs || 0) / 1000 >= callbackLimit.value.sec)
+const callbackUnlimited = computed(() => callbackLimit.value.sec === 0)
+
+const callbackWarn = computed(
+  () => !callbackUnlimited.value && (form.asyncWaitMs || 0) / 1000 >= callbackLimit.value.sec
+)
 
 const callbackSummary = computed(() => {
   const wait = (form.asyncWaitMs || 0) / 1000
   const { sec, from } = callbackLimit.value
+  if (callbackUnlimited.value) {
+    return `预计 ${wait} 秒后收到回调；${from}不超时，平台会一直等（回调丢失只能人工结束命令）`
+  }
   if (callbackWarn.value) {
     return `平台回调超时为${from} ${sec} 秒，设备回调延迟 ${wait} 秒，将判定为超时（可用于测试超时场景）`
   }

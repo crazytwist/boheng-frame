@@ -165,7 +165,7 @@ public class DeviceInfoDO extends TenantBaseDO {
     private String callbackUrl;
 
     /**
-     * 默认等回调的秒数。动作上没填时用它
+     * 默认等回调的秒数。动作上没填时用它；0 表示不超时
      */
     private Integer callbackTimeoutSec;
 

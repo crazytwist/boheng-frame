@@ -37,6 +37,11 @@ public class DeviceCommandSweeper {
     private static final long STALE_MINUTES = 15;
 
     /**
+     * 「回调不超时」的命令挂多久才提示。这类命令不会被自动收口，只提醒人去确认
+     */
+    private static final long NO_DEADLINE_HINT_MINUTES = 60;
+
+    /**
      * 扫描线程。守护线程，不拦应用退出
      */
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -91,6 +96,13 @@ public class DeviceCommandSweeper {
                     () -> deviceCommandMapper.failStaleAcquired(now.minusMinutes(STALE_MINUTES)));
             if (timedOut + failed > 0) {
                 log.info("[sweep][超时 {} 条，中断 {} 条]", timedOut, failed);
+            }
+            // 配了「回调不超时」的命令不会被上面两条收口：只提示，让人去确认是不是回调真丢了
+            long noDeadline = TenantUtils.executeIgnore(() -> deviceCommandMapper.countWaitingWithoutDeadline(
+                    now.minusMinutes(NO_DEADLINE_HINT_MINUTES)));
+            if (noDeadline > 0) {
+                log.warn("[sweep][{} 条命令配了不超时且已等待超过 {} 分钟，仍在等回调；确认丢包后请人工结束]",
+                        noDeadline, NO_DEADLINE_HINT_MINUTES);
             }
         } catch (Exception ex) {
             log.warn("[sweep][收尾命令失败]", ex);

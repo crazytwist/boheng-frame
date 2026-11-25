@@ -67,7 +67,7 @@ set -a; source "$SCRIPT_DIR/.env"; set +a
 REMOTE_DIR="${REMOTE_DIR:-/home/megarobo/boheng}"
 # 与 .env 的 28 段公网端口对齐（用户实际配置）
 PORT_WEB="${PORT_WEB:-28081}"
-PORT_SERVER="${PORT_SERVER:-28088}"
+PORT_SERVER="${PORT_SERVER:-48080}"
 PORT_MYSQL="${PORT_MYSQL:-28086}"
 PORT_REDIS="${PORT_REDIS:-28082}"
 
@@ -350,24 +350,29 @@ else
   docker load < boheng-images.tar
 fi
 
-# 生成 .env 供 compose 读取（去除 SSH 段，保留端口/密码）
+# 生成 .env 供 compose 读取（保留端口/密码/回调，供 compose 的 ${VAR:-默认} 解析）
 {
-  grep -E "^(PORT_|MYSQL_)" .env || true
+  grep -E "^(PORT_|MYSQL_|DEVICE_)" .env || true
 } > .compose.env
 
 # 兼容 docker compose / docker-compose
 COMPOSE="docker compose"
 docker compose version >/dev/null 2>&1 || COMPOSE="docker-compose"
 
-# 启动（注意：server/mysql/redis 的 ports 段已在 docker-compose.yml 中默认注释掉，
-# 这里传 PORT_* 仅作 fallback；公网仅 web 28081 可达，server/mysql/redis 走 boheng-net 内部互访）
+# ★ 不要把 PORT_* 从本机当环境变量传给 compose。
+#   本机的 PORT_WEB=80 到不了这个远端 bash 进程（heredoc 是独立进程），
+#   ${PORT_WEB:-28081} 会退化成内置默认值 28081，反过来盖掉远端 .env 的真实配置。
+#   症状：.env 写的是 80，部署完容器却跑在 28081（2026-11-25 内网机就踩过）。
+#   正确做法：让 compose 自己读远端 ./.env，端口以 .env 为唯一真相。
+set -a; . ./.env; set +a
+
 # 注意：加 --force-recreate web 是为了确保端口映射按当前 yml 生效 —— 否则 image 没变时
 # 容器端口会"卡"在老值（典型症状：yml 改成 28081 但容器仍跑在 48080）。
-PORT_WEB="${PORT_WEB:-28081}" PORT_SERVER="${PORT_SERVER:-28088}" \
-PORT_MYSQL="${PORT_MYSQL:-28086}" PORT_REDIS="${PORT_REDIS:-28082}" \
-MYSQL_ROOT_PASSWORD="$(grep '^MYSQL_ROOT_PASSWORD=' .env | cut -d= -f2-)" \
-MYSQL_ROOT_USER="$(grep '^MYSQL_ROOT_USER=' .env | cut -d= -f2- | sed 's/^root$//;s/.*/root/')" \
-  $COMPOSE up -d --remove-orphans --force-recreate web
+$COMPOSE up -d --remove-orphans --force-recreate web
+
+# compose 重建 mysql 会让后端连接池全部失效（Communications link failure → 登录 500），
+# 必须重启 server 让它重新建连
+docker restart boheng.server >/dev/null
 
 echo "✅ 目标端容器已启动"
 $COMPOSE ps

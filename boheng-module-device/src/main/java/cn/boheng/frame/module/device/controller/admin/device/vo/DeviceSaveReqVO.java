@@ -130,13 +130,13 @@ public class DeviceSaveReqVO {
     @Schema(description = "是否支持状态查询")
     private Boolean statusQueryEnabled;
 
-    @Schema(description = "设备回调平台用的地址，空则用平台默认地址", example = "http://10.0.0.5:48080/admin-api/device/callback/${commandNo}?token=${callbackToken}")
+    @Schema(description = "设备回调平台用的地址，空则用平台默认地址", example = "http://10.0.0.5:48080/api/callback/${commandNo}?token=${callbackToken}")
     @Size(max = 512, message = "回调地址长度不能超过 512 个字符")
     @Pattern(regexp = "^$|^(?i)https?://.+", message = "回调地址必须以 http:// 或 https:// 开头")
     private String callbackUrl;
 
-    @Schema(description = "默认等回调的秒数", example = "300")
-    @Min(value = 1, message = "等回调时间至少 1 秒")
+    @Schema(description = "默认等回调的秒数；0 表示不超时", example = "300")
+    @Min(value = 0, message = "等回调时间不能为负，0 表示不超时")
     @Max(value = 600, message = "等回调时间不能超过 600 秒")
     private Integer callbackTimeoutSec;
 

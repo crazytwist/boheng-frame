@@ -133,6 +133,14 @@ public class RuntimeNode {
     }
 
     /**
+     * 运行覆盖里的完成断言。没有配置返回 null，等于「执行器说成功即成功」。
+     * 判定权统一在流程侧：设备域只报命令终态和原始报文，这里判这一次是不是真的达标。
+     */
+    public String runCompleteWhen() {
+        return runValue("completeWhen", String.class);
+    }
+
+    /**
      * 从 runConfig JSON 里取一个值
      */
     private <T> T runValue(String key, Class<T> type) {
@@ -143,6 +151,12 @@ public class RuntimeNode {
             Object value = JSONUtil.parseObj(runConfig).get(key);
             if (value == null) {
                 return null;
+            }
+            // 字符串直接取值：JSONUtil.toBean 会把裸字符串当 JSON 文档解析，
+            // 遇到 `output.weight >= 0.95` 这种非 JSON 文本就返回 null，
+            // 节点级 failureStrategy / completeWhen 会静默失效
+            if (type == String.class) {
+                return type.cast(value.toString());
             }
             return JSONUtil.toBean(value.toString(), type);
         } catch (RuntimeException ex) {

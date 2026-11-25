@@ -3,6 +3,7 @@ package cn.boheng.frame.module.device.service.command;
 import cn.boheng.frame.framework.common.pojo.PageResult;
 import cn.boheng.frame.framework.common.util.object.BeanUtils;
 import cn.boheng.frame.framework.security.core.util.SecurityFrameworkUtils;
+import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandCloseReqVO;
 import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandPageReqVO;
 import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandRespVO;
 import cn.boheng.frame.module.device.controller.admin.device.vo.DeviceInvokeRespVO;
@@ -15,17 +16,21 @@ import cn.boheng.frame.module.device.dal.dataobject.measurement.DeviceMeasuremen
 import cn.boheng.frame.module.device.dal.dataobject.measurement.DeviceMeasurementDataDO;
 import cn.boheng.frame.module.device.dal.dataobject.raw.DeviceDataRawDO;
 import cn.boheng.frame.module.device.dal.mysql.analysis.DeviceAnalysisResultMapper;
+import cn.boheng.frame.module.device.dal.mysql.action.DeviceActionMapper;
 import cn.boheng.frame.module.device.dal.mysql.codec.DeviceCodecMapper;
 import cn.boheng.frame.module.device.dal.mysql.command.DeviceCommandMapper;
 import cn.boheng.frame.module.device.dal.mysql.measurement.DeviceMeasurementDataMapper;
 import cn.boheng.frame.module.device.dal.mysql.measurement.DeviceMeasurementMapper;
 import cn.boheng.frame.module.device.dal.mysql.raw.DeviceDataRawMapper;
 import cn.boheng.frame.module.device.service.codec.DeviceCodecParser;
+import cn.boheng.frame.module.device.service.result.DeviceResultJudge;
+import cn.boheng.frame.module.device.service.result.ResultVerdict;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,17 +40,21 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static cn.boheng.frame.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_COMMAND_CLOSE_STATUS_INVALID;
+import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_COMMAND_NOT_CLOSABLE;
 import static cn.boheng.frame.module.device.enums.ErrorCodeConstants.DEVICE_COMMAND_NOT_EXISTS;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandSourceTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandStatusEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.CommandWaitingReasonEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.DispatchModeEnum;
+import static cn.boheng.frame.module.device.enums.DeviceEnums.ErrorTypeEnum;
 import static cn.boheng.frame.module.device.enums.DeviceEnums.ResultModeEnum;
 /**
  * 命令记录服务实现
  */
 
 @Service
+@Slf4j
 public class DeviceCommandServiceImpl implements DeviceCommandService {
     /**
      * 命令记录表
@@ -81,6 +90,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Resource
     private ApplicationEventPublisher eventPublisher;
+
+    /**
+     * 应答判定器：把厂商响应体翻译成成败、错误分类和可重试性
+     */
+    @Resource
+    private DeviceResultJudge deviceResultJudge;
+
+    /**
+     * 动作表。回调只带命令号，判定规则要按动作取
+     */
+    @Resource
+    private DeviceActionMapper deviceActionMapper;
     /**
      * 调用开始时记录命令
      */
@@ -95,7 +116,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
      */
     @Override
     public DeviceCommandDO open(DeviceInfoDO device, DeviceActionDO action, String paramsJson, String codecCode,
-                                CommandSource source) {
+                                CommandSource source, String paramsSource) {
         CommandSource src = source == null ? CommandSource.manual() : source;
         DeviceCommandDO row = new DeviceCommandDO();
         row.setCommandNo("C" + IdUtil.getSnowflakeNextIdStr());
@@ -113,6 +134,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         row.setPollCount(0);
         row.setStatus(CommandStatusEnum.ACQUIRED.getStatus());
         row.setParamsJson(jsonText(paramsJson));
+        row.setParamsSource(StrUtil.trimToNull(paramsSource));
         row.setCodecCode(StrUtil.trimToNull(codecCode));
         row.setOperator(StrUtil.blankToDefault(src.operator(),
                 StrUtil.blankToDefault(SecurityFrameworkUtils.getLoginUserNickname(), "user")));
@@ -127,14 +149,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void complete(Long commandId, DeviceInvokeRespVO resp, String codecCode) {
+    public ResultVerdict complete(Long commandId, DeviceInvokeRespVO resp, String codecCode) {
         DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
         if (command == null) {
-            return;
+            return ResultVerdict.ok();
         }
         LocalDateTime now = LocalDateTime.now();
-        boolean ok = resp.getStatus() != null && resp.getStatus() >= 200 && resp.getStatus() < 300;
+        // 同步路径也按厂商协议判定，不只看 HTTP 码：受理应答里 ExecuteStatus/ResultCode 说失败就是失败
+        ResultVerdict verdict = judge(command, resp.getBody(), resp.getStatus());
+        boolean ok = verdict.success();
         command.setStatus(ok ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
+        command.setErrorType(verdict.errorType());
+        command.setRetryable(verdict.retryable());
         command.setSentAt(now);
         command.setFinishedAt(now);
         command.setCodecCode(StrUtil.blankToDefault(StrUtil.trimToNull(codecCode), command.getCodecCode()));
@@ -142,7 +168,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         command.setResponseJson(envelope("status", resp.getStatus(), "contentType", resp.getContentType(), "body", resp.getBody()));
         command.setPayloadJson(jsonText(resp.getRequestBody()));
         if (!ok) {
-            command.setErrorMsg(limit(StrUtil.blankToDefault(resp.getBody(), "HTTP " + resp.getStatus()), 1000));
+            command.setErrorMsg(limit(StrUtil.blankToDefault(verdict.message(),
+                    StrUtil.blankToDefault(resp.getBody(), "HTTP " + resp.getStatus())), 1000));
         }
 
         DeviceDataRawDO raw = saveRaw(command, "HTTP_RESPONSE", resp.getBody(), resp.getContentType(), now);
@@ -151,6 +178,7 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         }
         deviceCommandMapper.updateById(command);
         publishCompleted(command);
+        return verdict;
     }
 
     /**
@@ -186,6 +214,21 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     /**
+     * 记下固定地址回调的关联键值。空白值直接忽略，不写空串占位。
+     */
+    @Override
+    public void bindCorrelateValue(Long commandId, String correlateValue) {
+        String value = StrUtil.trimToNull(correlateValue);
+        if (commandId == null || value == null) {
+            return;
+        }
+        DeviceCommandDO update = new DeviceCommandDO();
+        update.setId(commandId);
+        update.setCorrelateValue(limit(value, 128));
+        deviceCommandMapper.updateById(update);
+    }
+
+    /**
      * 回调正文按响应处理：落原始数据、按解析规则生成测量。先抢状态，抢不到说明已超时或已收过一次。
      */
     @Override
@@ -196,18 +239,21 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             return false;
         }
         LocalDateTime now = LocalDateTime.now();
-        String failure = callbackFailure(body);
+        ResultVerdict verdict = judge(command, body, null);
         DeviceCommandDO claim = new DeviceCommandDO();
         claim.setId(commandId);
-        claim.setStatus(failure == null ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
+        claim.setStatus(verdict.success() ? CommandStatusEnum.SUCCEEDED.getStatus()
+                : CommandStatusEnum.FAILED.getStatus());
         claim.setWaitingFor("");
         claim.setFinishedAt(now);
+        claim.setErrorType(verdict.errorType());
+        claim.setRetryable(verdict.retryable());
         if (!deviceCommandMapper.updateIfStatus(claim, CommandStatusEnum.WAITING.getStatus())) {
             return false;
         }
-        command.setErrorMsg(failure == null ? null : limit(failure, 1000));
+        command.setErrorMsg(verdict.success() ? null : limit(verdict.message(), 1000));
         DeviceDataRawDO raw = saveRaw(command, "HTTP_CALLBACK", body, contentType, now);
-        if (failure == null && StrUtil.isNotBlank(command.getCodecCode())) {
+        if (verdict.success() && StrUtil.isNotBlank(command.getCodecCode())) {
             applyCodec(command, raw);
         }
         DeviceCommandDO result = new DeviceCommandDO();
@@ -215,10 +261,76 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         result.setResponseJson(envelope("status", 200, "contentType", contentType, "body", body));
         result.setDataRawId(command.getDataRawId());
         result.setErrorMsg(command.getErrorMsg());
+        result.setErrorType(verdict.errorType());
+        result.setRetryable(verdict.retryable());
         deviceCommandMapper.updateById(result);
-        command.setStatus(failure == null ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
+        command.setStatus(verdict.success() ? CommandStatusEnum.SUCCEEDED.getStatus()
+                : CommandStatusEnum.FAILED.getStatus());
         publishCompleted(command);
         return true;
+    }
+
+    /**
+     * 人工给一条卡住的命令定结论。
+     *
+     * <p>和 timeout 用同一条收口路径：条件更新 → 发完成事件，流程侧等待中的节点随即结算。
+     * 条件更新是为了和「设备回调刚好同时到达」抢先后：谁先改成功算谁的，
+     * 后到的那个看到状态已变就放弃，不会出现一条命令被结算两次。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DeviceCommandRespVO manualClose(DeviceCommandCloseReqVO reqVO) {
+        DeviceCommandDO command = deviceCommandMapper.selectById(reqVO.getId());
+        if (command == null) {
+            throw exception(DEVICE_COMMAND_NOT_EXISTS);
+        }
+        if (isTerminal(command.getStatus())) {
+            throw exception(DEVICE_COMMAND_NOT_CLOSABLE, command.getStatus());
+        }
+        boolean success = closeTarget(reqVO.getStatus());
+        String nickname = StrUtil.blankToDefault(SecurityFrameworkUtils.getLoginUserNickname(), "user");
+        String reason = StrUtil.trimToEmpty(reqVO.getRemark());
+
+        DeviceCommandDO update = new DeviceCommandDO();
+        update.setId(command.getId());
+        update.setStatus(success ? CommandStatusEnum.SUCCEEDED.getStatus() : CommandStatusEnum.FAILED.getStatus());
+        update.setWaitingFor("");
+        update.setFinishedAt(LocalDateTime.now());
+        // 人工声明，不允许留空：留空在流程侧等价于「可重试」，会把没确认过幂等性的操作重跑一遍
+        update.setRetryable(Boolean.TRUE.equals(reqVO.getRetryable()));
+        update.setRemark(limit("人工结束 by " + nickname + "：" + reason, 500));
+        if (!success) {
+            update.setErrorType(StrUtil.blankToDefault(reqVO.getErrorType(), ErrorTypeEnum.BUSINESS.getType()));
+            update.setErrorMsg(limit(reason, 1000));
+        }
+        if (!deviceCommandMapper.updateIfStatus(update, command.getStatus())) {
+            // 这段时间里回调、超时扫描或另一个人先改了状态
+            DeviceCommandDO latest = deviceCommandMapper.selectById(command.getId());
+            throw exception(DEVICE_COMMAND_NOT_CLOSABLE,
+                    latest == null ? "UNKNOWN" : latest.getStatus());
+        }
+        log.info("[manualClose][命令({}) 由 {} 人工结束为 {}，可重试={}，原因={}]",
+                command.getCommandNo(), nickname, update.getStatus(), update.getRetryable(), reason);
+
+        command.setStatus(update.getStatus());
+        command.setErrorType(update.getErrorType());
+        command.setRetryable(update.getRetryable());
+        publishCompleted(command);
+        return getCommand(command.getId());
+    }
+
+    /**
+     * 人工结束允许的目标状态：只收 SUCCEEDED / FAILED。
+     * TIMED_OUT 归 Sweeper，CANCELLED 语义是「压根没发出去」，都不该在这里产生。
+     */
+    private static boolean closeTarget(String status) {
+        if (CommandStatusEnum.SUCCEEDED.getStatus().equals(status)) {
+            return true;
+        }
+        if (CommandStatusEnum.FAILED.getStatus().equals(status)) {
+            return false;
+        }
+        throw exception(DEVICE_COMMAND_CLOSE_STATUS_INVALID, status);
     }
 
     /**
@@ -235,6 +347,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         update.setStatus(CommandStatusEnum.TIMED_OUT.getStatus());
         update.setWaitingFor("");
         update.setFinishedAt(LocalDateTime.now());
+        // 超时说明不知道设备做了什么，是否重试取决于动作幂等性，属于流程的判断，这里不代替它决定
+        update.setErrorType(ErrorTypeEnum.TIMEOUT.getType());
         update.setErrorMsg(limit(message, 1000));
         if (deviceCommandMapper.updateIfStatus(update, CommandStatusEnum.WAITING.getStatus())) {
                 command.setStatus(CommandStatusEnum.TIMED_OUT.getStatus());
@@ -305,21 +419,18 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
     }
 
     /**
-     * 回调正文里明确写了失败时返回原因，否则返回空。认 status 为 FAILED/ERROR/FAIL，或 success 为 false。
+     * 判定一次应答。规则挂在动作上，动作已被删除时按通用字段判。
+     *
+     * @param command 命令记录，用来定位动作
+     * @param body 响应正文
+     * @param httpStatus HTTP 状态码，回调场景为空
      */
-    private static String callbackFailure(String body) {
-        if (StrUtil.isBlank(body) || !JSONUtil.isTypeJSONObject(body.trim())) {
-            return null;
+    private ResultVerdict judge(DeviceCommandDO command, String body, Integer httpStatus) {
+        DeviceActionDO action = null;
+        if (StrUtil.isNotBlank(command.getDeviceTypeCode()) && StrUtil.isNotBlank(command.getActionCode())) {
+            action = deviceActionMapper.selectByTypeAndAction(command.getDeviceTypeCode(), command.getActionCode());
         }
-        JSONObject object = JSONUtil.parseObj(body);
-        String status = object.getStr("status");
-        boolean failed = CommandStatusEnum.FAILED.getStatus().equalsIgnoreCase(status)
-                || "ERROR".equalsIgnoreCase(status) || "FAIL".equalsIgnoreCase(status)
-                || Boolean.FALSE.equals(object.getBool("success"));
-        if (!failed) {
-            return null;
-        }
-        return "设备回调失败：" + StrUtil.blankToDefault(firstString(object, "message", "msg", "error"), body);
+        return deviceResultJudge.judge(action, body, httpStatus);
     }
     /**
      * 调用没有完成时把命令标成失败
@@ -327,12 +438,34 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
 
     @Override
     public void fail(Long commandId, String message) {
+        markFailed(commandId, ErrorTypeEnum.TRANSPORT.getType(), null, message);
+    }
+
+    /**
+     * 按判定结论标失败：分类和可重试性都听设备域的，不在这里重新猜
+     */
+    @Override
+    public void fail(Long commandId, ResultVerdict verdict) {
+        ResultVerdict real = verdict == null ? ResultVerdict.failed(ErrorTypeEnum.TRANSPORT.getType(), null, null)
+                : verdict;
+        markFailed(commandId, StrUtil.blankToDefault(real.errorType(), ErrorTypeEnum.TRANSPORT.getType()),
+                real.retryable(), real.message());
+    }
+
+    /**
+     * 把非终态命令标成失败并发布终态事件。已经结束的命令直接跳过，回调、超时、人工结束谁先到算谁
+     */
+    private void markFailed(Long commandId, String errorType, Boolean retryable, String message) {
         DeviceCommandDO command = deviceCommandMapper.selectById(commandId);
         if (command == null || isTerminal(command.getStatus())) {
             return;
         }
         command.setStatus(CommandStatusEnum.FAILED.getStatus());
+        // 失败的命令不再等任何东西，留着 waiting_for 会让列表显示成「还在等回调」
+        command.setWaitingFor("");
         command.setFinishedAt(LocalDateTime.now());
+        command.setErrorType(errorType);
+        command.setRetryable(retryable);
         command.setErrorMsg(limit(message, 1000));
         deviceCommandMapper.updateById(command);
         publishCompleted(command);

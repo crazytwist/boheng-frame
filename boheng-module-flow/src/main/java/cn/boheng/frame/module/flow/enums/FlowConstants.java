@@ -38,6 +38,12 @@ public final class FlowConstants {
     /** 等人工在页面上确认 */
     public static final String STEP_MANUAL_TASK = "manual.task";
 
+    /**
+     * 等外部业务系统回调。与 device.command 的分工：
+     * 设备只认命令号，回调进设备域；认流程的对方直接回调节点，回调进流程域。
+     */
+    public static final String STEP_EXTERNAL_CALLBACK = "external.callback";
+
     /** 发一条通知 */
     public static final String STEP_NOTIFICATION_SEND = "notification.send";
 

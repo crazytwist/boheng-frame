@@ -44,4 +44,15 @@ public class DeviceCommandResultDTO {
      */
     private String errorMessage;
 
+    /**
+     * 失败分类：TRANSPORT / DEVICE_REJECTED / BUSINESS / TIMEOUT。
+     * 只描述失败性质，是否重试由流程决定。
+     */
+    private String errorType;
+
+    /**
+     * 设备声明的可重试性。null 表示设备未声明，流程按自己的策略处理。
+     */
+    private Boolean retryable;
+
 }

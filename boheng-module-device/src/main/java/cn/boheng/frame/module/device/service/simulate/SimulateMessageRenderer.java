@@ -1,5 +1,6 @@
 package cn.boheng.frame.module.device.service.simulate;
 
+import cn.boheng.frame.module.device.service.template.MessageTemplateFunctions;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -21,12 +22,13 @@ public final class SimulateMessageRenderer {
 
     /**
      * 用参数替换模板中的 ${参数名}。模板为空时原样返回。
+     * 参数替换之前先展开 ${uuid()} 这类内置函数，仿真和设备真机走同一套规则。
      */
     public static String render(String template, Map<String, Object> params) {
         if (template == null) {
             return null;
         }
-        String rendered = template;
+        String rendered = MessageTemplateFunctions.apply(template);
         if (params == null || params.isEmpty()) {
             return rendered;
         }

@@ -22,6 +22,16 @@ public class ExpressionEvaluator {
      * @return 错误说明，null 表示合法
      */
     public String checkSyntax(String expression) {
+        return checkSyntaxStatic(expression);
+    }
+
+    /**
+     * 编译期校验的静态入口。发布校验器不持有 Spring 容器，直接复用同一个编译器实现，
+     * 避免出现第二套「什么算合法表达式」的判断。
+     *
+     * @return 错误说明，null 表示合法
+     */
+    public static String checkSyntaxStatic(String expression) {
         if (expression == null || expression.isBlank()) {
             return "表达式不能为空";
         }

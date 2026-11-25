@@ -69,6 +69,8 @@ public class DeviceActionRespVO {
     private String pollDoneExpr;
     private Integer pollTimeoutSec;
 
+    @Schema(description = "响应判定规则 JSON：成功判定字段与取值、失败说明字段、可重试性字段")
+    private String resultRule;
     @Schema(description = "最大轮询次数", example = "12")
     private Integer pollMaxTimes;
 

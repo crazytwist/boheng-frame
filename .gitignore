@@ -79,3 +79,11 @@ deploy/boheng/.env
 deploy/frp/.env
 deploy/frp/frpc
 deploy/frp/ca-certificates.crt
+deploy/boheng/.env.daxing
+
+######################################################################
+# 文档/图表生成产物（工具输出，不入库）
+
+.archify/
+.ppt-build/
+/output/

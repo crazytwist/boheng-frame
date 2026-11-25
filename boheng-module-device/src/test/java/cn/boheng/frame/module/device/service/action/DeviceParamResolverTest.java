@@ -96,4 +96,43 @@ class DeviceParamResolverTest {
         assertEquals("1", result.getStr("workMode"));
         assertEquals("1", result.getStr("manualOperateCommand"));
     }
+
+    /**
+     * 约束写成字符串会被运行期静默忽略，保存契约时必须报错。
+     */
+    @Test
+    void shouldRejectConstraintsAsPlainString() {
+        RuntimeException error = assertThrows(RuntimeException.class,
+                () -> resolver.validateSchema(
+                        "{\"TrayNumber\":{\"type\":\"INTEGER\",\"constraints\":\"{\\\"min\\\":1}\"}}"));
+
+        assertTrue(error.getMessage().contains("constraints"));
+    }
+
+    /**
+     * 枚举数组与范围对象都是合法约束写法。
+     */
+    @Test
+    void shouldAcceptEnumArrayAndRangeObject() {
+        resolver.validateSchema("{\"mode\":{\"type\":\"ENUM\",\"constraints\":[\"A\",\"B\"]}}");
+        resolver.validateSchema("{\"tray\":{\"type\":\"INTEGER\",\"constraints\":{\"min\":1,\"max\":9}}}");
+    }
+
+    /**
+     * 流程域传了值就用传入的，没传才由契约默认兜底；两者来源都要能回答。
+     */
+    @Test
+    void shouldRecordWhereEachValueComesFrom() {
+        DeviceParamResolver.ResolvedParams resolved = resolver.resolveWithSource(
+                "{\"TrayNumber\":{\"type\":\"INTEGER\",\"default\":1},"
+                        + "\"mode\":{\"type\":\"STRING\",\"default\":\"ABSORBANCE\"}}",
+                "{\"TrayNumber\":3}");
+
+        assertEquals("INPUT", resolved.sources().get("TrayNumber"));
+        assertEquals("SCHEMA_DEFAULT", resolved.sources().get("mode"));
+
+        JSONObject params = JSONUtil.parseObj(resolved.paramsJson());
+        assertEquals(3L, params.getLong("TrayNumber"));
+        assertEquals("ABSORBANCE", params.getStr("mode"));
+    }
 }

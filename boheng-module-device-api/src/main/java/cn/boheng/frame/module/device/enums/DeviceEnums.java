@@ -184,12 +184,34 @@ public class DeviceEnums {
     }
 
     /**
+     * 失败分类。只描述「这次失败是什么性质」，是否重试由流程域决定。
+     */
+    @Getter
+    @AllArgsConstructor
+    public enum ErrorTypeEnum {
+
+        /** 传输层失败：连不上、超时未响应，请求可能根本没到设备。 */
+        TRANSPORT("TRANSPORT", "传输失败"),
+        /** 设备收到了但明确拒绝执行（协议报文判定为失败）。 */
+        DEVICE_REJECTED("DEVICE_REJECTED", "设备拒绝执行"),
+        /** 设备执行完成，但结果不满足业务要求。 */
+        BUSINESS("BUSINESS", "业务结果不达标"),
+        /** 等待设备结果超时。 */
+        TIMEOUT("TIMEOUT", "等待超时");
+
+        /** 失败分类编码。 */
+        private final String type;
+        /** 失败分类名称。 */
+        private final String name;
+
+    }
+
+    /**
      * 三态调用：下发方式（调用什么时候返回）
      */
     @Getter
     @AllArgsConstructor
     public enum DispatchModeEnum {
-
         /** 同步下发。 */
         SYNC("SYNC", "同步下发"),
         /** 异步下发。 */

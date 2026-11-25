@@ -13,11 +13,7 @@ services:
     volumes:
       - ./config/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3100/ready || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+    # 3.7 镜像是 distroless，没有 shell/wget，CMD-SHELL 探活会一直失败
     restart: unless-stopped
 
   alloy:
@@ -29,8 +25,7 @@ services:
       - ${LOG_DIR}:/logs:ro
       - alloy-data:/var/lib/alloy/data
     depends_on:
-      loki:
-        condition: service_healthy
+      - loki
     restart: unless-stopped
 
   grafana:
@@ -45,8 +40,7 @@ services:
       - grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
-      loki:
-        condition: service_healthy
+      - loki
     restart: unless-stopped
 
 volumes:

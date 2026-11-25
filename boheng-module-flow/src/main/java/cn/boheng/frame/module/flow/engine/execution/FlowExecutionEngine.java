@@ -447,6 +447,16 @@ public class FlowExecutionEngine {
         FlowLogContextHolder.setNodeId(row.getNodeId());
         PipelineGraph graph = loadGraph(execution);
         RuntimeNode node = graph.node(row.getNodeId());
+        // 完成断言：判定统一收在流程侧。执行器只报「命令发生了什么」，
+        // 「这一次算不算完成」由节点上的 completeWhen 决定，不成立按失败结算，复用重试与失败策略。
+        if (outcome.getKind() == StepOutcome.Kind.SUCCESS) {
+            String rejected = evaluateCompleteWhen(node, row, outcome);
+            if (rejected != null) {
+                // 断言不成立时保留产出，事后能回答「当时到底返回了什么」
+                row.setOutputData(outcome.getOutputJson());
+                outcome = StepOutcome.failed(rejected);
+            }
+        }
         switch (outcome.getKind()) {
             case SUCCESS -> {
                 row.setStatus(StepStatus.SUCCESS.name());
@@ -463,7 +473,8 @@ public class FlowExecutionEngine {
             }
             case FAILED -> {
                 int maxAttempts = effectiveMaxAttempts(graph, node, row);
-                if (row.getAttempt() < maxAttempts && isRetryable(node)) {
+                // 三重条件：还有次数、节点类型允许重试、这次失败确实值得重试（设备域给的事实）
+                if (row.getAttempt() < maxAttempts && isRetryable(node) && outcome.isRetryable()) {
                     row.setStatus(StepStatus.FAILED.name());
                     row.setErrorMessage(outcome.getErrorMessage());
                     row.setFinishedAt(LocalDateTime.now());
@@ -503,8 +514,18 @@ public class FlowExecutionEngine {
                 row.setCommandId(outcome.getCommandId());
                 row.setCommandNo(outcome.getCommandNo());
                 row.setDeadlineAt(deadlineOf(outcome, graph, node));
+                // 等待类节点也可能有要交出去的东西（如外部回调地址），落在 output_data 上
+                if (StrUtil.isNotBlank(outcome.getOutputJson())) {
+                    row.setOutputData(outcome.getOutputJson());
+                }
                 if (!casStep(row, fromStatus)) {
                     return false;
+                }
+                // 进入等待就写上下文：上游可能已经在跑、需要在等待期间就把地址转发给对方
+                if (StrUtil.isNotBlank(outcome.getOutputJson())) {
+                    contextHolder.saveNodeOutput(row.getExecutionId(), row.getNodeId(),
+                            row.getIterationNo(), outcome.getOutputJson(),
+                            node == null ? null : node.getOutputMapping());
                 }
                 log.info("[flow] 节点等待 node={} waitingFor={}",
                         row.getNodeId(), outcome.getWaitingFor());
@@ -536,6 +557,54 @@ public class FlowExecutionEngine {
     }
 
     /**
+     * 求值节点的完成断言。返回 null 表示通过（或没配断言），否则返回失败原因。
+     *
+     * <p>作用域是本节点：{@code output.*} 是本次产出，{@code params.*} 是本次入参，
+     * 上游用 {@code node.<nodeId>.*}，启动入参用 {@code input.*}。
+     * 求值异常按不通过处理——变量名写错不该被当成成功放行。</p>
+     */
+    private String evaluateCompleteWhen(RuntimeNode node, FlowStepExecutionDO row, StepOutcome outcome) {
+        if (node == null) {
+            return null;
+        }
+        String expression = node.runCompleteWhen();
+        if (StrUtil.isBlank(expression)) {
+            return null;
+        }
+        Map<String, Object> env = new HashMap<>(contextHolder.loadEnv(row.getExecutionId()));
+        env.put("output", parseOutput(outcome.getOutputJson()));
+        if (StrUtil.isNotBlank(row.getInputSnapshot())) {
+            try {
+                env.put("params", JSONUtil.parseObj(row.getInputSnapshot()));
+            } catch (RuntimeException ex) {
+                log.debug("[flow] 入参快照不是合法 JSON，断言不带 params: node={}", row.getNodeId());
+            }
+        }
+        try {
+            if (evaluator.evalBool(expression, env)) {
+                return null;
+            }
+            return StrUtil.maxLength("完成断言不成立：" + expression, 480);
+        } catch (RuntimeException ex) {
+            return StrUtil.maxLength("完成断言求值失败：" + expression + "，原因：" + ex.getMessage(), 480);
+        }
+    }
+
+    /**
+     * 断言作用域里的 output。坏数据原样返回，让求值阶段报出可读错误
+     */
+    private Object parseOutput(String outputJson) {
+        if (StrUtil.isBlank(outputJson)) {
+            return new JSONObject();
+        }
+        try {
+            return JSONUtil.parse(outputJson);
+        } catch (RuntimeException ex) {
+            return outputJson;
+        }
+    }
+
+    /**
      * 只在步骤还停在 {@code fromStatus} 时写入。返回 false 表示被另一条结算抢先。
      */
     private boolean casStep(FlowStepExecutionDO row, String fromStatus) {
@@ -557,9 +626,10 @@ public class FlowExecutionEngine {
         if (WaitingReason.TIMER.name().equals(outcome.getWaitingFor()) && StrUtil.isNotBlank(outcome.getWaitRef())) {
             return LocalDateTime.parse(outcome.getWaitRef());
         }
-        // 设备异步任务：按节点超时给等待截止时刻，超时扫描按它判失败；
+        // 设备异步任务与外部系统回调：按节点超时给等待截止时刻，超时扫描按它判失败；
         // 配成负数（-1）表示永不超时，不落 deadline，扫描器会跳过
-        if (WaitingReason.DEVICE_CALLBACK.name().equals(outcome.getWaitingFor())) {
+        if (WaitingReason.DEVICE_CALLBACK.name().equals(outcome.getWaitingFor())
+                || WaitingReason.EXTERNAL_CONFIRMATION.name().equals(outcome.getWaitingFor())) {
             long timeoutMs = effectiveTimeout(graph, node);
             if (timeoutMs < 0) {
                 return null;

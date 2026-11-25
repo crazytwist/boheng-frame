@@ -44,6 +44,30 @@ export const commandStatusOptions = [
 
 export const commandStatusLabel = (v?: string) => commandStatusOptions.find((i) => i.value === v)?.label || v || '—'
 
+/** 终态命令不再接受人工结束，也不该再被回调改写 */
+export const isCommandTerminal = (v?: string) =>
+  ['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED'].includes(v || '')
+
+/**
+ * 回调超时的展示文案。
+ * 0 是后端约定的「不超时」——这类命令不会被超时扫描收口，只能靠流程节点超时或人工结束。
+ */
+export const callbackTimeoutText = (sec?: number | null, emptyText = '300 秒（默认）') => {
+  if (sec === 0) return '不超时'
+  if (sec === null || sec === undefined) return emptyText
+  return `${sec} 秒`
+}
+
+/** 失败分类。人工结束命令时要选一个，否则不知道这次失败是什么性质 */
+export const errorTypeOptions = [
+  { label: '传输失败', value: 'TRANSPORT' },
+  { label: '设备拒绝', value: 'DEVICE_REJECTED' },
+  { label: '业务失败', value: 'BUSINESS' },
+  { label: '超时', value: 'TIMEOUT' }
+]
+
+export const errorTypeLabel = (v?: string) => errorTypeOptions.find((i) => i.value === v)?.label || v || '—'
+
 export const commandStatusType = (v?: string): 'success' | 'info' | 'warning' | 'danger' => {
   if (v === 'SUCCEEDED') return 'success'
   if (v === 'FAILED' || v === 'TIMED_OUT') return 'danger'

@@ -31,14 +31,16 @@ services:
         max-file: "3"
 
   # ----------------------------- 后端（Spring Boot，JDK17） -----------------------------
-  # 内部服务：仅经 boheng-net 由 web 反代访问，不暴露公网
-  # 如需外部直连调试（如 HexHub / Postman 打 admin-api），取消下一行注释
+  # 内部服务：常规由 web 反代访问；48080 对外直连用于设备/Postman 联调
+  # ★ 容器内实际监听 48088（SPRING_PROFILES_ACTIVE=local → application-local.yaml），
+  #   Dockerfile 里 EXPOSE 48080 只是声明，`docker ps` 显示的 48080/tcp 不代表监听 48080。
+  #   故映射必须写 "48080:48088"，写成 48080:48080 会打到一个没人监听的端口（连接被拒）。
   server:
     image: boheng/server:latest
     container_name: boheng.server
     restart: always
-    # ports:
-    #   - "${PORT_SERVER:-28088}:48080"   # 仅调试用：公网可不开
+    ports:
+      - "${PORT_SERVER:-48080}:48088"
     environment:
       TZ: Asia/Shanghai
       SPRING_PROFILES_ACTIVE: local
@@ -52,7 +54,13 @@ services:
       SPRING_DATA_REDIS_HOST: boheng.redis
       SPRING_DATA_REDIS_PORT: "6379"
       SPRING_DATA_REDIS_DATABASE: "0"
+      # 设备回调平台的固定根地址（scheme://host[:port]，不带 /admin-api）
+      # 不配会退回 http://127.0.0.1:48080，真设备把回调打到自己身上，流程永远等不到结果
+      BOHENG_DEVICE_CALLBACK_BASE_URL: "${DEVICE_CALLBACK_BASE_URL:-}"
       JAVA_OPTS: "-Xms512m -Xmx1024m -Djava.security.egd=file:/dev/./urandom"
+    volumes:
+      # 日志落到宿主机，给 Alloy 采集（容器内路径是 root 的 user.home/logs）
+      - /opt/boheng/logs:/root/logs
     networks:
       - boheng-net
     depends_on:
@@ -73,8 +81,8 @@ services:
     image: mysql:8.0.32
     container_name: boheng.mysql
     restart: always
-    # ports:
-    #   - "${PORT_MYSQL:-28086}:3306"   # 仅调试用：公网可不开
+    ports:
+      - "${PORT_MYSQL:-3306}:3306"
     environment:
       TZ: Asia/Shanghai
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"

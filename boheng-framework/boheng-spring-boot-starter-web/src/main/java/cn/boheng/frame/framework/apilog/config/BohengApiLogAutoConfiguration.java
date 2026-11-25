@@ -10,13 +10,24 @@ import jakarta.servlet.Filter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @AutoConfiguration(after = BohengWebAutoConfiguration.class)
+@EnableConfigurationProperties(ApiRequestLogProperties.class)
 public class BohengApiLogAutoConfiguration implements WebMvcConfigurer {
+
+    /**
+     * 控制台请求日志的配置（总开关 + 跳过名单）
+     */
+    private final ApiRequestLogProperties requestLogProperties;
+
+    public BohengApiLogAutoConfiguration(ApiRequestLogProperties requestLogProperties) {
+        this.requestLogProperties = requestLogProperties;
+    }
 
     /**
      * 创建 ApiAccessLogFilter Bean，记录 API 请求日志
@@ -38,7 +49,8 @@ public class BohengApiLogAutoConfiguration implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new ApiAccessLogInterceptor());
+        registry.addInterceptor(new ApiAccessLogInterceptor(
+                requestLogProperties.isEnabled(), requestLogProperties.getSkipUrls()));
     }
 
 }

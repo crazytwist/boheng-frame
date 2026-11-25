@@ -21,12 +21,15 @@ public class DeviceSecurityConfiguration {
 
             /**
              * 仿真 HTTP 和设备回调免登录，回调靠命令令牌校验。配置维护接口仍要登录。
+             *
+             * <p>仿真地址仍挂 {@code /admin-api} 下（模拟器只在开发联调用），
+             * 设备回调已经挪到 {@code /api/callback}，按原样写路径、不加前缀。</p>
              */
             @Override
             public void customize(AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry registry) {
                 registry.requestMatchers(buildAdminApi("/device/simulate/http/**")).permitAll();
-                registry.requestMatchers(buildAdminApi("/device/callback/**")).permitAll();
-                registry.requestMatchers(buildAdminApi("/device/callback")).permitAll();
+                registry.requestMatchers("/api/callback/**").permitAll();
+                registry.requestMatchers("/api/callback").permitAll();
             }
 
         };

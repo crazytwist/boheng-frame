@@ -99,9 +99,22 @@ public class DeviceCommandDO extends TenantBaseDO {
     private String paramsJson;
 
     /**
+     * 每个参数的取值来源：{参数名: INPUT 流程传入 / SCHEMA_DEFAULT 契约默认}
+     */
+    private String paramsSource;
+
+    /**
      * 实际发出的报文
      */
     private String payloadJson;
+
+    /**
+     * 固定地址回调的关联键值，取自发出报文里 {@code device_action.correlate_path} 指向的字段。
+     *
+     * <p>厂商把回调地址写死、报文里又不给我们命令号时，只能靠这个值认命令。
+     * 设备原样带回来时按它反查，命中「还在等回调」的那条命令。</p>
+     */
+    private String correlateValue;
 
     /**
      * 请求方法、地址和正文
@@ -117,6 +130,16 @@ public class DeviceCommandDO extends TenantBaseDO {
      * 失败或解析失败时的说明
      */
     private String errorMsg;
+
+    /**
+     * 失败分类：TRANSPORT 传输 / DEVICE_REJECTED 设备拒绝 / BUSINESS 业务不达标 / TIMEOUT 超时
+     */
+    private String errorType;
+
+    /**
+     * 设备声明的可重试性。空表示设备未声明，由流程按默认处理
+     */
+    private Boolean retryable;
 
     /**
      * 解析规则编码
@@ -162,5 +185,10 @@ public class DeviceCommandDO extends TenantBaseDO {
      * 等回调的截止时刻
      */
     private LocalDateTime timeoutAt;
+
+    /**
+     * 备注。人工结束命令时记下是谁、因为什么结的
+     */
+    private String remark;
 
 }

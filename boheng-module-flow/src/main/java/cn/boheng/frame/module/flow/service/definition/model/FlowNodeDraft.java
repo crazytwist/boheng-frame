@@ -100,6 +100,12 @@ public class FlowNodeDraft {
     private String failStrategy;
 
     /**
+     * 完成断言表达式（Aviator）。空 = 执行器报成功即成功。
+     * 作用域：output.* / params.* / node.&lt;nodeId&gt;.* / input.*
+     */
+    private String completeWhen;
+
+    /**
      * 关联的能力编号。控制类节点为空
      */
     private Long stepId;

@@ -2,6 +2,7 @@ package cn.boheng.frame.module.device.controller.admin.command;
 
 import cn.boheng.frame.framework.common.pojo.CommonResult;
 import cn.boheng.frame.framework.common.pojo.PageResult;
+import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandCloseReqVO;
 import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandPageReqVO;
 import cn.boheng.frame.module.device.controller.admin.command.vo.DeviceCommandRespVO;
 import cn.boheng.frame.module.device.service.command.DeviceCommandService;
@@ -12,6 +13,8 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +48,14 @@ public class DeviceCommandController {
     @PreAuthorize("@ss.hasPermission('device:command:query')")
     public CommonResult<DeviceCommandRespVO> getCommand(@RequestParam("id") Long id) {
         return success(deviceCommandService.getCommand(id));
+    }
+
+    @PostMapping("/close")
+    @Operation(summary = "人工结束命令",
+            description = "回调丢失等情况下由运维给定结论。只接受非终态命令，且必须明确是否可重试")
+    @PreAuthorize("@ss.hasPermission('device:command:close')")
+    public CommonResult<DeviceCommandRespVO> closeCommand(@Valid @RequestBody DeviceCommandCloseReqVO reqVO) {
+        return success(deviceCommandService.manualClose(reqVO));
     }
 
 }

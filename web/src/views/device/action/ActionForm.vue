@@ -36,6 +36,7 @@ const createEmptyFormData = (): DeviceActionVO => ({
   pollDoneExpr: undefined,
   pollTimeoutSec: undefined,
   pollMaxTimes: undefined,
+  resultRule: undefined,
   resultMode: 'SYNC_RETURN',
   callbackTimeoutSec: undefined,
   status: 0
@@ -135,6 +136,7 @@ const statusOptions = [
 // 参数模式示例（降低填写门槛）
 const PARAM_SCHEMA_PLACEHOLDER = `{
   "wavelength": { "label": "主波长", "type": "INTEGER", "unit": "nm", "required": true, "default": 450 },
+  "TrayNumber": { "label": "托盘号", "type": "INTEGER", "required": true, "default": 1, "constraints": { "min": 1, "max": 9 } },
   "mode": { "label": "检测模式", "type": "ENUM", "constraints": ["ABSORBANCE", "FLUORESCENCE"] }
 }`
 
@@ -203,6 +205,30 @@ const open = async (
   }
 }
 
+/** 约束回填到输入框：数组按逗号展开，范围对象转成 JSON 文本 */
+const constraintsToText = (constraints?: any): string | undefined => {
+  if (constraints === undefined || constraints === null || constraints === '') return undefined
+  if (Array.isArray(constraints)) return constraints.join(', ')
+  if (typeof constraints === 'object') return JSON.stringify(constraints)
+  return String(constraints)
+}
+
+/** 输入框写回契约：{ 开头按范围对象，其余按逗号分隔的枚举 */
+const constraintsFromText = (text?: string): any => {
+  const raw = text?.trim()
+  if (!raw) return undefined
+  if (raw.startsWith('{')) {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new Error('范围约束必须是 JSON 对象')
+    return parsed
+  }
+  return raw
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+}
+
 const loadParamDefinitionRows = () => {
   try {
     const obj = formData.value.paramSchema ? JSON.parse(formData.value.paramSchema) : {}
@@ -213,7 +239,7 @@ const loadParamDefinitionRows = () => {
       unit: raw?.unit,
       required: !!raw?.required,
       defaultValue: raw?.defaultValue ?? raw?.default,
-      constraints: Array.isArray(raw?.constraints) ? raw.constraints.join(', ') : raw?.constraints
+      constraints: constraintsToText(raw?.constraints)
     }))
   } catch {
     paramDefinitionRows.value = []
@@ -232,11 +258,13 @@ const syncParamSchema = () => {
     }
     if (row.unit?.trim()) item.unit = row.unit.trim()
     if (row.defaultValue !== undefined && row.defaultValue !== '') item.default = row.defaultValue
-    if (row.constraints?.trim())
-      item.constraints = row.constraints
-        .split(',')
-        .map((v) => v.trim())
-        .filter(Boolean)
+    try {
+      const constraints = constraintsFromText(row.constraints)
+      if (constraints !== undefined) item.constraints = constraints
+    } catch {
+      message.warning(`参数 ${key} 的约束需写成 JSON 对象，如 {"min":1,"max":9}；留空或写逗号分隔的枚举`)
+      return
+    }
     result[key] = item
   }
   formData.value.paramSchema = Object.keys(result).length
@@ -503,6 +531,18 @@ const emit = defineEmits<{ success: [] }>()
                 >清除映射</el-button
               >
             </el-form-item>
+            <el-form-item label="判定规则" prop="resultRule">
+              <el-input
+                v-model="formData.resultRule"
+                type="textarea"
+                :rows="4"
+                placeholder='{"successStatusPath":"$.ExecuteStatus","successStatusValues":[0],"successCodePath":"$.ResultCode","successCodeValues":["00000000"],"messagePath":"$.Message","retryHintsPath":"$.Parameters.HandleCommands"}'
+              />
+              <div class="field-tip"
+                >设备域靠它判成败：配置的条件全部满足才算成功；报文里声明 Retry
+                才允许流程重试。留空时按 status / success / ExecuteStatus 兼容判定。</div
+              >
+            </el-form-item>
           </el-collapse-item>
         </el-collapse>
         <el-dialog
@@ -515,11 +555,19 @@ const emit = defineEmits<{ success: [] }>()
             v-model="formData.requestTemplate"
             type="textarea"
             :rows="10"
-            placeholder="使用 ${参数名} 引用输入；XML 报文格式下必须填写"
+            placeholder="使用 ${参数名} 引用输入，${uuid()} 生成随机 UUID；XML 报文格式下必须填写"
           />
           <div class="field-tip"
             >示例：厂商要求 WaveLengthNM 时，可写
-            {&quot;WaveLengthNM&quot;:${wavelength}}。系统会拒绝仍含未解析占位符的报文。</div
+            {&quot;WaveLengthNM&quot;:${wavelength}}。数字不加引号，字符串必须加引号。</div
+          >
+          <div class="field-tip"
+            >流水号类字段（EventId、RequestId 等）直接用 <code>${uuid()}</code>：每出现一次就生成一个新的
+            UUID，写在两个字段上天然不会重复，不需要在输入契约里声明。</div
+          >
+          <div class="field-tip"
+            >另有系统变量：<code>${commandNo}</code>（命令号）、<code>${callbackUrl}</code> /
+            <code>${callbackToken}</code>（等回调时签发的回调地址与令牌）。保存时会校验占位符必须是已声明的参数、内置函数或上述系统变量，仍含未解析占位符的报文不会下发。</div
           >
         </el-dialog>
       </template>
@@ -565,6 +613,11 @@ const emit = defineEmits<{ success: [] }>()
             <el-input
               v-model="row.defaultValue"
               placeholder="默认值（可选）"
+              @change="syncParamSchema"
+            />
+            <el-input
+              v-model="row.constraints"
+              placeholder='约束：枚举写 A,B；范围写 {"min":1,"max":9}'
               @change="syncParamSchema"
             />
             <el-checkbox v-model="row.required" @change="syncParamSchema">必填</el-checkbox>
@@ -655,12 +708,12 @@ const emit = defineEmits<{ success: [] }>()
           <el-form-item label="回调超时(秒)">
             <el-input-number
               v-model="formData.callbackTimeoutSec"
-              :min="1"
+              :min="0"
               :max="600"
               controls-position="right"
               placeholder="为空时取设备配置"
             />
-            <span class="form-tip">最长 600 秒</span>
+            <span class="form-tip">最长 600 秒；填 0 表示不超时，由流程节点的超时兜底</span>
           </el-form-item>
           <el-alert class="!mb-18px" type="info" :closable="false" show-icon>
             <template #title>
@@ -835,7 +888,7 @@ const emit = defineEmits<{ success: [] }>()
 }
 .param-definition-row {
   display: grid;
-  grid-template-columns: 1.25fr 1.1fr 0.9fr 1fr auto auto;
+  grid-template-columns: 1.15fr 1fr 0.8fr 0.9fr 1.2fr auto auto;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;

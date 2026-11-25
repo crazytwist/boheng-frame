@@ -5,6 +5,7 @@ import cn.boheng.frame.module.device.dal.dataobject.action.DeviceActionDO;
 import cn.boheng.frame.module.device.dal.dataobject.device.DeviceInfoDO;
 import cn.boheng.frame.module.device.service.callback.DeviceCallbackService;
 import cn.boheng.frame.module.device.service.callback.DeviceCallbackTicket;
+import cn.boheng.frame.module.device.service.template.MessageTemplateFunctions;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -278,9 +279,39 @@ public class DeviceHttpGateway {
             return rendered;
         }
         if (StrUtil.isNotBlank(template)) {
+            if ("JSON".equals(format)) {
+                requireJson(device, rendered);
+            }
             return rendered;
         }
         return params.isEmpty() ? null : JSONUtil.toJsonStr(params);
+    }
+
+    /**
+     * 挡在发出去之前：模板是纯文本替换，参数里带引号或花括号就会把报文结构撑破。
+     * 这种包发给设备，设备只会回「格式错误」，排查成本远高于在这里报错。
+     *
+     * <p>注意不能用 JSONUtil.isTypeJSON：它只看首尾字符，
+     * {"a":"x"y"} 这种坏包也会被判成 JSON。必须真解析一次。</p>
+     */
+    private static void requireJson(DeviceInfoDO device, String body) {
+        if (StrUtil.isBlank(body)) {
+            return;
+        }
+        try {
+            JSONUtil.parse(body.trim());
+        } catch (RuntimeException ex) {
+            throw exception(DEVICE_ACTION_TEMPLATE_INVALID,
+                    "渲染后的报文不是合法 JSON（设备 " + device.getDeviceCode() + "）：" + abbreviate(body));
+        }
+    }
+
+    /**
+     * 截断到错误提示能承载的长度
+     */
+    private static String abbreviate(String text) {
+        String trimmed = text.trim();
+        return trimmed.length() <= 200 ? trimmed : trimmed.substring(0, 200) + "...";
     }
 
     /**
@@ -292,7 +323,7 @@ public class DeviceHttpGateway {
         }
         Map<String, Object> values = new LinkedHashMap<>();
         params.forEach((key, value) -> flatten(values, key, value));
-        String rendered = template;
+        String rendered = MessageTemplateFunctions.apply(template);
         for (Map.Entry<String, Object> entry : values.entrySet()) {
             String value = renderValue(entry.getValue());
             rendered = rendered.replace("${" + entry.getKey() + "}", value);

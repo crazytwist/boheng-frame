@@ -45,7 +45,7 @@
           <dd>{{ resultModeLabel(action.resultMode || 'SYNC_RETURN') }}</dd>
           <template v-if="action.resultMode === 'CALLBACK'">
             <dt>回调超时</dt>
-            <dd>{{ action.callbackTimeoutSec ? `${action.callbackTimeoutSec} 秒` : '取设备配置' }}</dd>
+            <dd>{{ callbackTimeoutText(action.callbackTimeoutSec) }}</dd>
           </template>
           <dt>解析规则</dt>
           <dd>{{ action.codecCode || '—' }}</dd>
@@ -101,7 +101,7 @@
 import { DeviceActionApi, DeviceActionVO } from '@/api/device/action'
 import { DeviceParamSetApi, DeviceParamSetVO } from '@/api/device/paramSet'
 import CategoryDrawer from '../components/CategoryDrawer.vue'
-import { constraintText, deviceTypeLabel, durationText, parseSchema, resultModeLabel, sourceLabel } from '../labels'
+import { callbackTimeoutText, constraintText, deviceTypeLabel, durationText, parseSchema, resultModeLabel, sourceLabel } from '../labels'
 
 const visible = ref(false)
 const loading = ref(false)

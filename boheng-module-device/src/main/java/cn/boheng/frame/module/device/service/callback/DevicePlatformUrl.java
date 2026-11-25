@@ -48,6 +48,31 @@ public class DevicePlatformUrl {
     }
 
     /**
+     * 本机根地址：带上下文路径，但不带任何接口前缀。
+     *
+     * <p>厂商回调挂在 {@code /api} 下，既不是 admin 也不是 app 前缀，
+     * 所以拼地址时要用这个，而不是 {@link #localAdminBase()}。</p>
+     */
+    public String localRootBase() {
+        return rootBase("http://127.0.0.1:" + port());
+    }
+
+    /**
+     * 设备回调平台用的根地址（不含接口前缀）
+     */
+    public String callbackRootBase() {
+        String root = StrUtil.trimToNull(environment.getProperty(CALLBACK_BASE_PROPERTY));
+        return root == null ? localRootBase() : rootBase(root);
+    }
+
+    /**
+     * 有没有给真设备配过能访问到的根地址。没配就只能是本机回环，真设备必然调不通。
+     */
+    public boolean callbackBaseConfigured() {
+        return StrUtil.isNotBlank(environment.getProperty(CALLBACK_BASE_PROPERTY));
+    }
+
+    /**
      * 路径段编码，避免编码里的特殊字符把地址拆开
      */
     public static String encode(String raw) {
@@ -58,12 +83,23 @@ public class DevicePlatformUrl {
      * 在根地址后面接上下文路径和管理端前缀
      */
     private String adminBase(String root) {
+        return rootBase(root) + webProperties.getAdminApi().getPrefix();
+    }
+
+    /**
+     * 在根地址后面只接上下文路径
+     *
+     * <p>上下文路径要归一化：写成 {@code /boheng/} 会拼出 {@code //api/callback}，
+     * 有些厂商按字面比对回调地址，多一个斜杠就报错。</p>
+     */
+    private String rootBase(String root) {
         String host = StrUtil.removeSuffix(root.trim(), "/");
-        String context = StrUtil.blankToDefault(environment.getProperty("server.servlet.context-path"), "");
-        if ("/".equals(context)) {
-            context = "";
+        String context = StrUtil.removeSuffix(
+                StrUtil.blankToDefault(environment.getProperty("server.servlet.context-path"), "").trim(), "/");
+        if (context.isEmpty() || "/".equals(context)) {
+            return host;
         }
-        return host + context + webProperties.getAdminApi().getPrefix();
+        return host + (context.startsWith("/") ? context : "/" + context);
     }
 
     /**
